@@ -349,6 +349,10 @@ export function App() {
     if (isLoading || !mt) return;
     mt.onChange = (list) => setMeasurements(list);
     mt.setUnit(lengthUnit);
+    // RenderSystem persists across base/arm reloads, so the MeasureTool does too — but guard
+    // the case where the whole sim is recreated: re-apply the active toggle and drop stale rows.
+    mt.setActive(measureActive);
+    setMeasurements([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 

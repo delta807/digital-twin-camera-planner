@@ -137,6 +137,8 @@ export class MeasureTool {
   // ───────────────────────── measurements ─────────────────────────
 
   private addMeasurement(a: THREE.Vector3, b: THREE.Vector3) {
+    // Endpoints are a one-time world-space SNAPSHOT (not re-bound to bodies each frame).
+    // Fine here: task objects are welded/static; only the moving arm would drift if measured.
     const id = `m${++this.idCounter}`;
     const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
     const distance = Math.hypot(dx, dy, dz);
