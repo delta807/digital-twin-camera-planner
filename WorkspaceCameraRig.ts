@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { isPointVisibleFromSensor } from './coverage';
 import {
   CameraIntrinsics,
@@ -83,6 +84,7 @@ export class WorkspaceCameraRig {
     lens.position.set(0, 0, -0.04);
     this.gizmo.add(body, lens);
     this.scene.add(this.gizmo);
+    this.loadCameraMesh(body, lens); // swap the placeholder for the real D435i mesh once loaded
 
     // Sensible starting pose: off to the operator side, looking down at the workspace.
     this.setPose(new THREE.Vector3(0.0, -0.9, 0.7), new THREE.Vector3(0, 0, 0.1));
@@ -166,6 +168,25 @@ export class WorkspaceCameraRig {
     this.gizmo.position.copy(pos);
     const m = new THREE.Matrix4().lookAt(pos, target, new THREE.Vector3(0, 0, 1));
     this.gizmo.quaternion.setFromRotationMatrix(m);
+  }
+
+  /** Replace the placeholder box gizmo with the real Intel D435i mesh (public/d435i.stl). */
+  private loadCameraMesh(...fallback: THREE.Object3D[]) {
+    new STLLoader().load('/d435i.stl', (geo) => {
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      const size = new THREE.Vector3(); bb.getSize(size);
+      const center = new THREE.Vector3(); bb.getCenter(center);
+      geo.translate(-center.x, -center.y, -center.z);          // center on the gizmo origin
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.45, metalness: 0.5 }));
+      // Scale so the longest dimension ≈ the real D435i width (~90 mm).
+      mesh.scale.setScalar(0.09 / Math.max(size.x, size.y, size.z));
+      // Orient so the camera's optical axis (gizmo -Z) points out the lens. The Blender export's
+      // "front" is +Y, so rotate +X by -90° to map +Y → -Z; tweak if the lens faces the wrong way.
+      mesh.rotation.x = -Math.PI / 2;
+      this.gizmo.add(mesh);
+      fallback.forEach((o) => (o.visible = false));
+    }, undefined, () => { /* keep the placeholder box on load failure */ });
   }
 
   /** Attach the PIP render to a DOM container (16:9 recommended). Lazy: no-op until called. */
