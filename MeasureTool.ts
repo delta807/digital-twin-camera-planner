@@ -37,6 +37,7 @@ export class MeasureTool {
   onChange: ((list: Measurement[]) => void) | null = null;
 
   private unit: LengthUnit = 'm';
+  private prevCursor = '';
   private pending: { point: THREE.Vector3; marker: THREE.Mesh } | null = null;
   private entries: Entry[] = [];
   private readonly raycaster = new THREE.Raycaster();
@@ -57,8 +58,10 @@ export class MeasureTool {
 
   setActive(v: boolean) {
     this.active = v;
-    this.dom.style.cursor = v ? 'crosshair' : '';
-    if (!v) this.clearPending();
+    // Save/restore the canvas cursor so toggling measure off doesn't clobber another
+    // tool's cursor (e.g. a TransformControls grab state) on the shared canvas.
+    if (v) { this.prevCursor = this.dom.style.cursor; this.dom.style.cursor = 'crosshair'; }
+    else { this.dom.style.cursor = this.prevCursor; this.clearPending(); }
   }
 
   setUnit(u: LengthUnit) {

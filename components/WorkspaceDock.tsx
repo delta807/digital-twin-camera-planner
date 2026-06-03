@@ -192,8 +192,8 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
             {measure.measurements.map((m) => (
               <div key={m.id} className={`rounded-lg px-2 py-1.5 text-[10px] tabular-nums flex items-center justify-between ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
                 <div>
-                  <div className="font-bold">{m.label}: {fmt(m.distance, measure.unit)}</div>
-                  <div className={subtle}>Δ {fmt(m.dx, measure.unit)} {fmt(m.dy, measure.unit)} {fmt(m.dz, measure.unit)}</div>
+                  <div className="font-bold">{m.label}: {fmt(m.distance, measure.unit)} {measure.unit}</div>
+                  <div className={subtle}>Δ {fmt(m.dx, measure.unit)}, {fmt(m.dy, measure.unit)}, {fmt(m.dz, measure.unit)} {measure.unit}</div>
                 </div>
                 <button onClick={() => measure.onRemove(m.id)} className={subtle}><Trash2 className="w-3 h-3" /></button>
               </div>
