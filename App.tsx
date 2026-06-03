@@ -4,7 +4,7 @@
 */
 
 import { GoogleGenAI } from "@google/genai";
-import { AlertCircle, Loader2, X } from 'lucide-react';
+import { AlertCircle, Loader2, Sparkles, X } from 'lucide-react';
 import loadMujoco from 'mujoco_wasm';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -140,6 +140,9 @@ export function App() {
   ]);
   const [selectedArmId, setSelectedArmId] = useState('so101-1');
   const nextArmNumberRef = useRef(2);
+  const armInstancesRef = useRef(armInstances);
+  armInstancesRef.current = armInstances;
+  const primaryRelocateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const plannerTogglesRef = useRef(plannerToggles);
   plannerTogglesRef.current = plannerToggles;
   const reachResolutionRef = useRef(reachResolution);
@@ -406,10 +409,28 @@ export function App() {
   };
 
 
+  // The PRIMARY arm is the real physics arm (its base is baked at load), so it only truly moves
+  // via a model reload (relocateBase). Sliders update the ghost/outline live for feedback, then a
+  // debounced reload commits the real arm once the drag settles — so dragging "moves the arm".
+  const commitPrimaryPose = () => {
+    const sim = simRef.current;
+    const primary = armInstancesRef.current.find((a) => a.primary);
+    if (!sim || !primary) return;
+    setComputingReach(true);
+    sim.relocateBase(primary.x, primary.y, primary.yaw)
+      .then(() => { sim.setArmInstances(armInstancesRef.current); applyPlannerState(); })
+      .finally(() => setComputingReach(false));
+  };
+
   const handleArmChange = (id: string, patch: Partial<ArmInstance>) => {
     setArmInstances(prev => {
       const next = prev.map((arm) => arm.id === id ? { ...arm, ...patch } : arm);
-      simRef.current?.setArmInstances(next);
+      simRef.current?.setArmInstances(next); // live ghost + reach outline
+      const changed = next.find((a) => a.id === id);
+      if (changed?.primary) {
+        if (primaryRelocateRef.current) clearTimeout(primaryRelocateRef.current);
+        primaryRelocateRef.current = setTimeout(commitPrimaryPose, 400); // reload after drag settles
+      }
       return next;
     });
   };
@@ -669,8 +690,9 @@ export function App() {
       {/* 3D Container */}
       <div ref={containerRef} className="w-full h-full absolute inset-0 bg-slate-200" />
       
-      {/* Robot Info Overlay */}
-      {!loadError && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName={sceneIsFranka ? 'Franka Panda' : 'SO-101'} />}
+      {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
+          twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
+      {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
       
       {/* Loading Screen */}
       {isLoading && (
@@ -746,6 +768,17 @@ export function App() {
             isPickingUp={isPickingUp}
             playbackSpeed={playbackSpeed}
           />
+
+          {/* Explicit launcher to REOPEN the Embodied Reasoning panel once it's closed. */}
+          {!showSidebar && (
+            <button
+              onClick={() => setShowSidebar(true)}
+              title="Open Embodied Reasoning"
+              className={`absolute top-6 right-0 z-30 flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-l-2xl glass-panel shadow-xl text-[11px] font-bold uppercase tracking-widest transition-transform hover:-translate-x-0.5 ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/80 border-white/80 text-slate-800'}`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Reasoning
+            </button>
+          )}
 
           {cameraToggles.sensorPip && (
             <SensorView

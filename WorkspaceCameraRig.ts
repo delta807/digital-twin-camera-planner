@@ -86,8 +86,9 @@ export class WorkspaceCameraRig {
     this.scene.add(this.gizmo);
     this.loadCameraMesh(body, lens); // swap the placeholder for the real D435i mesh once loaded
 
-    // Sensible starting pose: off to the operator side, looking down at the workspace.
-    this.setPose(new THREE.Vector3(0.0, -0.9, 0.7), new THREE.Vector3(0, 0, 0.1));
+    // Sensible starting pose: mounted above the worktop, looking straight DOWN (top-down view,
+    // like the real rig's overhead D435i). User can reposition / re-aim from here.
+    this.setPose(new THREE.Vector3(0.15, -0.15, 0.7), new THREE.Vector3(0.15, -0.15, 0));
 
     // --- Drag handle (reuses the project's TransformControls pattern; getHelper() is the
     //     correct API in three 0.181 where TransformControls no longer extends Object3D) ---

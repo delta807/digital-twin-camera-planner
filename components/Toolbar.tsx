@@ -32,8 +32,9 @@ export function Toolbar({
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
 
+  // Bottom-centre so it clears the full-height left dock (which would otherwise cover it).
   return (
-    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 min-[660px]:left-10 min-[660px]:translate-x-0 flex items-center gap-4 z-30">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30">
       
       {/* Play/Pause Button */}
       <button 
