@@ -423,16 +423,16 @@ export function App() {
   };
 
   const handleArmChange = (id: string, patch: Partial<ArmInstance>) => {
-    setArmInstances(prev => {
-      const next = prev.map((arm) => arm.id === id ? { ...arm, ...patch } : arm);
-      simRef.current?.setArmInstances(next); // live ghost + reach outline
-      const changed = next.find((a) => a.id === id);
-      if (changed?.primary) {
-        if (primaryRelocateRef.current) clearTimeout(primaryRelocateRef.current);
-        primaryRelocateRef.current = setTimeout(commitPrimaryPose, 400); // reload after drag settles
-      }
-      return next;
-    });
+    // Compute next + run side effects OUTSIDE the updater (a pure updater would double-fire
+    // these under React 18 StrictMode). armInstancesRef mirrors the latest state.
+    const next = armInstancesRef.current.map((arm) => arm.id === id ? { ...arm, ...patch } : arm);
+    setArmInstances(next);
+    simRef.current?.setArmInstances(next); // live ghost + reach outline
+    const changed = next.find((a) => a.id === id);
+    if (changed?.primary) {
+      if (primaryRelocateRef.current) clearTimeout(primaryRelocateRef.current);
+      primaryRelocateRef.current = setTimeout(commitPrimaryPose, 400); // reload after drag settles
+    }
   };
 
   const handleAddArm = () => {
