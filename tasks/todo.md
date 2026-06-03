@@ -78,9 +78,19 @@ compile cleanly. Remaining gaps were closed here:
       Arms/Camera/Measure sections, grouped props, live coords); deleted CameraControls /
       ReachabilityControls / CoordinatesHud. Verified in-browser, committed (f9f8376),
       CodeRabbit: no findings, subagent QA running.
-- [ ] **Phase 5** — measure/dimension tool (#6): pt-pt + obj-obj, snap, ΔX/Y/Z, persistent list
-- [ ] **Phase 6** — SO-101 numeric IK (#4b): DLS finite-diff Jacobian → ungate move-to-marker
-- [ ] Fold remaining QA: H3 re-entrancy guard, M5 coverage buffers, M6 emissiveIntensity
+- [x] **Phase 5** — measure tool (#6): `MeasureTool` pt-pt + obj-obj, snap (Shift=free), CSS2D
+      labels, ΔX/Y/Z, persistent list, m/mm. Committed b442240; CodeRabbit + QA fixes (21e2a97, b07112a).
+- [x] **Phase 6** — SO-101 numeric IK (#4b): `NumericIk` DLS + finite-diff Jacobian; `moveArmTo`
+      ungated for SO-101 → click detected object → arm reaches (verified ~3 mm). Committed 3c415ee;
+      CodeRabbit clean; QA fix (live-pose seeding) 64cd4ec.
+- [x] **Cleanup QA** — init re-entrancy guard (H3), coverage buffer reuse (M5), emissiveIntensity
+      restore (M6). Committed 64cd4ec.
+- [ ] **Deferred** — corner orientation nav cube via an isolated renderer (three ViewHelper broke
+      the main viewport; the coordinate HUD + origin axes already deliver #1). Pure polish.
+
+## Repo
+Private: github.com/delta807/digital-twin-camera-planner — all phases pushed (origin/master @ 64cd4ec).
+Per-phase ritual followed throughout: implement → Playwright verify → commit → CodeRabbit → subagent QA → fix.
 
 ## Out of scope (later)
 Physically-simulated extra arms (real MuJoCo instances); per-arm independent joint control;
