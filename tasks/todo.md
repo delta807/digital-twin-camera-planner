@@ -74,7 +74,10 @@ compile cleanly. Remaining gaps were closed here:
       `components/CoordinatesHud.tsx`. NOTE: the FreeCAD-style corner nav cube (three `ViewHelper`)
       blanked the main viewport in this three version → removed; redo later with an isolated renderer.
       Verified: HUD live, mm toggle works, main view intact.
-- [ ] **Phase 4** — consolidated object dock (#7); retire CameraControls/ReachabilityControls
+- [x] **Phase 4** — consolidated object dock (#7): `components/WorkspaceDock.tsx` (Scene/Workcell/
+      Arms/Camera/Measure sections, grouped props, live coords); deleted CameraControls /
+      ReachabilityControls / CoordinatesHud. Verified in-browser, committed (f9f8376),
+      CodeRabbit: no findings, subagent QA running.
 - [ ] **Phase 5** — measure/dimension tool (#6): pt-pt + obj-obj, snap, ΔX/Y/Z, persistent list
 - [ ] **Phase 6** — SO-101 numeric IK (#4b): DLS finite-diff Jacobian → ungate move-to-marker
 - [ ] Fold remaining QA: H3 re-entrancy guard, M5 coverage buffers, M6 emissiveIntensity

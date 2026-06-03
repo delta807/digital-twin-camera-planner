@@ -6,7 +6,7 @@
 import { Box, Camera, ChevronDown, Crosshair, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Trash2 } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
-import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig, formatLen } from '../types';
+import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 
 export interface DockSceneProps {
   unit: LengthUnit;
@@ -240,7 +240,7 @@ function Row({ label, checked, onChange, accent = 'indigo' }: { label: string; c
 }
 
 function Slider({ label, unit, min, max, step, value, onChange, subtle, suffix }: { label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void; subtle: string; suffix?: string }) {
-  const digits = unit === '°' || unit === '' ? (step >= 1 ? 0 : 2) : (step < 0.01 ? 3 : 2);
+  const digits = unit === '°' || unit === '' ? (step >= 1 ? 0 : 1) : (step < 0.01 ? 3 : 2);
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[10px] font-medium">
