@@ -91,6 +91,7 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
+  const u = scene.unit; // active length unit (m / mm) for the length sliders
 
   return (
     <div className={`absolute left-4 top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
@@ -124,11 +125,11 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
         {/* ── Workcell: table shape + size (live) ── */}
         <Section title="Workcell (table)" icon={<Box className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <Slider label="Sides (4 = rectangle)" unit="" min={3} max={8} step={1} value={wc.shapeSides} onChange={(v) => workcell.onChange({ ...wc, shapeSides: Math.round(v) })} subtle={subtle} />
-          <Slider label="Length" unit="m" min={0.4} max={1.4} step={0.01} value={wc.length} onChange={(v) => workcell.onChange({ ...wc, length: v })} subtle={subtle} />
-          <Slider label="Width" unit="m" min={0.4} max={1.4} step={0.01} value={wc.width} onChange={(v) => workcell.onChange({ ...wc, width: v })} subtle={subtle} />
-          <Slider label="Rail height" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barHeight} onChange={(v) => workcell.onChange({ ...wc, barHeight: v })} subtle={subtle} />
-          <Slider label="Rail width" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barWidth} onChange={(v) => workcell.onChange({ ...wc, barWidth: v })} subtle={subtle} />
-          <Slider label="Camera-post height" unit="m" min={0.1} max={1.4} step={0.02} value={wc.postHeight} onChange={(v) => workcell.onChange({ ...wc, postHeight: v })} subtle={subtle} />
+          <Slider label="Length" unit="m" min={0.4} max={1.4} step={0.01} value={wc.length} onChange={(v) => workcell.onChange({ ...wc, length: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Width" unit="m" min={0.4} max={1.4} step={0.01} value={wc.width} onChange={(v) => workcell.onChange({ ...wc, width: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Rail height" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barHeight} onChange={(v) => workcell.onChange({ ...wc, barHeight: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Rail width" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barWidth} onChange={(v) => workcell.onChange({ ...wc, barWidth: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Camera-post height" unit="m" min={0.1} max={1.4} step={0.02} value={wc.postHeight} onChange={(v) => workcell.onChange({ ...wc, postHeight: v })} subtle={subtle} displayUnit={u} />
           <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload.</p>
         </Section>
 
@@ -139,8 +140,8 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
             <select value={arm.id} onChange={(e) => arms.onSelect(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold outline-none ${isDarkMode ? 'bg-slate-950/70 text-slate-100' : 'bg-white/70 text-slate-800'}`}>
               {arms.list.map((a) => <option key={a.id} value={a.id}>{a.label}{a.primary ? ' (primary)' : ''}</option>)}
             </select>
-            <Slider label="X (right +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.x} onChange={(v) => arms.onChange(arm.id, { x: v })} subtle={subtle} />
-            <Slider label="Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.y} onChange={(v) => arms.onChange(arm.id, { y: v })} subtle={subtle} />
+            <Slider label="X (right +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.x} onChange={(v) => arms.onChange(arm.id, { x: v })} subtle={subtle} displayUnit={u} />
+            <Slider label="Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.y} onChange={(v) => arms.onChange(arm.id, { y: v })} subtle={subtle} displayUnit={u} />
             <Slider label="Yaw" unit="°" min={-180} max={180} step={1} value={arm.yaw * 180 / Math.PI} onChange={(v) => arms.onChange(arm.id, { yaw: v * Math.PI / 180 })} subtle={subtle} />
             <div className="flex gap-2">
               <button onClick={arms.onApplyPose} disabled={arms.computing} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`} title="Move the real arm here (reloads its base)">Apply pose</button>
@@ -175,8 +176,8 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
               </select>
             </label>
             <Slider label="H-FOV" unit="°" min={40} max={95} step={0.1} value={camera.intrinsics.hFovDeg} onChange={(v) => camera.onIntrinsic('hFovDeg', v)} subtle={subtle} />
-            <Slider label="Min range" unit="m" min={0.05} max={1.0} step={0.01} value={camera.intrinsics.near} onChange={(v) => camera.onIntrinsic('near', v)} subtle={subtle} />
-            <Slider label="Max range" unit="m" min={1.0} max={6.0} step={0.1} value={camera.intrinsics.far} onChange={(v) => camera.onIntrinsic('far', v)} subtle={subtle} />
+            <Slider label="Min range" unit="m" min={0.05} max={1.0} step={0.01} value={camera.intrinsics.near} onChange={(v) => camera.onIntrinsic('near', v)} subtle={subtle} displayUnit={u} />
+            <Slider label="Max range" unit="m" min={1.0} max={6.0} step={0.1} value={camera.intrinsics.far} onChange={(v) => camera.onIntrinsic('far', v)} subtle={subtle} displayUnit={u} />
             <div className="flex gap-2">
               <button onClick={camera.onReset} className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>Reset optics</button>
               {camera.toggles.coverage && <button onClick={camera.onComputeCoverage} className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-50 text-indigo-600'}`}>Coverage</button>}
@@ -239,13 +240,28 @@ function Row({ label, checked, onChange, accent = 'indigo' }: { label: string; c
   );
 }
 
-function Slider({ label, unit, min, max, step, value, onChange, subtle, suffix }: { label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void; subtle: string; suffix?: string }) {
-  const digits = unit === '°' || unit === '' ? (step >= 1 ? 0 : 1) : (step < 0.01 ? 3 : 2);
+function Slider({ label, unit, min, max, step, value, onChange, subtle, suffix, displayUnit }: { label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void; subtle: string; suffix?: string; displayUnit?: LengthUnit }) {
+  // Length sliders (unit==='m') show + accept the value in the active display unit (m or mm).
+  const mm = displayUnit === 'mm' && unit === 'm';
+  const shownUnit = mm ? 'mm' : unit;
+  const toDisplay = (v: number) => (mm ? v * 1000 : v);
+  const fromDisplay = (d: number) => (mm ? d / 1000 : d);
+  const digits = mm ? 0 : unit === '°' || unit === '' ? (step >= 1 ? 0 : 1) : (step < 0.01 ? 3 : 2);
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-[10px] font-medium">
+      <div className="flex justify-between items-center text-[10px] font-medium gap-2">
         <span>{label}</span>
-        <span className={subtle}>{value.toFixed(digits)}{unit}{suffix ?? ''}</span>
+        {/* Editable value (CAD-style: drag the slider OR type a number). */}
+        <span className={`flex items-center gap-0.5 ${subtle}`}>
+          <input
+            type="number" min={mm ? min * 1000 : min} max={mm ? max * 1000 : max} step={mm ? Math.max(1, step * 1000) : step}
+            value={Number(toDisplay(value).toFixed(digits))}
+            onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) onChange(clamp(fromDisplay(d))); }}
+            className="w-12 bg-transparent text-right tabular-nums outline-none border-b border-transparent focus:border-indigo-400"
+          />
+          <span>{shownUnit}{suffix ?? ''}</span>
+        </span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full h-1 accent-indigo-600 cursor-pointer" />
     </div>

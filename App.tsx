@@ -130,7 +130,7 @@ export function App() {
 
   // --- Reachability planner state (SO-101 only) ---
   const [sceneIsFranka, setSceneIsFranka] = useState(false);
-  const [plannerToggles, setPlannerToggles] = useState<PlannerToggles>({ outline: true, reach: false, basePlacement: false, tasks: true, baseDrag: false });
+  const [plannerToggles, setPlannerToggles] = useState<PlannerToggles>({ outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false });
   const [reachResolution, setReachResolution] = useState(9);
   const [baseResult, setBaseResult] = useState<{ covered: number; total: number } | null>(null);
   const [computingReach, setComputingReach] = useState(false);

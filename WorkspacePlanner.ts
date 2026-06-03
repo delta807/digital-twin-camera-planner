@@ -39,6 +39,7 @@ export interface PlannerConfig {
 
 const CELL = 0.03;      // heatmap cell size, meters
 const Z_BAND = 0.14;    // count configs whose TCP reaches within this height of the worktop
+const TOPDOWN_MIN = 0.5; // cos(60°): keep configs whose gripper approach is within 60° of straight down
 const MAX_TILES = 1024;
 
 /**
@@ -64,7 +65,7 @@ export class WorkspacePlanner {
   private baseDisc: THREE.Mesh;
   private control: TransformControls;
 
-  private toggles: PlannerToggles = { outline: true, reach: false, basePlacement: false, tasks: true, baseDrag: false };
+  private toggles: PlannerToggles = { outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false };
 
   // Per-arm dashed reach outlines (color-coded), and the arm placements driving them.
   private readonly outlineGroup = new THREE.Group();
@@ -169,6 +170,12 @@ export class WorkspacePlanner {
         mujoco.mj_forward(model, scratch);
         const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
         if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
+        // Top-down filter: count only configs where the gripper approach points roughly DOWN
+        // (graspable from above). Arm folding otherwise lets the TCP reach ~360° of azimuth —
+        // physically real, but not "useful top-down reach", which is what this footprint means.
+        // approach = -localY of the tcp site (fingers extend along Fixed_Jaw -y); its world z
+        // component is -site_xmat[7]; "points down" ⇒ that is negative ⇒ site_xmat[7] > cos(angle).
+        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
         const tx = scratch.site_xpos[tcpSiteId * 3];
         const ty = scratch.site_xpos[tcpSiteId * 3 + 1];
         const di = Math.round((tx - this.baseX) / CELL);
@@ -382,10 +389,10 @@ export class WorkspacePlanner {
     this.taskMarkers.clear();
     for (const t of this.taskWorldPoints()) {
       const m = new THREE.Mesh(
-        new THREE.SphereGeometry(0.012, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0x111827 }),
+        new THREE.SphereGeometry(0.006, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.85 }),
       );
-      m.position.set(t.x, t.y, t.z + 0.03);
+      m.position.set(t.x, t.y, t.z + 0.025);
       this.taskMarkers.add(m);
     }
   }
