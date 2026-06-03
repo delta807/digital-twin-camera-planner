@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { v4 as uuidv4 } from 'uuid';
 import { MujocoSim } from './MujocoSim';
 import { WorkspaceDock } from './components/WorkspaceDock';
+import { Measurement } from './MeasureTool';
 import { RobotSelector } from './components/RobotSelector';
 import { SensorView } from './components/SensorView';
 import { Toolbar } from './components/Toolbar';
@@ -112,6 +113,8 @@ export function App() {
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('m');
   const [axesVisible, setAxesVisible] = useState(true);
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [measureActive, setMeasureActive] = useState(false);
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
 
   // --- Sensor-camera planner state ---
   const [cameraToggles, setCameraToggles] = useState<CameraViewToggles>({ ...DEFAULT_CAMERA_TOGGLES });
@@ -338,6 +341,22 @@ export function App() {
     const sg = simGroup();
     const r = rig();
     if (sg && r) r.computeCoverage(sg);
+  };
+
+  // --- Measure tool ---
+  useEffect(() => {
+    const mt = simRef.current?.renderSys.measureTool;
+    if (isLoading || !mt) return;
+    mt.onChange = (list) => setMeasurements(list);
+    mt.setUnit(lengthUnit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  useEffect(() => { simRef.current?.renderSys.measureTool?.setUnit(lengthUnit); }, [lengthUnit]);
+
+  const handleMeasureActive = (v: boolean) => {
+    setMeasureActive(v);
+    simRef.current?.renderSys.measureTool?.setActive(v);
   };
 
   // --- Reachability planner ---
@@ -771,6 +790,14 @@ export function App() {
                 dragMode,
                 onDragMode: handleDragMode,
                 onComputeCoverage: handleComputeCoverage,
+              }}
+              measure={{
+                active: measureActive,
+                onToggleActive: handleMeasureActive,
+                unit: lengthUnit,
+                measurements,
+                onClear: () => simRef.current?.renderSys.measureTool?.clear(),
+                onRemove: (id) => simRef.current?.renderSys.measureTool?.remove(id),
               }}
             />
           )}

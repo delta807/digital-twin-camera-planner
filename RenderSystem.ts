@@ -9,8 +9,10 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { DragStateManager } from './DragStateManager';
 import { GeomBuilder } from './rendering/GeomBuilder';
 import { ArmInstance, MujocoData, MujocoModel, MujocoModule } from './types';
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WorkspaceCameraRig } from './WorkspaceCameraRig';
 import { BaseBuilder } from './BaseBuilder';
+import { MeasureTool } from './MeasureTool';
 
 /**
  * RenderSystem
@@ -23,6 +25,8 @@ export class RenderSystem {
     controls: OrbitControls;
     cameraRig: WorkspaceCameraRig;
     baseBuilder: BaseBuilder;
+    measureTool!: MeasureTool;
+    private cssRenderer!: CSS2DRenderer;
     private originAxes!: THREE.Group;
     /** Extra overlays (e.g. reachability heatmaps) to hide from the sensor-camera PIP. */
     extraPipHelpers: THREE.Object3D[] = [];
@@ -95,6 +99,14 @@ export class RenderSystem {
         this.cameraRig = new WorkspaceCameraRig(this.scene, this.camera, this.renderer.domElement, this.controls);
         this.baseBuilder = new BaseBuilder(this.scene);
         this.initCoordinateSystem();
+
+        // CSS2D overlay for crisp measurement labels (sits over the canvas, click-through).
+        this.cssRenderer = new CSS2DRenderer();
+        this.cssRenderer.setSize(container.clientWidth, container.clientHeight);
+        this.cssRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+        container.appendChild(this.cssRenderer.domElement);
+        this.measureTool = new MeasureTool(this.scene, this.camera, this.renderer.domElement,
+            () => [this.simGroup, this.baseBuilder.group]);
 
         window.addEventListener('resize', this.onResize);
     }
@@ -194,7 +206,10 @@ export class RenderSystem {
 
         // Sensor-camera overlays + PIP. Runs after the main view so its helper-hiding
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
-        this.cameraRig.update(this.simGroup, [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, ...this.extraPipHelpers]);
+        this.cameraRig.update(this.simGroup, [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, ...this.extraPipHelpers]);
+
+        // Measurement labels (DOM overlay).
+        this.cssRenderer.render(this.scene, this.camera);
     }
 
     /** Origin axis triad at the table center (X red, Y green, Z blue) + an origin marker dot. */
@@ -410,12 +425,15 @@ export class RenderSystem {
         this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-    }; 
+        this.cssRenderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    };
 
     dispose() {
         window.removeEventListener('resize', this.onResize);
         this.cameraRig.dispose();
         this.baseBuilder.dispose();
+        this.measureTool.dispose();
+        this.cssRenderer.domElement.remove();
         this.planningArmsGroup.clear();
         this.scene.remove(this.planningArmsGroup);
         this.renderer.dispose();
