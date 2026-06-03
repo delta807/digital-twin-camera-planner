@@ -462,17 +462,20 @@ export function App() {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-        if (simRef.current && simRef.current.isFranka && !isLoading && !erLoading) {
-            const markerPos = simRef.current.renderSys.checkMarkerClick(e.clientX, e.clientY);
-            if (markerPos) {
-                simRef.current.moveIkTargetTo(markerPos, 2000);
-                simRef.current.setIkEnabled(true);
-            }
+        const sim = simRef.current;
+        if (!sim || isLoading || erLoading || measureActive) return; // don't hijack measure clicks
+        const markerPos = sim.renderSys.checkMarkerClick(e.clientX, e.clientY);
+        if (!markerPos) return;
+        if (sim.isFranka) {
+            sim.moveIkTargetTo(markerPos, 2000); // Franka analytical IK
+            sim.setIkEnabled(true);
+        } else {
+            sim.moveArmTo(markerPos); // SO-101 numeric IK → reach to the detected object
         }
     };
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
-  }, [isLoading, erLoading]);
+  }, [isLoading, erLoading, measureActive]);
 
   const handleErSend = async (prompt: string, type: DetectType, temperature: number, enableThinking: boolean, modelId: string) => {
       if (!simRef.current || erLoading) return;

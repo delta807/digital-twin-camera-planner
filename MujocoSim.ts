@@ -14,6 +14,7 @@ import { SequenceAnimator } from './SequenceAnimator';
 import { ArmInstance, DEFAULT_WORKCELL_CONFIG, MujocoData, MujocoModel, MujocoModule, WorkcellConfig } from './types';
 import { getName } from './utils/StringUtils';
 import { SweptJoint, WorkspacePlanner } from './WorkspacePlanner';
+import { NumericIk } from './NumericIk';
 
 /**
  * MujocoSim: The Central Orchestrator.
@@ -40,6 +41,9 @@ export class MujocoSim {
     isFranka = true;
     /** SO-101 reachability / base-placement planner (null for Franka). */
     planner: WorkspacePlanner | null = null;
+    /** Position-only numeric IK for the SO-101 (null for Franka, which uses analytical IK). */
+    private numericIk: NumericIk | null = null;
+    private armJointQadr: number[] = [];
     /** Fired after a (re)load creates a new planner, so React can re-apply its state. */
     onSceneReload: (() => void) | null = null;
     private robotId = '';
@@ -92,6 +96,7 @@ export class MujocoSim {
         // Tear down any previous model/data/planner (also supports base-relocation reloads).
         if (this.frameId) { cancelAnimationFrame(this.frameId); this.frameId = null; }
         if (this.planner) { this.planner.dispose(); this.planner = null; this.renderSys.extraPipHelpers = []; }
+        if (this.numericIk) { this.numericIk.dispose(); this.numericIk = null; }
         if (this.mjData) { try { this.mjData.delete(); } catch (e) { /* ignore */ } this.mjData = null; }
         if (this.mjModel) { try { this.mjModel.delete(); } catch (e) { /* ignore */ } this.mjModel = null; }
 
@@ -192,6 +197,13 @@ export class MujocoSim {
         this.renderSys.setPlanningArmInstances(this.armInstances);
         this.planner.setArms(this.armInstances, this.basePose?.yaw ?? 0);
         this.planner.computeReachability();
+
+        // Numeric IK (position-only) for "click object → arm reaches to it" on the SO-101.
+        this.armJointQadr = sweptJoints.map((j) => j.qposAdr);
+        this.numericIk = new NumericIk(
+            this.mujoco, m, this.ikSys.gripperSiteId,
+            this.armJointQadr, sweptJoints.map((j) => j.lo), sweptJoints.map((j) => j.hi),
+        );
     }
 
     /** Reload the model with the arm base moved/rotated — the "drag the mount" path. */
@@ -217,6 +229,19 @@ export class MujocoSim {
         this.renderSys.setPlanningArmInstances(this.armInstances);
         // Ghost arms moving doesn't need a recompute — just re-transform the reach outlines.
         this.planner?.setArms(this.armInstances, this.basePose?.yaw ?? 0);
+    }
+
+    /**
+     * SO-101: solve position-only numeric IK toward `target` and drive the (primary) arm there
+     * via its position actuators. Returns whether the target was reachable. No-op for Franka.
+     */
+    moveArmTo(target: THREE.Vector3): boolean {
+        if (this.isFranka || !this.numericIk || !this.mjData) return false;
+        const seed = this.armJointQadr.map((a) => this.mjData!.qpos[a]);
+        const { q, ok } = this.numericIk.solve(target, seed);
+        // Actuators 0..N-1 drive exactly the swept joints (Rotation, Pitch, Elbow, Wrist_Pitch).
+        for (let j = 0; j < q.length; j++) this.mjData.ctrl[j] = q[j];
+        return ok;
     }
 
     private descendantBodyIds(baseBodyId: number): number[] {
@@ -484,6 +509,7 @@ export class MujocoSim {
     dispose() {
         if (this.frameId) cancelAnimationFrame(this.frameId);
         if (this.planner) { this.planner.dispose(); this.planner = null; }
+        if (this.numericIk) { this.numericIk.dispose(); this.numericIk = null; }
         this.dragStateManager.dispose();
         this.selectionManager.dispose(); 
         this.renderSys.dispose(); 
