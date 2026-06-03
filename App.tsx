@@ -10,11 +10,9 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { v4 as uuidv4 } from 'uuid';
 import { MujocoSim } from './MujocoSim';
-import { CameraControls } from './components/CameraControls';
-import { ReachabilityControls } from './components/ReachabilityControls';
+import { WorkspaceDock } from './components/WorkspaceDock';
 import { RobotSelector } from './components/RobotSelector';
 import { SensorView } from './components/SensorView';
-import { CoordinatesHud } from './components/CoordinatesHud';
 import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
@@ -384,10 +382,6 @@ export function App() {
     simRef.current?.setWorkcell(next);
   };
 
-  // "Apply base" is no longer required (edits are live); kept as a no-op-ish refresh.
-  const handleApplyWorkcell = () => {
-    simRef.current?.setWorkcell(workcellConfig);
-  };
 
   const handleArmChange = (id: string, patch: Partial<ArmInstance>) => {
     setArmInstances(prev => {
@@ -727,21 +721,6 @@ export function App() {
             playbackSpeed={playbackSpeed}
           />
 
-          {/* Sensor-camera planner */}
-          <CameraControls
-            toggles={cameraToggles}
-            onToggle={handleCameraToggle}
-            intrinsics={intrinsics}
-            onIntrinsic={handleIntrinsic}
-            onResetIntrinsics={handleResetIntrinsics}
-            streamProfiles={D435I_STREAM_PROFILES}
-            selectedProfileId={selectedProfileId}
-            onStreamProfile={handleStreamProfile}
-            dragMode={dragMode}
-            onDragMode={handleDragMode}
-            onComputeCoverage={handleComputeCoverage}
-            isDarkMode={isDarkMode}
-          />
           {cameraToggles.sensorPip && (
             <SensorView
               canvasHostRef={sensorViewRef}
@@ -751,39 +730,48 @@ export function App() {
               onClose={() => handleCameraToggle('sensorPip', false)}
             />
           )}
-          {!sceneIsFranka && (
-            <ReachabilityControls
-              toggles={plannerToggles}
-              onToggle={handlePlannerToggle}
-              resolution={reachResolution}
-              onResolution={setReachResolution}
-              onRecompute={handleRecompute}
-              computing={computingReach}
-              baseResult={baseResult}
-              workcell={workcellConfig}
-              onWorkcellChange={handleWorkcellChange}
-              onApplyWorkcell={handleApplyWorkcell}
-              arms={armInstances}
-              selectedArmId={selectedArmId}
-              onSelectArm={setSelectedArmId}
-              onArmChange={handleArmChange}
-              onAddArm={handleAddArm}
-              onRemoveArm={handleRemoveArm}
-              onApplyArmPose={handleApplyArmPose}
-              isDarkMode={isDarkMode}
-            />
-          )}
 
+          {/* Consolidated object-centric control dock (SO-101 twin) */}
           {!sceneIsFranka && (
-            <CoordinatesHud
-              cameraPos={cameraPos}
-              arms={armInstances}
-              selectedArmId={selectedArmId}
-              unit={lengthUnit}
-              onUnit={setLengthUnit}
-              axesVisible={axesVisible}
-              onAxesToggle={(v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); }}
+            <WorkspaceDock
               isDarkMode={isDarkMode}
+              scene={{
+                unit: lengthUnit,
+                onUnit: setLengthUnit,
+                axesVisible,
+                onAxesToggle: (v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); },
+                cameraPos,
+              }}
+              workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
+              arms={{
+                list: armInstances,
+                selectedId: selectedArmId,
+                onSelect: setSelectedArmId,
+                onChange: handleArmChange,
+                onAdd: handleAddArm,
+                onRemove: handleRemoveArm,
+                onApplyPose: handleApplyArmPose,
+                toggles: plannerToggles,
+                onToggle: handlePlannerToggle,
+                resolution: reachResolution,
+                onResolution: setReachResolution,
+                onRecompute: handleRecompute,
+                computing: computingReach,
+                baseResult,
+              }}
+              camera={{
+                toggles: cameraToggles,
+                onToggle: handleCameraToggle,
+                intrinsics,
+                onIntrinsic: handleIntrinsic,
+                onReset: handleResetIntrinsics,
+                streamProfiles: D435I_STREAM_PROFILES,
+                selectedProfileId,
+                onStreamProfile: handleStreamProfile,
+                dragMode,
+                onDragMode: handleDragMode,
+                onComputeCoverage: handleComputeCoverage,
+              }}
             />
           )}
 
