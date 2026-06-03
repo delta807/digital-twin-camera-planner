@@ -243,9 +243,18 @@ export class WorkspaceCameraRig {
       this.scene.add(this.coveragePoints);
       this.ownHelpers.push(this.coveragePoints);
     }
+    // Reuse the existing buffers when the grid size is unchanged (the usual case) so repeated
+    // recomputes don't orphan GPU buffers; only re-allocate if the point count actually changed.
     const geo = this.coveragePoints.geometry;
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (posAttr && posAttr.array.length === positions.length) {
+      (posAttr.array as Float32Array).set(positions); posAttr.needsUpdate = true;
+      const colAttr = geo.getAttribute('color') as THREE.BufferAttribute;
+      (colAttr.array as Float32Array).set(colors); colAttr.needsUpdate = true;
+    } else {
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    }
     this.coveragePoints.visible = this.toggles.enabled && this.toggles.coverage;
   }
 
@@ -349,6 +358,7 @@ export class WorkspaceCameraRig {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (!mat || !mat.emissive) continue;
       mat.userData.__prevEmissive = mat.emissive.getHex();
+      mat.userData.__prevEmissiveIntensity = mat.emissiveIntensity;
       mat.emissive.setHex(0x16a34a);
       mat.emissiveIntensity = 0.6;
       this.tinted.push(mat);
@@ -359,7 +369,9 @@ export class WorkspaceCameraRig {
     for (const mat of this.tinted) {
       if (mat.userData.__prevEmissive !== undefined) {
         mat.emissive.setHex(mat.userData.__prevEmissive);
+        mat.emissiveIntensity = mat.userData.__prevEmissiveIntensity ?? 1; // restore, not leave at 0.6
         delete mat.userData.__prevEmissive;
+        delete mat.userData.__prevEmissiveIntensity;
       }
     }
     this.tinted.length = 0;

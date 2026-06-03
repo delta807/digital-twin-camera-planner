@@ -46,6 +46,7 @@ export class MujocoSim {
     private armJointQadr: number[] = [];
     /** Fired after a (re)load creates a new planner, so React can re-apply its state. */
     onSceneReload: (() => void) | null = null;
+    private loading = false; // re-entrancy guard for init() (base/arm/workcell reloads)
     private robotId = '';
     private sceneFile = 'scene.xml';
     private basePose: BasePose | null = null;
@@ -87,6 +88,12 @@ export class MujocoSim {
     }
 
     async init(robotId = 'so_arm100', sceneFile = 'scene.xml', onProgress?: (msg: string) => void, basePose?: BasePose, workcellConfig?: WorkcellConfig) {
+        // Drop overlapping reloads (e.g. a fast second base-drag while the first is still awaiting
+        // the async loader) — racing the model teardown could double-delete or build on a torn
+        // down model. The latest committed pose still wins via the caller's stored basePose.
+        if (this.loading) return;
+        this.loading = true;
+        try {
         this.robotId = robotId;
         this.sceneFile = sceneFile;
         if (basePose !== undefined) this.basePose = basePose;
@@ -146,6 +153,9 @@ export class MujocoSim {
 
         this.startLoop();
         if (!this.isFranka && this.onSceneReload) this.onSceneReload();
+        } finally {
+            this.loading = false;
+        }
     }
 
     /** Build the reachability/base-placement planner from the loaded SO-101 model. */
@@ -238,7 +248,7 @@ export class MujocoSim {
     moveArmTo(target: THREE.Vector3): boolean {
         if (this.isFranka || !this.numericIk || !this.mjData) return false;
         const seed = this.armJointQadr.map((a) => this.mjData!.qpos[a]);
-        const { q, ok } = this.numericIk.solve(target, seed);
+        const { q, ok } = this.numericIk.solve(target, seed, this.mjData.qpos);
         // Actuators 0..N-1 drive exactly the swept joints (Rotation, Pitch, Elbow, Wrist_Pitch).
         for (let j = 0; j < q.length; j++) this.mjData.ctrl[j] = q[j];
         return ok;

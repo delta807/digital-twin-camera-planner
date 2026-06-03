@@ -45,9 +45,13 @@ export class NumericIk {
    * @param seed   current joint angles for the N driving joints (continuity → avoids local minima)
    * @returns the solved joint angles and whether the target was reached (within OK_TOL).
    */
-  solve(target: THREE.Vector3, seed: number[]): { q: number[]; ok: boolean } {
+  solve(target: THREE.Vector3, seed: number[], liveQpos?: ArrayLike<number>): { q: number[]; ok: boolean } {
     const N = this.qadr.length;
     const d = this.scratch;
+    // Initialise the scratch with the live full configuration so NON-driving joints (Wrist_Roll,
+    // Jaw) match the real arm — the solver then models the ACTUAL TCP, not a default-zero variant.
+    // Only the N driving joints are searched below.
+    if (liveQpos) for (let i = 0; i < d.qpos.length && i < liveQpos.length; i++) d.qpos[i] = liveQpos[i];
     const q = seed.slice();
 
     const tcp = (): [number, number, number] => {
