@@ -19,12 +19,13 @@ chosen in sim hold up in the real world.
       pose (real frame: fingers bottom, object ahead); dial back/up/reach; expose as sliders.
 
 ## Backlog (ordered, roughly)
-- [ ] **C — Rod snapping** — snap arm/camera/objects to the rods; slide the arm ALONG a rod (mimic
-      moving along the alu extrusion); move rods (esp the upright post); align camera to a rod;
-      build connector rods between mounts. (Asked for 3×; the post is already movable via X/Y.)
+- [x] **C — Rod snapping** (a099661) — snap camera/arm/objects to the nearest rod (post or rail) +
+      'Along' slider to slide along it. Camera→post (vertical), arm→rails (horizontal). Post movable
+      via X/Y. STILL TODO: "build connector rods between mounts" (add custom rods) — deferred.
 - [ ] **D — Optimal multi-arm layout** — suggest arm placements for **max task coverage** (most
       task points reachable top-down across all arms). Extend the single-arm base-placement
       (inverse reachability) to greedily place N arms; show + apply suggestions.
+- [ ] **Build connector rods** (part of C) — add/draw custom rods between two mount points.
 - [ ] **Wrist-cam framing tune** — expose back/up/reach mount offsets as sliders; dial in so the
       feed frames the grasp (less gripper body) once #3 gives the real reference.
 - [ ] **A3 — Ghost/preview** (deprioritised; live base move already shows motion) — translucent
