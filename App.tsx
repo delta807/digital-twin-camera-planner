@@ -140,6 +140,7 @@ export function App() {
   const workcellConfigRef = useRef(workcellConfig);
   workcellConfigRef.current = workcellConfig;
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [taskBodies, setTaskBodies] = useState<{ bodyId: number; name: string }[]>([]);
   const [armInstances, setArmInstances] = useState<ArmInstance[]>([
     { id: 'so101-1', label: 'SO101 1', x: 0, y: 0, yaw: 0, primary: true },
   ]);
@@ -409,8 +410,30 @@ export function App() {
     if (isLoading || !sel) return;
     sel.onChange = (s) => setSelection(s);
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
+    setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
+
+  // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
+  const objectEntities = (() => {
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number }[] = [];
+    armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label }));
+    list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
+    list.push({ key: 'post', kind: 'post', label: 'Camera post' });
+    taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
+    return list;
+  })();
+  const primaryArmId = armInstances.find((a) => a.primary)?.id ?? 'so101-1';
+  const selectedKey = !selection ? null
+    : selection.kind === 'object' ? `obj:${selection.bodyId}`
+    : selection.kind === 'arm' ? `arm:${primaryArmId}`
+    : selection.kind; // 'camera' | 'post'
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number }) => {
+    const sel = simRef.current?.renderSys.selection;
+    if (!sel) return;
+    if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
+    else if (e.kind !== 'object') sel.selectByKind(e.kind);
+  };
 
   const handleMeasureActive = (v: boolean) => {
     setMeasureActive(v);
@@ -863,6 +886,7 @@ export function App() {
           {!sceneIsFranka && (
             <WorkspaceDock
               isDarkMode={isDarkMode}
+              objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect }}
               scene={{
                 unit: lengthUnit,
                 onUnit: setLengthUnit,

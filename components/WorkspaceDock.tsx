@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Camera, ChevronDown, Crosshair, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Trash2 } from 'lucide-react';
+import { Box, Boxes, Camera, ChevronDown, Crosshair, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Trash2 } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
@@ -60,8 +60,16 @@ export interface DockMeasureProps {
   onClear: () => void;
   onRemove: (id: string) => void;
 }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number }
+export interface DockObjectsProps {
+  entities: DockObjectEntity[];
+  selectedKey: string | null;
+  onSelect: (e: DockObjectEntity) => void;
+}
+
 interface WorkspaceDockProps {
   isDarkMode: boolean;
+  objects?: DockObjectsProps;
   scene: DockSceneProps;
   workcell: DockWorkcellProps;
   arms: DockArmsProps;
@@ -91,7 +99,7 @@ const CAMERA_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
  * and live coordinates. Replaces the old scattered CameraControls / ReachabilityControls /
  * CoordinatesHud panels.
  */
-export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measure }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera, measure }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -105,6 +113,26 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
+        {/* ── Objects: scene tree — click a row to select it in the 3D view ── */}
+        {objects && (
+          <Section title="Objects" icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+            <div className="space-y-0.5">
+              {objects.entities.map((e) => {
+                const active = e.key === objects.selectedKey;
+                const on = isDarkMode ? 'bg-indigo-500/25 text-indigo-200' : 'bg-indigo-600/10 text-indigo-700';
+                const off = isDarkMode ? 'hover:bg-white/5 text-slate-300' : 'hover:bg-black/5 text-slate-700';
+                return (
+                  <button key={e.key} onClick={() => objects.onSelect(e)}
+                    className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-left ${active ? on : off}`}>
+                    <span className={`w-1.5 h-1.5 rounded-sm ${active ? 'bg-yellow-400' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                    <span className="truncate">{e.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
         {/* ── Scene: units + axes + live coordinates ── */}
         <Section title="Scene" icon={<Grid3x3 className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <div className="flex items-center justify-between">
