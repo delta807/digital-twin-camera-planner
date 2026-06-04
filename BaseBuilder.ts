@@ -22,6 +22,8 @@ export class BaseBuilder {
   readonly postTop = new THREE.Vector3();
   /** World X/Y of the post axis + its height + cross-section — exposed for snapping/selection. */
   postAxis = { x: 0, y: 0, height: 0, width: 0.024 };
+  /** Rods as world line segments (the upright post + the perimeter rails) — for snap/slide. */
+  rods: Array<{ a: THREE.Vector3; b: THREE.Vector3; label: string }> = [];
 
   private readonly slabMat = new THREE.MeshStandardMaterial({ color: 0xededf2, roughness: 0.85, metalness: 0.05 });
   private readonly railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.6 });
@@ -64,6 +66,7 @@ export class BaseBuilder {
     this.group.add(slab);
 
     // --- Perimeter rods (one box per rim edge), sitting on the slab top ---
+    this.rods = [];
     for (let i = 0; i < rim.length; i++) {
       const [x1, y1] = rim[i];
       const [x2, y2] = rim[(i + 1) % rim.length];
@@ -73,6 +76,7 @@ export class BaseBuilder {
       rod.rotation.z = Math.atan2(y2 - y1, x2 - x1);
       rod.castShadow = true;
       this.group.add(rod);
+      this.rods.push({ a: new THREE.Vector3(x1, y1, barH / 2), b: new THREE.Vector3(x2, y2, barH / 2), label: `Rail ${i + 1}` });
     }
 
     // --- Camera post (aluminium upright) at an explicit world X/Y ---
@@ -85,6 +89,8 @@ export class BaseBuilder {
     this.group.add(post);
     this.postAxis = { x: px, y: py, height: postH, width: barW };
     this.postTop.set(px, py, postH);
+    // The upright post first — it's the rod users mount the camera on / slide along.
+    this.rods.unshift({ a: new THREE.Vector3(px, py, 0), b: new THREE.Vector3(px, py, postH), label: 'Post' });
   }
 
   private clear() {

@@ -80,6 +80,27 @@ export function LogOverlay({ log }: LogOverlayProps) {
   );
 }
 
+type Rod = { a: THREE.Vector3; b: THREE.Vector3; label: string };
+
+/** Clamped projection of a point onto a rod segment → parameter t∈[0,1] + the point on the rod. */
+function projectToRod(p: THREE.Vector3, rod: Rod): { t: number; point: THREE.Vector3 } {
+  const ab = rod.b.clone().sub(rod.a);
+  const len2 = ab.lengthSq();
+  const t = len2 > 1e-9 ? THREE.MathUtils.clamp(p.clone().sub(rod.a).dot(ab) / len2, 0, 1) : 0;
+  return { t, point: rod.a.clone().addScaledVector(ab, t) };
+}
+
+/** Nearest rod to a point (for snap-to-rod). */
+function nearestRod(p: THREE.Vector3, rods: Rod[]): { index: number; t: number; point: THREE.Vector3 } | null {
+  let best: { index: number; t: number; point: THREE.Vector3 } | null = null, bestD = Infinity;
+  rods.forEach((rod, index) => {
+    const { t, point } = projectToRod(p, rod);
+    const d = point.distanceTo(p);
+    if (d < bestD) { bestD = d; best = { index, t, point }; }
+  });
+  return best;
+}
+
 /**
  * Main Application Component
  */
@@ -368,6 +389,47 @@ export function App() {
     setCameraPos({ x, y, z });
   };
   const handleCameraAimDown = () => rig()?.aimDown();
+
+  // ── Rod snapping: mount the selected object onto a rod and slide it ALONG it ──
+  const [rodSnap, setRodSnap] = useState<{ rodIndex: number; label: string } | null>(null);
+  // Reset the snap when a DIFFERENT object is selected (not while sliding the same one).
+  const selKey = selection ? `${selection.kind}:${selection.bodyId ?? selectedArmId ?? ''}` : null;
+  useEffect(() => { setRodSnap(null); }, [selKey]);
+  const rods = (): Rod[] => simRef.current?.renderSys.baseBuilder.rods ?? [];
+  const getSelectedPos = (): THREE.Vector3 | null => {
+    if (!selection) return null;
+    if (selection.kind === 'camera' && cameraPos) return new THREE.Vector3(cameraPos.x, cameraPos.y, cameraPos.z);
+    if (selection.kind === 'arm') { const a = armInstancesRef.current.find((x) => x.id === selectedArmId); return a ? new THREE.Vector3(a.x, a.y, 0) : null; }
+    if (selection.kind === 'object') return new THREE.Vector3(selection.x, selection.y, selection.z);
+    return null;
+  };
+  const writeSelectedPos = (p: THREE.Vector3) => {
+    if (!selection) return;
+    if (selection.kind === 'camera') handleCameraMove(p.x, p.y, p.z);
+    else if (selection.kind === 'arm') { const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (a) handleArmChange(a.id, { x: p.x, y: p.y }); }
+    else if (selection.kind === 'object' && selection.bodyId !== undefined) simRef.current?.setTaskBodyPosition(selection.bodyId, p.x, p.y, p.z);
+  };
+  const handleSnapToRod = () => {
+    const pos = getSelectedPos(); if (!pos) return;
+    const all = rods();
+    // Arms stay on the floor, so they slide along horizontal RAILS, not the vertical post.
+    const candidates = selection?.kind === 'arm' ? all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05) : all;
+    const near = nearestRod(pos, candidates); if (!near) return;
+    const fullIndex = all.indexOf(candidates[near.index]);
+    writeSelectedPos(near.point);
+    setRodSnap({ rodIndex: fullIndex, label: all[fullIndex]?.label ?? 'rod' });
+  };
+  const handleSlideAlongRod = (t: number) => {
+    if (!rodSnap) return;
+    const rod = rods()[rodSnap.rodIndex]; if (!rod) return;
+    writeSelectedPos(rod.a.clone().addScaledVector(rod.b.clone().sub(rod.a), t));
+  };
+  // Current t of the selection along its snapped rod (drives the slider).
+  const rodT = (() => {
+    if (!rodSnap) return 0;
+    const rod = rods()[rodSnap.rodIndex]; const pos = getSelectedPos();
+    return rod && pos ? projectToRod(pos, rod).t : 0;
+  })();
 
   // Snap the camera onto the top of the aluminium post and aim it straight down —
   // one click to replicate "camera mounted N cm up the rod, looking at the worktop".
@@ -881,6 +943,10 @@ export function App() {
             onSnapToPost={handleSnapCameraToPost}
             onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
             onFrame={handleFrameSelection}
+            onSnapToRod={handleSnapToRod}
+            onSlideAlongRod={handleSlideAlongRod}
+            rodLabel={rodSnap?.label ?? null}
+            rodT={rodT}
           />
 
           {/* Explicit launcher to REOPEN the Embodied Reasoning panel once it's closed. */}

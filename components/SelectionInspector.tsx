@@ -23,6 +23,11 @@ export interface InspectorProps {
   onSnapToPost: () => void;
   onDeselect: () => void;
   onFrame: () => void;
+  // Rod snapping: mount the selection on a rod, then slide it along (0..1).
+  onSnapToRod: () => void;
+  onSlideAlongRod: (t: number) => void;
+  rodLabel: string | null;
+  rodT: number;
 }
 
 /**
@@ -89,6 +94,24 @@ export function SelectionInspector(p: InspectorProps) {
             { k: 'Y', v: sel.y, on: (v) => p.onObject(sel.bodyId!, sel.x, v, sel.z) },
             { k: 'Z', v: sel.z, on: (v) => p.onObject(sel.bodyId!, sel.x, sel.y, v) },
           ]} />
+      )}
+
+      {/* Mount on a rod (post / rail) and slide along it — mimics moving along the alu extrusion. */}
+      {(sel.kind === 'camera' || sel.kind === 'arm' || sel.kind === 'object') && (
+        <div className="mt-2 pt-2 border-t border-black/5 space-y-1.5">
+          <button onClick={p.onSnapToRod} className={`w-full text-[9px] font-bold uppercase tracking-wide py-1 rounded-md ${p.isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>
+            {p.rodLabel ? `Snapped to ${p.rodLabel} — re-snap` : 'Snap to nearest rod'}
+          </button>
+          {p.rodLabel && (
+            <label className="flex items-center gap-2">
+              <span className={`text-[9px] font-bold uppercase ${subtle}`}>Along</span>
+              <input type="range" min={0} max={1} step={0.01} value={p.rodT}
+                onChange={(e) => p.onSlideAlongRod(parseFloat(e.target.value))}
+                className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+              <span className={`text-[9px] tabular-nums w-7 text-right ${subtle}`}>{Math.round(p.rodT * 100)}%</span>
+            </label>
+          )}
+        </div>
       )}
     </div>
   );
