@@ -9,11 +9,14 @@ A camera/arm/workcell planner whose sim decisions transfer 1:1 to the physical
 SO-101 + D435i + Jetson rig — so layout, reach, camera placement, and grasps
 chosen in sim hold up in the real world.
 
-## In progress
-- [ ] **#3 Cross-reference real footage** — grab a live frame from the Jetson wrist cam
-      (`/dev/video0` HBVCAM) + the RealSense D435i, compare framing/FOV to the sim PIPs,
-      calibrate the wrist-cam mount + D435i FOV so the sim matches reality.
-- [ ] **#4 Per-arm wrist cams** — each added arm gets its own gripper-mounted wrist camera + PIP.
+## Needs a decision
+- [ ] **D435i framing vs reality** — real recorded "front" cam (= the D435i, only non-wrist cam)
+      is a CROSS-TABLE front-elevated view (arm right, table left), NOT top-down like the sim.
+      Decide: reposition the sim D435i to match the real recording, or keep the intended top-down
+      (87 cm up the post, pointing down)? The sim D435i PIP is still 16:9 — match it to 4:3 too if
+      we mirror the real capture.
+- [ ] **Wrist framing fine-tune** — verify against real footage with the gripper at an actual grasp
+      pose (real frame: fingers bottom, object ahead); dial back/up/reach; expose as sliders.
 
 ## Backlog (ordered, roughly)
 - [ ] **C — Rod snapping** — snap arm/camera/objects to the rods; slide the arm ALONG a rod (mimic
