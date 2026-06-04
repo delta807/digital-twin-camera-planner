@@ -29,6 +29,20 @@ chosen in sim hold up in the real world.
       real arm is (CAD render: clamped to the FRONT-RIGHT edge, facing INTO the table). Use the live
       Difference overlay to converge. (setPose roll support already landed.)
 
+## BATCH (Jun 2026) — 9 items
+- [answer] **#1** 3 design features to port → NavCube, dock search/filter, per-object eye toggles.
+- [x] **#2** overlapping HUD elements — jog cluster moved up to clear toolbar + legend (87e0325).
+- [answer] **#3** max reach (violet) = can-touch; precision fan (cyan) = can-grasp-from-above (subset);
+      amber = camera footprint (not a reach).
+- [clarify] **#4** "on top of snapping…" — fragment; assumed part of #7 (snap arms to edges). Confirm.
+- [x] **#5** default to mm units (87e0325).
+- [ ] **#6** multiple bases / workstations — BIGGEST, not started.
+- [ ] **#7** snap arms to edges (on top of rod/post snapping) — not started.
+- [x] **#8** extra mount posts broke the main post's selection — fixed: raycast skips non-selectable
+      occluders (54d0d8c).
+- [x] **#9** right-click radial menu (Jog/Move/Aim), reusing existing mode fns + arm rotate gizmo (7c695bd).
+- [ ] **#1 trio** NavCube + dock search + per-object eye toggles — not started.
+
 ## BIGGER ITEMS
 - [x] **Save layout profiles** (f6dbc17) — save/restore the positional config (worktop + arm bases +
       overhead camera pose) as named profiles, persisted in localStorage. So mapped real-rig layouts
