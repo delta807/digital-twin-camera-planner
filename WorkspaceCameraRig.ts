@@ -95,7 +95,8 @@ export class WorkspaceCameraRig {
     // centre → (0.415, 0.265, 0.85) m, looking ACROSS at the arm/table centre (a cross-table,
     // front-elevated view — NOT top-down, matching the real D435i). Anchor for superimposing the
     // live Jetson overhead feed against the sim PIP to tune them to match.
-    this.setPose(new THREE.Vector3(0.415, 0.265, 0.85), new THREE.Vector3(0, 0, 0));
+    // Rolled +45° so the table reads square-on (like the real feed), not corner-first (diamond).
+    this.setPose(new THREE.Vector3(0.415, 0.265, 0.85), new THREE.Vector3(0, 0, 0), Math.PI / 4);
 
     // --- Drag handle (reuses the project's TransformControls pattern; getHelper() is the
     //     correct API in three 0.181 where TransformControls no longer extends Object3D) ---
@@ -172,10 +173,13 @@ export class WorkspaceCameraRig {
   }
 
   /** Place the camera at `pos` looking at `target` (world space, z-up). */
-  setPose(pos: THREE.Vector3, target: THREE.Vector3) {
+  /** `roll` (radians) spins the camera about its optical axis — used to match a real camera that
+   *  is mounted rotated (e.g. the overhead D435i sees the table square-on, not corner-first). */
+  setPose(pos: THREE.Vector3, target: THREE.Vector3, roll = 0) {
     this.gizmo.position.copy(pos);
     const m = new THREE.Matrix4().lookAt(pos, target, new THREE.Vector3(0, 0, 1));
     this.gizmo.quaternion.setFromRotationMatrix(m);
+    if (roll) this.gizmo.rotateZ(roll);
   }
 
   /** Move the camera to an exact world position, keeping its current aim. */
