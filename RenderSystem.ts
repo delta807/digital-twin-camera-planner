@@ -27,9 +27,11 @@ export class RenderSystem {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     cameraRig: WorkspaceCameraRig;
-    wristCamera!: WristCamera;
+    /** One wrist feed per arm (primary + planning ghosts), keyed by armId. Lazily created. */
+    wristCameras = new Map<string, WristCamera>();
+    wristEnabled = false; // master toggle for all wrist feeds
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
-    wristSelectedArmId: string | undefined = undefined; // which arm's wrist cam to show (undefined = primary)
+    private wristMount = { back: 0.035, up: 0.055, reach: 0.05, fov: 58, aspect: 16 / 9 };
     private readonly tmpVec = new THREE.Vector3();
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
@@ -107,7 +109,6 @@ export class RenderSystem {
 
         // Placeable "sensor" camera planner (frustum / PIP / footprint / coverage).
         this.cameraRig = new WorkspaceCameraRig(this.scene, this.camera, this.renderer.domElement, this.controls);
-        this.wristCamera = new WristCamera(this.scene);
         this.baseBuilder = new BaseBuilder(this.scene);
         this.initCoordinateSystem();
 
@@ -234,22 +235,25 @@ export class RenderSystem {
         const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.extraPipHelpers];
         this.cameraRig.update(this.simGroup, pipHide);
 
-        // Wrist-cam footage: track the gripper end-effector + render its PIP (hide overlays AND the
-        // floating D435i rig so the wrist feed shows clean footage).
-        if (this.wristCamera.enabled && this.gripperSiteId >= 0) {
-            // Selected a (static) ghost arm → track its TCP marker; else the live primary TCP.
-            const armId = this.wristSelectedArmId;
-            const ghost = armId ? this.planningArmsGroup.children.find((c) => c.userData.armId === armId) : undefined;
-            let marker: THREE.Object3D | undefined;
-            if (ghost) ghost.traverse((o) => { if (!marker && o.userData?.isTcp) marker = o; });
-            if (marker) {
-                marker.updateWorldMatrix(true, false);
-                this.wristCamera.trackFromMatrix(marker.matrixWorld);
-            } else {
-                const s = this.gripperSiteId;
-                this.wristCamera.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
-            }
-            this.wristCamera.renderPip([...pipHide, ...this.cameraRig.overlays]); // hide the whole D435i rig
+        // Wrist-cam footage: one feed per arm. Each tracks its own end-effector + renders its PIP
+        // (hide overlays AND the floating D435i rig so every wrist feed shows clean footage).
+        if (this.wristEnabled && this.gripperSiteId >= 0 && this.wristCameras.size > 0) {
+            const hide = [...pipHide, ...this.cameraRig.overlays]; // hide the whole D435i rig
+            this.wristCameras.forEach((cam, armId) => {
+                // A planning ghost with this id → track its static TCP marker; otherwise it's the
+                // primary (not in planningArmsGroup) → fall through to the live MuJoCo TCP.
+                const ghost = this.planningArmsGroup.children.find((c) => c.userData.armId === armId);
+                let marker: THREE.Object3D | undefined;
+                if (ghost) ghost.traverse((o) => { if (!marker && o.userData?.isTcp) marker = o; });
+                if (marker) {
+                    marker.updateWorldMatrix(true, false);
+                    cam.trackFromMatrix(marker.matrixWorld);
+                } else {
+                    const s = this.gripperSiteId;
+                    cam.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
+                }
+                cam.renderPip(hide);
+            });
         }
 
         // Measurement labels (DOM overlay).
@@ -528,10 +532,48 @@ export class RenderSystem {
         this.cssRenderer.setSize(this.container.clientWidth, this.container.clientHeight);
     };
 
+    /** Get-or-create the wrist feed for an arm, applying the current shared mount/intrinsics. */
+    ensureWristCamera(armId: string): WristCamera {
+        let cam = this.wristCameras.get(armId);
+        if (!cam) {
+            cam = new WristCamera(this.scene);
+            cam.armId = armId;
+            cam.enabled = true;
+            this.applyWristMount(cam);
+            this.wristCameras.set(armId, cam);
+        }
+        return cam;
+    }
+
+    getWristCamera(armId: string): WristCamera | undefined {
+        return this.wristCameras.get(armId);
+    }
+
+    /** Dispose wrist feeds whose arm no longer exists (called when arms are added/removed). */
+    syncWristArms(armIds: string[]) {
+        const keep = new Set(armIds);
+        for (const [id, cam] of this.wristCameras) {
+            if (!keep.has(id)) { cam.dispose(); this.wristCameras.delete(id); }
+        }
+    }
+
+    /** Update the shared wrist mount offsets + FOV; re-applies to every live feed. */
+    setWristMount(m: { back: number; up: number; reach: number; fov: number }) {
+        this.wristMount.back = m.back; this.wristMount.up = m.up;
+        this.wristMount.reach = m.reach; this.wristMount.fov = m.fov;
+        this.wristCameras.forEach((c) => this.applyWristMount(c));
+    }
+
+    private applyWristMount(c: WristCamera) {
+        c.back = this.wristMount.back; c.up = this.wristMount.up; c.reach = this.wristMount.reach;
+        c.setIntrinsics(this.wristMount.fov, this.wristMount.aspect);
+    }
+
     dispose() {
         window.removeEventListener('resize', this.onResize);
         this.cameraRig.dispose();
-        this.wristCamera.dispose();
+        this.wristCameras.forEach((c) => c.dispose());
+        this.wristCameras.clear();
         this.baseBuilder.dispose();
         this.measureTool.dispose();
         this.selection.dispose();

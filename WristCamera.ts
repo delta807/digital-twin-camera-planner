@@ -19,6 +19,8 @@ import * as THREE from 'three';
 export class WristCamera {
   readonly camera: THREE.PerspectiveCamera;
   enabled = false;
+  /** Which arm this feed is mounted on (primary or a planning ghost). '' = legacy/selected. */
+  armId = '';
 
   // Mount offsets in the gripper frame (m) — tuned against real LeRobot wrist footage (fingers at
   // the bottom of frame, the grasp/object ahead). Tunable via the dock sliders.

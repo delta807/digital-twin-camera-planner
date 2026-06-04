@@ -315,26 +315,38 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, cameraToggles.sensorPip]);
 
-  // Wrist camera: a gripper-mounted feed (tracks the arm). Toggle attaches its own PIP.
+  // Wrist cameras: one gripper-mounted feed PER arm (primary = live; ghost arms = static mount
+  // preview). The master toggle enables them all; each arm's PIP attaches via a stable callback ref.
   const [wristView, setWristView] = useState(false);
-  const wristViewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const wc = simRef.current?.renderSys.wristCamera;
-    if (isLoading || !wc) return;
-    wc.enabled = wristView;
-    if (wristView && wristViewRef.current) wc.attachPip(wristViewRef.current);
-    return () => { simRef.current?.renderSys.wristCamera?.detachPip(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isLoading && simRef.current) simRef.current.renderSys.wristEnabled = wristView;
   }, [isLoading, wristView]);
-  // The wrist feed follows the selected arm (primary = live; a ghost arm = static mount preview).
-  useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
+  // Dispose feeds for arms that were removed (created lazily on attach).
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncWristArms(armInstances.map((a) => a.id));
+  }, [armInstances, isLoading]);
+  // Stable per-arm ref callbacks — created once per armId so React doesn't detach/reattach
+  // (and tear down the canvas) on every render.
+  const wristRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const wristRefCb = (armId: string) => {
+    let cb = wristRefCbs.current.get(armId);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureWristCamera(armId).attachPip(el);
+        else rs.getWristCamera(armId)?.detachPip();
+      };
+      wristRefCbs.current.set(armId, cb);
+    }
+    return cb;
+  };
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
+  // Shared across every arm's feed.
   const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.055, reach: 0.05, fov: 58 });
   useEffect(() => {
-    const wc = simRef.current?.renderSys.wristCamera; if (!wc) return;
-    wc.back = wristMount.back; wc.up = wristMount.up; wc.reach = wristMount.reach;
-    wc.setIntrinsics(wristMount.fov, 16 / 9); // live wrist feed is 16:9 wide
+    simRef.current?.renderSys.setWristMount(wristMount);
   }, [wristMount, isLoading, wristView]);
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
@@ -997,17 +1009,19 @@ export function App() {
             />
           )}
 
-          {wristView && (
+          {wristView && armInstances.map((arm, i) => (
             <SensorView
-              canvasHostRef={wristViewRef}
+              key={arm.id}
+              canvasHostRef={wristRefCb(arm.id)}
               isDarkMode={isDarkMode}
               sidebarOpen={showSidebar}
               aspect={16 / 9}
-              title={`Wrist Cam · ${armInstances.find((a) => a.id === selectedArmId)?.label ?? 'SO101 1'}`}
-              secondary={cameraToggles.sensorPip}
+              title={`Wrist Cam · ${arm.label}`}
+              // Stack under the D435i feed (if shown), then one below another (~13rem each).
+              topRem={(cameraToggles.sensorPip ? 15.5 : 1.5) + i * 13}
               onClose={() => setWristView(false)}
             />
-          )}
+          ))}
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
           {!sceneIsFranka && (
