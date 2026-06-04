@@ -237,16 +237,20 @@ export class RenderSystem {
         const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers];
         this.cameraRig.update(this.simGroup, pipHide);
 
-        // Wrist-cam footage: one feed per arm. Each tracks its own end-effector + renders its PIP
-        // (hide overlays AND the floating D435i rig so every wrist feed shows clean footage).
+        // Wrist-cam footage: one feed per arm. Each tracks its own end-effector + renders its PIP.
         if (this.wristEnabled && this.gripperSiteId >= 0 && this.wristCameras.size > 0) {
-            const hide = [...pipHide, ...this.cameraRig.overlays]; // hide the whole D435i rig
+            // Base wrist hide = overlays + the floating D435i rig + grid/axes/etc — but NOT the whole
+            // planningArmsGroup (the overhead D435i hides it; the wrist cams must NOT, or a ghost arm's
+            // own wrist cam can't see its own gripper). We hide the OTHER ghosts per-camera below.
+            const wristBase = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+            const ghosts = this.planningArmsGroup.children;
             this.wristCameras.forEach((cam, armId) => {
-                // A planning ghost with this id → track its static TCP marker; otherwise it's the
-                // primary (not in planningArmsGroup) → fall through to the live MuJoCo TCP.
-                const ghost = this.planningArmsGroup.children.find((c) => c.userData.armId === armId);
+                // A planning ghost with this id → track its TCP marker; otherwise it's the primary
+                // (not in planningArmsGroup) → fall through to the live MuJoCo TCP.
+                const ownGhost = ghosts.find((c) => c.userData.armId === armId);
                 let marker: THREE.Object3D | undefined;
-                if (ghost) ghost.traverse((o) => { if (!marker && o.userData?.isTcp) marker = o; });
+                if (ownGhost) ownGhost.traverse((o) => { if (!marker && o.userData?.isTcp) marker = o; });
                 if (marker) {
                     marker.updateWorldMatrix(true, false);
                     cam.trackFromMatrix(marker.matrixWorld);
@@ -254,6 +258,8 @@ export class RenderSystem {
                     const s = this.gripperSiteId;
                     cam.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
                 }
+                // Keep THIS cam's own ghost visible (so it sees its gripper); hide every other ghost.
+                const hide = ownGhost ? [...wristBase, ...ghosts.filter((g) => g !== ownGhost)] : [...wristBase, ...ghosts];
                 cam.renderPip(hide);
             });
         }
