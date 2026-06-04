@@ -11,12 +11,14 @@ export type SelectionKind = 'post' | 'object' | 'arm' | 'camera';
 export interface SelectionInfo {
   kind: SelectionKind;
   label: string;
-  /** World position of the selection (m, origin = table centre). */
+  /** World position of the selection centre (m, origin = table centre). */
   x: number;
   y: number;
   z: number;
-  /** Whether the object can be dragged (only the post for now; task objects are welded). */
+  /** Whether the object can be moved/edited via the transform panel. */
   movable: boolean;
+  /** MuJoCo bodyID for kind==='object' (task block), so the panel can write its freejoint qpos. */
+  bodyId?: number;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -99,6 +101,24 @@ export class SelectionController {
   /** The outline box of the current selection (sized to it) — for zoom-to-selection framing. */
   get focusTarget(): THREE.Object3D | null {
     return this.selected ? this.outline : null;
+  }
+
+  /** Programmatic selection (from the object tree), without a viewport raycast. */
+  selectByKind(kind: 'arm' | 'post' | 'camera') {
+    if (kind === 'arm') return this.selectArm();
+    if (kind === 'post') return this.selectPost();
+    for (const root of this.getSelectables()) {
+      if (root.userData?.selectable === 'camera') { this.selectCamera(root); return; }
+    }
+  }
+
+  /** Select a task block by its MuJoCo bodyID (from the object tree). */
+  selectObjectByBodyId(id: number) {
+    for (const root of this.getSelectables()) {
+      let found: THREE.Object3D | null = null;
+      root.traverse((o) => { if (!found && o.userData?.selectable === 'object' && o.userData?.bodyID === id) found = o; });
+      if (found) { this.selectObject(found); return; }
+    }
   }
 
   setEnabled(on: boolean) {
@@ -210,7 +230,7 @@ export class SelectionController {
     const label = (body.userData.bodyName as string) || `Object ${body.userData.bodyID}`;
     this.box.setFromObject(body);
     this.box.getCenter(this.vCenter);
-    this.selected = { kind: 'object', label, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: false };
+    this.selected = { kind: 'object', label, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: true, bodyId: body.userData.bodyID as number };
     this.update();             // size + position the outline from the live bbox
     this.onChange?.(this.selected);
   }

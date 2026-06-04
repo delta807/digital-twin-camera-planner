@@ -263,6 +263,32 @@ export class MujocoSim {
         );
     }
 
+    /** List the movable task blocks (for the object tree). */
+    getTaskBodies(): { bodyId: number; name: string }[] {
+        const m = this.mjModel;
+        if (!m) return [];
+        const out: { bodyId: number; name: string }[] = [];
+        for (let i = 0; i < m.nbody; i++) {
+            const n = getName(m, m.name_bodyadr[i]);
+            if (/^(task|cube|tray)/.test(n)) out.push({ bodyId: i, name: n });
+        }
+        return out;
+    }
+
+    /** Teleport a freejoint task block to a world position (from the transform panel). */
+    setTaskBodyPosition(bodyId: number, x: number, y: number, z: number) {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return;
+        const jadr = m.body_jntadr[bodyId];
+        if (jadr < 0 || m.jnt_type[jadr] !== 0) return; // only dynamic (freejoint) blocks
+        const a = m.jnt_qposadr[jadr];
+        d.qpos[a] = x; d.qpos[a + 1] = y; d.qpos[a + 2] = Math.max(z, 0.018);
+        d.qpos[a + 3] = 1; d.qpos[a + 4] = 0; d.qpos[a + 5] = 0; d.qpos[a + 6] = 0;
+        const dof = m.jnt_dofadr[jadr];
+        for (let k = 0; k < 6; k++) d.qvel[dof + k] = 0;
+        this.mujoco.mj_forward(m, d);
+    }
+
     setArmInstances(instances: ArmInstance[]) {
         this.armInstances = instances.map((arm) => ({ ...arm }));
         this.renderSys.setPlanningArmInstances(this.armInstances);
