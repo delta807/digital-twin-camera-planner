@@ -79,7 +79,9 @@ export class RenderSystem {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
 
-        this.camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        // Tight near/far (the whole workcell is < 2 m) — a 10000:1 ratio crushed depth precision
+        // near the ground and amplified Z-fighting/flicker on the table + overlays.
+        this.camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.05, 50);
         this.camera.up.set(0, 0, 1); 
         this.camera.position.set(2, -1.5, 2.5);
         this.camera.lookAt(0, 0, 0);
@@ -236,7 +238,7 @@ export class RenderSystem {
         if (this.wristCamera.enabled && this.gripperSiteId >= 0) {
             const s = this.gripperSiteId;
             this.wristCamera.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
-            this.wristCamera.renderPip([...pipHide, this.cameraRig.gizmo]);
+            this.wristCamera.renderPip([...pipHide, ...this.cameraRig.overlays]); // hide the whole D435i rig (gizmo + frustum + footprint)
         }
 
         // Measurement labels (DOM overlay).

@@ -65,9 +65,13 @@ export class GeomBuilder {
         const getVal = (v: unknown) => (v as { value: number })?.value ?? v;
 
         if (type === getVal(MG.mjGEOM_PLANE)) {
-            // Planes are infinite in MuJoCo, but we need a finite mesh for Three.js. 
+            // Planes are infinite in MuJoCo, but we need a finite mesh for Three.js.
             // Fallback reduced to 5m to match grid as requested.
             geo = new THREE.PlaneGeometry(size[0] * 2 || 5, size[1] * 2 || 5);
+            // Drop the visual floor 5 mm below z=0 so it isn't coplanar with the BaseBuilder table
+            // slab (top at z=0) — coplanarity was causing the table-base Z-fighting flicker. Physics
+            // floor (the collision plane) is unaffected; this only moves the rendered surface.
+            geo.translate(0, 0, -0.005);
         } else if (type === getVal(MG.mjGEOM_SPHERE)) {
             geo = new THREE.SphereGeometry(size[0], 24, 24);
         } else if (type === getVal(MG.mjGEOM_CAPSULE)) {

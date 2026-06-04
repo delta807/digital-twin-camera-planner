@@ -43,6 +43,8 @@ export class WorkspaceCameraRig {
 
   /** Overlays that must be hidden when rendering the camera's own POV. */
   private readonly ownHelpers: THREE.Object3D[];
+  /** The rig's own decorations (gizmo / frustum / footprint / coverage) — for other views to hide. */
+  get overlays(): THREE.Object3D[] { return this.ownHelpers; }
 
   private intrinsics: CameraIntrinsics = { ...D435I_PRESET };
   private toggles: CameraViewToggles = { ...DEFAULT_CAMERA_TOGGLES };

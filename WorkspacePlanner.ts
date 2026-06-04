@@ -283,13 +283,24 @@ export class WorkspacePlanner {
    */
   private computeLocalSilhouette(source: Map<string, number>): Array<Array<[number, number]>> {
     if (source.size === 0) return [];
-    // Dilate the sampled cells by 1 (8-connected) to close FK-sampling gaps, so the silhouette
-    // traces one clean contour instead of a maze of tiny single-sample holes.
-    const cells = new Set<string>();
-    for (const key of source.keys()) {
-      const c = key.indexOf(',');
-      const di = +key.slice(0, c), dj = +key.slice(c + 1);
-      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) cells.add((di + a) + ',' + (dj + b));
+    // Morphological CLOSE (dilate by R, then erode by R): merges the fragmented top-down precision
+    // shell into one connected fan and fills FK-sampling holes BEFORE contouring — so we get a
+    // single clean outer loop (+ the genuine central dead zone), not the dozens of tiny islands
+    // that read as a "fern". A 1-cell dilation alone was too weak to bridge the sparse shell.
+    const R = 2;
+    const parse = (k: string): [number, number] => { const c = k.indexOf(','); return [+k.slice(0, c), +k.slice(c + 1)]; };
+    const dilate = (src: Set<string>): Set<string> => {
+      const out = new Set<string>();
+      for (const k of src) { const [di, dj] = parse(k); for (let a = -R; a <= R; a++) for (let b = -R; b <= R; b++) out.add((di + a) + ',' + (dj + b)); }
+      return out;
+    };
+    const dil = dilate(new Set(source.keys()));
+    const cells = new Set<string>(); // erode: keep a cell only if its full R-neighbourhood survived
+    for (const k of dil) {
+      const [di, dj] = parse(k);
+      let keep = true;
+      for (let a = -R; a <= R && keep; a++) for (let b = -R; b <= R; b++) { if (!dil.has((di + a) + ',' + (dj + b))) { keep = false; break; } }
+      if (keep) cells.add(k);
     }
     const occ = (di: number, dj: number) => cells.has(di + ',' + dj);
 
