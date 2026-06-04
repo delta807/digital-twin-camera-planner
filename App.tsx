@@ -329,6 +329,14 @@ export function App() {
   // The wrist feed follows the selected arm (primary = live; a ghost arm = static mount preview).
   useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
 
+  // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
+  const [wristMount, setWristMount] = useState({ back: 0.05, up: 0.09, reach: 0.06, fov: 70 });
+  useEffect(() => {
+    const wc = simRef.current?.renderSys.wristCamera; if (!wc) return;
+    wc.back = wristMount.back; wc.up = wristMount.up; wc.reach = wristMount.reach;
+    wc.setIntrinsics(wristMount.fov, 4 / 3);
+  }, [wristMount, isLoading, wristView]);
+
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
     setCameraToggles(prev => ({ ...prev, [key]: value }));
     const r = rig();
@@ -1046,6 +1054,8 @@ export function App() {
                 onSnapToPost: handleSnapCameraToPost,
                 wristEnabled: wristView,
                 onWristToggle: setWristView,
+                wristMount,
+                onWristMount: setWristMount,
               }}
               measure={{
                 active: measureActive,
