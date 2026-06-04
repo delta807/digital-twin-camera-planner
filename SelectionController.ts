@@ -197,7 +197,15 @@ export class SelectionController {
     for (const root of this.getSelectables()) {
       root.traverse((c) => { if ((c as THREE.Mesh).isMesh && c.visible) meshes.push(c as THREE.Mesh); });
     }
-    const hit = this.raycaster.intersectObjects(meshes, false)[0];
+    // Pick the CLOSEST hit that actually has a selectable ancestor — skip non-selectable occluders
+    // (e.g. extra mount posts, which aren't selectable). Otherwise clicking near/through an extra
+    // post would land on it, find nothing selectable, and wrongly DESELECT the camera post (#8).
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    const hasSelectable = (o: THREE.Object3D) => {
+      for (let n: THREE.Object3D | null = o; n; n = n.parent) if (n.userData?.selectable) return true;
+      return false;
+    };
+    const hit = hits.find((h) => hasSelectable(h.object));
     if (!hit) { this.deselect(); return; }
     this.selectFromHit(hit.object);
   };
