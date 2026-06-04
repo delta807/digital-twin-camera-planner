@@ -37,6 +37,19 @@ chosen in sim hold up in the real world.
 ## #4 per-arm wrist) all done. A3/A4 closed with rationale; reopen either on request.
 
 ## Done (recent)
+6-item inspector batch (Jun 2026):
+- [x] **#1** non-primary arm glitch (3fb30a5) — onChange reset selectedArmId to primary every arm
+      event; carry `armId` in SelectionInfo, use `s.armId ?? primary`. Non-primary fully editable.
+- [x] **#3** inspector sliders (a7b673a) — draggable X/Y/Yaw (arm) + X/Y/Z (camera) alongside numbers.
+- [x] **#4** arm 3D drag gizmo (a7b673a) — same in-viewport translate gizmo as the camera, on the
+      arm base; getArmPose/onArmMove wire it. Rotate via the Yaw slider.
+- [x] **#6** wrist defaults nudged (3fb30a5) — back/up/reach defaults for better gripper framing.
+- [x] **#2** per-arm wrist cameras (5a9867b) — Map<armId, WristCamera>; one stacked 16:9 feed per
+      arm (primary live, ghosts static mount-preview). Shared mount sliders apply to all.
+- [answer] **#5** Gemini ER 1.6 multi-arm control → NO today. Only the primary is a physics arm
+      (joints/IK/pickup); added arms are static planning ghosts. Real multi-arm control = each ghost
+      becomes a full MuJoCo robot (joints + IK + pickup + task assignment) — the standing "big lift".
+
 M6+: camera reset/frame, live base move (no "apply pose"), selection-driven UI (tree + inspector),
 two-contour reach, orientation-aware real grasp, wrist camera, non-primary arm move + outline fix,
 flicker (z-fight) fix, fern→fan reach smoothing. See todo.md + git log for detail.
