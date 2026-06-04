@@ -20,8 +20,8 @@ export class BaseBuilder {
 
   /** World position of the camera post (top centre), for snapping the camera onto the rod. */
   readonly postTop = new THREE.Vector3();
-  /** World X/Y of the post axis + its height — exposed for snapping. */
-  postAxis = { x: 0, y: 0, height: 0 };
+  /** World X/Y of the post axis + its height + cross-section — exposed for snapping/selection. */
+  postAxis = { x: 0, y: 0, height: 0, width: 0.024 };
 
   private readonly slabMat = new THREE.MeshStandardMaterial({ color: 0xededf2, roughness: 0.85, metalness: 0.05 });
   private readonly railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.6 });
@@ -81,8 +81,9 @@ export class BaseBuilder {
     const post = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, postH), this.railMat);
     post.position.set(px, py, postH / 2);
     post.castShadow = true;
+    post.userData.selectable = 'post'; // pickable by the SelectionController
     this.group.add(post);
-    this.postAxis = { x: px, y: py, height: postH };
+    this.postAxis = { x: px, y: py, height: postH, width: barW };
     this.postTop.set(px, py, postH);
   }
 

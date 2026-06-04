@@ -17,6 +17,7 @@ import { SensorView } from './components/SensorView';
 import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
+import type { SelectionInfo } from './SelectionController';
 import { PlannerToggles } from './WorkspacePlanner';
 
 /**
@@ -135,6 +136,9 @@ export function App() {
   const [baseResult, setBaseResult] = useState<{ covered: number; total: number } | null>(null);
   const [computingReach, setComputingReach] = useState(false);
   const [workcellConfig, setWorkcellConfig] = useState<WorkcellConfig>({ ...DEFAULT_WORKCELL_CONFIG });
+  const workcellConfigRef = useRef(workcellConfig);
+  workcellConfigRef.current = workcellConfig;
+  const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [armInstances, setArmInstances] = useState<ArmInstance[]>([
     { id: 'so101-1', label: 'SO101 1', x: 0, y: 0, yaw: 0, primary: true },
   ]);
@@ -379,9 +383,21 @@ export function App() {
 
   useEffect(() => { simRef.current?.renderSys.measureTool?.setUnit(lengthUnit); }, [lengthUnit]);
 
+  // Click-to-select wiring: report the selection to the HUD; dragging the post gizmo writes
+  // its X/Y back into the workcell config (live rebuild). RenderSystem persists across reloads.
+  useEffect(() => {
+    const sel = simRef.current?.renderSys.selection;
+    if (isLoading || !sel) return;
+    sel.onChange = (s) => setSelection(s);
+    sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
   const handleMeasureActive = (v: boolean) => {
     setMeasureActive(v);
     simRef.current?.renderSys.measureTool?.setActive(v);
+    // Measure and select both consume clicks — only one is live at a time.
+    simRef.current?.renderSys.selection?.setEnabled(!v);
   };
 
   // --- Reachability planner ---
@@ -786,6 +802,21 @@ export function App() {
             isPickingUp={isPickingUp}
             playbackSpeed={playbackSpeed}
           />
+
+          {/* Click-to-select HUD chip: what's selected + its coordinates (OrcaSlicer-style). */}
+          {selection && (
+            <div className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 pl-4 pr-2 py-2 rounded-2xl glass-panel shadow-xl text-[11px] ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/85 border-white/80 text-slate-800'}`}>
+              <span className="w-2 h-2 rounded-sm bg-yellow-400" />
+              <span className="font-bold">{selection.label}</span>
+              <span className="tabular-nums opacity-70">
+                {lengthUnit === 'mm'
+                  ? `${(selection.x * 1000).toFixed(0)}, ${(selection.y * 1000).toFixed(0)}, ${(selection.z * 1000).toFixed(0)} mm`
+                  : `${selection.x.toFixed(3)}, ${selection.y.toFixed(3)}, ${selection.z.toFixed(3)} m`}
+              </span>
+              <span className="opacity-50 text-[10px]">{selection.movable ? 'drag to move' : 'fixed'}</span>
+              <button onClick={() => simRef.current?.renderSys.selection?.deselect()} className={`px-2 py-1 rounded-lg ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`} title="Deselect">✕</button>
+            </div>
+          )}
 
           {/* Explicit launcher to REOPEN the Embodied Reasoning panel once it's closed. */}
           {!showSidebar && (

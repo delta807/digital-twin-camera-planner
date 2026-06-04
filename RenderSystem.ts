@@ -13,6 +13,8 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WorkspaceCameraRig } from './WorkspaceCameraRig';
 import { BaseBuilder } from './BaseBuilder';
 import { MeasureTool } from './MeasureTool';
+import { SelectionController } from './SelectionController';
+import { getName } from './utils/StringUtils';
 
 /**
  * RenderSystem
@@ -26,6 +28,7 @@ export class RenderSystem {
     cameraRig: WorkspaceCameraRig;
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
+    selection!: SelectionController;
     private cssRenderer!: CSS2DRenderer;
     private originAxes!: THREE.Group;
     /** Extra overlays (e.g. reachability heatmaps) to hide from the sensor-camera PIP. */
@@ -108,6 +111,12 @@ export class RenderSystem {
         this.measureTool = new MeasureTool(this.scene, this.camera, this.renderer.domElement,
             () => [this.simGroup, this.baseBuilder.group]);
 
+        // Click-to-select (outline + post drag-gizmo). Selectables: task objects + the camera post.
+        this.selection = new SelectionController(
+            this.scene, this.camera, this.renderer.domElement, this.controls,
+            () => [this.simGroup, this.baseBuilder.group],
+            () => this.baseBuilder.postAxis);
+
         window.addEventListener('resize', this.onResize);
     }
 
@@ -145,9 +154,14 @@ export class RenderSystem {
         this.planningArmsGroup.clear();
         
         for (let i = 0; i < mjModel.nbody; i++) {
-            const grp = new THREE.Group(); 
-            grp.userData.bodyID = i; 
-            this.bodies.push(grp); 
+            const grp = new THREE.Group();
+            grp.userData.bodyID = i;
+            // Tag movable demo props so the SelectionController can pick them (and ignore the
+            // arm links + worldbody floor). Names come from RobotLoader: task*/cube*/tray.
+            const nm = getName(mjModel, mjModel.name_bodyadr[i]);
+            grp.userData.bodyName = nm;
+            if (/^(task|cube|tray)/.test(nm)) grp.userData.selectable = 'object';
+            this.bodies.push(grp);
             this.simGroup.add(grp);
         }
 
@@ -202,11 +216,12 @@ export class RenderSystem {
             child.position.z = child.userData.baseZ + Math.sin(time * 3 + i) * 0.05;
         });
 
+        this.selection.update();
         this.renderer.render(this.scene, this.camera);
 
         // Sensor-camera overlays + PIP. Runs after the main view so its helper-hiding
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
-        this.cameraRig.update(this.simGroup, [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, ...this.extraPipHelpers]);
+        this.cameraRig.update(this.simGroup, [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.extraPipHelpers]);
 
         // Measurement labels (DOM overlay).
         this.cssRenderer.render(this.scene, this.camera);
@@ -433,6 +448,7 @@ export class RenderSystem {
         this.cameraRig.dispose();
         this.baseBuilder.dispose();
         this.measureTool.dispose();
+        this.selection.dispose();
         this.cssRenderer.domElement.remove();
         this.planningArmsGroup.clear();
         this.scene.remove(this.planningArmsGroup);
