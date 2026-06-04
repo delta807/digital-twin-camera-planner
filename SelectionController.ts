@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-export type SelectionKind = 'post' | 'object';
+export type SelectionKind = 'post' | 'object' | 'arm' | 'camera';
 
 export interface SelectionInfo {
   kind: SelectionKind;
@@ -40,6 +40,7 @@ export class SelectionController {
   private selected: SelectionInfo | null = null;
   private selectedBody: THREE.Object3D | null = null; // task-object ref (tracked each frame)
   private readonly box = new THREE.Box3();
+  private readonly box2 = new THREE.Box3();
   private readonly vSize = new THREE.Vector3();
   private readonly vCenter = new THREE.Vector3();
   private enabled = true;
@@ -112,26 +113,33 @@ export class SelectionController {
    * coordinates must follow, not freeze at the pose captured when the click happened.
    */
   update() {
-    if (this.selected?.kind === 'post') {
+    if (!this.selected) return;
+    const k = this.selected.kind;
+    if (k === 'post') {
       const p = this.getPostAxis();
       this.proxy.position.set(p.x, p.y, p.height / 2);
       this.outline.position.set(p.x, p.y, p.height / 2);
       this.outline.scale.set(p.width * 1.6, p.width * 1.6, p.height);
       this.outline.rotation.set(0, 0, 0);
-    } else if (this.selected?.kind === 'object' && this.selectedBody) {
-      this.box.setFromObject(this.selectedBody);
-      this.box.getSize(this.vSize);
-      this.box.getCenter(this.vCenter);
-      this.outline.position.copy(this.vCenter);
-      this.outline.scale.set(Math.max(this.vSize.x, 0.01), Math.max(this.vSize.y, 0.01), Math.max(this.vSize.z, 0.01));
-      // Re-emit only when the centre actually moved (rounded to mm) to avoid HUD churn.
-      const moved = Math.abs(this.vCenter.x - this.selected.x) > 5e-4
-        || Math.abs(this.vCenter.y - this.selected.y) > 5e-4
-        || Math.abs(this.vCenter.z - this.selected.z) > 5e-4;
-      if (moved) {
-        this.selected = { ...this.selected, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z };
-        this.onChange?.(this.selected);
-      }
+      return;
+    }
+    // Object / camera bbox the tracked Object3D; arm unions all its links.
+    let box: THREE.Box3 | null = null;
+    if (k === 'arm') box = this.armBox();
+    else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
+    if (!box || box.isEmpty()) return;
+    box.getSize(this.vSize);
+    box.getCenter(this.vCenter);
+    this.outline.position.copy(this.vCenter);
+    this.outline.scale.set(Math.max(this.vSize.x, 0.01), Math.max(this.vSize.y, 0.01), Math.max(this.vSize.z, 0.01));
+    this.outline.rotation.set(0, 0, 0);
+    // Re-emit only when the centre actually moved (rounded to mm) so the HUD/tree follow.
+    const moved = Math.abs(this.vCenter.x - this.selected.x) > 5e-4
+      || Math.abs(this.vCenter.y - this.selected.y) > 5e-4
+      || Math.abs(this.vCenter.z - this.selected.z) > 5e-4;
+    if (moved) {
+      this.selected = { ...this.selected, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z };
+      this.onChange?.(this.selected);
     }
   }
 
@@ -165,26 +173,21 @@ export class SelectionController {
   };
 
   private selectFromHit(obj: THREE.Object3D) {
-    // Post?
-    let node: THREE.Object3D | null = obj;
-    while (node) {
-      if (node.userData?.selectable === 'post') { this.selectPost(); return; }
-      node = node.parent;
+    // Walk up to the nearest tagged ancestor and dispatch by kind.
+    for (let node: THREE.Object3D | null = obj; node; node = node.parent) {
+      const s = node.userData?.selectable as string | undefined;
+      if (s === 'post') { this.selectPost(); return; }
+      if (s === 'object') { this.selectObject(node); return; }
+      if (s === 'arm') { this.selectArm(); return; }
+      if (s === 'camera') {
+        // Outline the whole camera gizmo, not just the lens/body child that was hit.
+        let cam = node;
+        while (cam.parent && cam.parent.userData?.selectable === 'camera') cam = cam.parent;
+        this.selectCamera(cam);
+        return;
+      }
     }
-    // Task object? Only bodies explicitly tagged selectable='object' (demo props) — never the
-    // arm links or the worldbody floor, which would otherwise swallow every click.
-    const body = this.selectableBodyAncestor(obj);
-    if (body) { this.selectObject(body); return; }
     this.deselect();
-  }
-
-  private selectableBodyAncestor(obj: THREE.Object3D): THREE.Object3D | null {
-    let node: THREE.Object3D | null = obj;
-    while (node) {
-      if (node.userData?.selectable === 'object') return node;
-      node = node.parent;
-    }
-    return null;
   }
 
   private selectPost() {
@@ -210,6 +213,51 @@ export class SelectionController {
     this.selected = { kind: 'object', label, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: false };
     this.update();             // size + position the outline from the live bbox
     this.onChange?.(this.selected);
+  }
+
+  /** Select the whole arm (any clicked link) — outline its full bounding box. */
+  private selectArm() {
+    this.selectedBody = null;
+    this.control.enabled = false;
+    this.helper.visible = false;
+    this.outline.rotation.set(0, 0, 0);
+    this.outline.visible = true;
+    this.selected = { kind: 'arm', label: 'SO-101 arm', x: 0, y: 0, z: 0, movable: true };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
+  /** Select the D435i camera gizmo — outline it; transform handled by its own move/aim gizmo. */
+  private selectCamera(gizmo: THREE.Object3D) {
+    this.selectedBody = gizmo;
+    this.control.enabled = false;
+    this.helper.visible = false;
+    this.outline.rotation.set(0, 0, 0);
+    this.outline.visible = true;
+    this.box.setFromObject(gizmo);
+    this.box.getCenter(this.vCenter);
+    this.selected = { kind: 'camera', label: 'D435i camera', x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: true };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
+  /** Union world bbox of every mesh tagged selectable='arm' (the arm spans many links). */
+  private armBox(): THREE.Box3 | null {
+    const box = this.box.makeEmpty();
+    for (const root of this.getSelectables()) {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.visible || !m.geometry) return;
+        let isArm = false;
+        for (let p: THREE.Object3D | null = o; p; p = p.parent) {
+          if (p.userData?.selectable === 'arm') { isArm = true; break; }
+        }
+        if (!isArm) return;
+        this.box2.setFromObject(m);
+        if (!this.box2.isEmpty()) box.union(this.box2);
+      });
+    }
+    return box.isEmpty() ? null : box;
   }
 
   deselect() {

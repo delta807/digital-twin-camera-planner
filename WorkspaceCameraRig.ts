@@ -33,7 +33,7 @@ export class WorkspaceCameraRig {
   readonly sensorCamera: THREE.PerspectiveCamera;
 
   /** The grab handle whose pose drives the sensor camera. Drag it with TransformControls. */
-  private readonly gizmo = new THREE.Group();
+  readonly gizmo = new THREE.Group(); // public so the SelectionController can raycast it
   private readonly control: TransformControls;
   private readonly controlHelper: THREE.Object3D;
 
@@ -83,6 +83,9 @@ export class WorkspaceCameraRig {
     lens.geometry.rotateX(-Math.PI / 2); // cone apex -> -Z (the camera look direction)
     lens.position.set(0, 0, -0.04);
     this.gizmo.add(body, lens);
+    this.gizmo.userData.selectable = 'camera'; // pickable by the SelectionController
+    body.userData.selectable = 'camera';
+    lens.userData.selectable = 'camera';
     this.scene.add(this.gizmo);
     this.loadCameraMesh(body, lens); // swap the placeholder for the real D435i mesh once loaded
 
@@ -200,6 +203,7 @@ export class WorkspaceCameraRig {
       // Orient so the camera's optical axis (gizmo -Z) points out the lens. The Blender export's
       // "front" is +Y, so rotate +X by -90° to map +Y → -Z; tweak if the lens faces the wrong way.
       mesh.rotation.x = -Math.PI / 2;
+      mesh.userData.selectable = 'camera';
       this.gizmo.add(mesh);
       fallback.forEach((o) => (o.visible = false));
     }, undefined, () => { /* keep the placeholder box on load failure */ });

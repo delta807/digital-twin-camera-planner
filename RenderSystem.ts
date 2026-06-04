@@ -114,7 +114,7 @@ export class RenderSystem {
         // Click-to-select (outline + post drag-gizmo). Selectables: task objects + the camera post.
         this.selection = new SelectionController(
             this.scene, this.camera, this.renderer.domElement, this.controls,
-            () => [this.simGroup, this.baseBuilder.group],
+            () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo],
             () => this.baseBuilder.postAxis);
 
         window.addEventListener('resize', this.onResize);
@@ -161,6 +161,8 @@ export class RenderSystem {
             const nm = getName(mjModel, mjModel.name_bodyadr[i]);
             grp.userData.bodyName = nm;
             if (/^(task|cube|tray)/.test(nm)) grp.userData.selectable = 'object';
+            // Everything else that's a real robot link (not the worldbody/floor) → the arm.
+            else if (i > 0 && nm !== 'world') grp.userData.selectable = 'arm';
             this.bodies.push(grp);
             this.simGroup.add(grp);
         }
