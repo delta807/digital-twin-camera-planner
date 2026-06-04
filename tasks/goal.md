@@ -33,11 +33,13 @@ chosen in sim hold up in the real world.
 - [x] **Save layout profiles** (f6dbc17) — save/restore the positional config (worktop + arm bases +
       overhead camera pose) as named profiles, persisted in localStorage. So mapped real-rig layouts
       can be stored + switched. profiles.ts + LayoutProfiles.tsx + rig.getPose/applyPose.
-- [~] **Ghost wrist cam "inside/underneath"** — INVESTIGATED: the marker tracking is CORRECT (verified
-      identical to primary at matching pose; reverted a wrong "robust" rewrite that added a base-offset
-      error). The "bad" views are because ghost arms point at empty space / sit upright at the home
-      pose. REAL FIX OPTIONS (TBD with user): (a) a downward wrist-cam tilt so it frames the table even
-      when upright (matches the real angled HBVCAM), or (b) rely on jogging the primary (ghosts mirror).
+- [x] **Ghost wrist cam "inside/underneath"** — FIXED (2c9b4db). REAL cause: the wrist feeds reused the
+      overhead D435i's hide-list, which hides the whole planningArmsGroup — so a ghost's OWN wrist cam
+      rendered with itself hidden → never saw its gripper. (Tracking was fine; my overlap test was
+      misleading because the ghost cam saw the still-visible PRIMARY arm.) Fix: hide ghosts per-camera,
+      keeping each cam's own ghost visible. Verified: separate-mount ghost now shows its own gripper.
+      NOTE: a downward wrist-cam tilt (~25°, matches the real angled HBVCAM) is still available as a
+      nice-to-have if idle/upright framing needs improving — deferred, not needed for the bug.
 - [ ] **Staged multi-arm physics** — N real SO-101 arms in one MuJoCo model + per-arm IK (physics
       first; pickup + Gemini multi-control later). [the "big lift"]
 - [ ] **Full reskin** to the lab-instrument design from the zip (OKLCH tokens, mode-rail, compare
