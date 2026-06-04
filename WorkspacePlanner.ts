@@ -41,6 +41,12 @@ const CELL = 0.03;      // heatmap cell size, meters
 const Z_BAND = 0.14;    // count configs whose TCP reaches within this height of the worktop
 const TOPDOWN_MIN = 0.5; // cos(60°): keep configs whose gripper approach is within 60° of straight down
 const MAX_TILES = 1024;
+// Radial reach profile (the reach OUTLINE). A fixed-base arm's top-down reachable area is an
+// annular fan, so we represent it as r(θ): min/max reachable radius per angular bin. This is
+// GUARANTEED to render as a clean fan (no grid-marching / contour-tracing artefacts). We sweep the
+// base-rotation joint finely (BASE_STEPS) so every angular bin is well-populated.
+const ANG_BINS = 120;   // angular resolution of the fan (3° bins)
+const BASE_STEPS = 160; // base-rotation joint samples (dominates the angular sweep)
 
 /**
  * WorkspacePlanner
@@ -78,6 +84,10 @@ export class WorkspacePlanner {
   // footprint (the arm folds & swings ~340° even with a ±110° base, so this is nearly a ring).
   private reachCells = new Map<string, number>();
   private reachCellsMax = new Map<string, number>();
+  // Radial reach profiles in the arm's LOCAL frame (base at origin, yaw 0): per angular bin, the
+  // min & max reachable radius. radMax = full envelope; radPrec = top-down graspable fan.
+  private radMax = makeRadial();
+  private radPrec = makeRadial();
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -149,9 +159,14 @@ export class WorkspacePlanner {
     this.renderOutlines();
   }
 
-  // ── Forward reachability: sweep joints on a scratch MjData, bin TCP hits into cells ──
+  // ── Forward reachability: sweep joints on a scratch MjData ──
+  // The base-rotation joint (sweptJoints[0]) is swept FINELY (BASE_STEPS) since it dominates the
+  // angular spread; the remaining joints at `resolution`. Each accepted TCP fills two things:
+  //   • cells (reachCells / reachCellsMax) — used by base-placement + layout set-cover, and
+  //   • the radial profiles (radMax / radPrec) — used to draw the clean fan outline.
   computeReachability(resolution = 9) {
     const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
+    if (sweptJoints.length === 0) return;
     const scratch: MujocoData = new mujoco.MjData(model);
     try {
       for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
@@ -159,33 +174,49 @@ export class WorkspacePlanner {
 
       this.reachCells.clear();
       this.reachCellsMax.clear();
-      const n = Math.max(2, resolution);
-      const idx = new Array(sweptJoints.length).fill(0);
-      const total = Math.pow(n, sweptJoints.length);
+      resetRadial(this.radMax);
+      resetRadial(this.radPrec);
 
-      for (let c = 0; c < total; c++) {
-        // decode c -> per-joint index
-        let rem = c;
-        for (let j = 0; j < sweptJoints.length; j++) { idx[j] = rem % n; rem = (rem / n) | 0; }
-        for (let j = 0; j < sweptJoints.length; j++) {
-          const sj = sweptJoints[j];
-          scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (n - 1));
+      const base = sweptJoints[0];
+      const armJoints = sweptJoints.slice(1);
+      const nArm = Math.max(2, resolution);
+      const nBase = Math.max(nArm, BASE_STEPS);
+      const armTotal = Math.pow(nArm, armJoints.length);
+      const idx = new Array(armJoints.length).fill(0);
+      // Un-rotate world hits by the sweep yaw to get the arm's LOCAL frame (so each arm's outline
+      // can be re-rotated to its own yaw later).
+      const cos = Math.cos(-this.primaryYaw), sin = Math.sin(-this.primaryYaw);
+
+      for (let bi = 0; bi < nBase; bi++) {
+        scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
+        for (let c = 0; c < armTotal; c++) {
+          let rem = c;
+          for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
+          for (let j = 0; j < armJoints.length; j++) {
+            const sj = armJoints[j];
+            scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1));
+          }
+          mujoco.mj_forward(model, scratch);
+          const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
+          if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
+          const tx = scratch.site_xpos[tcpSiteId * 3];
+          const ty = scratch.site_xpos[tcpSiteId * 3 + 1];
+          const di = Math.round((tx - this.baseX) / CELL);
+          const dj = Math.round((ty - this.baseY) / CELL);
+          const key = di + ',' + dj;
+          // MAX envelope: every config that reaches worktop height (physically reachable).
+          this.reachCellsMax.set(key, (this.reachCellsMax.get(key) ?? 0) + 1);
+          // local polar (base at origin, yaw 0) → radial bin.
+          const ox = tx - this.baseX, oy = ty - this.baseY;
+          const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
+          accumRadial(this.radMax, Math.atan2(ly, lx), Math.hypot(lx, ly));
+          // PRECISION: also require the gripper approach to point roughly DOWN (graspable from
+          // above). approach = -localY of the tcp site; world-z component is -site_xmat[7], so
+          // "points down" ⇒ site_xmat[7] > cos(angle).
+          if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
+          this.reachCells.set(key, (this.reachCells.get(key) ?? 0) + 1);
+          accumRadial(this.radPrec, Math.atan2(ly, lx), Math.hypot(lx, ly));
         }
-        mujoco.mj_forward(model, scratch);
-        const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
-        if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
-        const tx = scratch.site_xpos[tcpSiteId * 3];
-        const ty = scratch.site_xpos[tcpSiteId * 3 + 1];
-        const di = Math.round((tx - this.baseX) / CELL);
-        const dj = Math.round((ty - this.baseY) / CELL);
-        const key = di + ',' + dj;
-        // MAX envelope: every config that reaches worktop height (physically reachable).
-        this.reachCellsMax.set(key, (this.reachCellsMax.get(key) ?? 0) + 1);
-        // PRECISION: also require the gripper approach to point roughly DOWN (graspable from
-        // above). approach = -localY of the tcp site; world-z component is -site_xmat[7], so
-        // "points down" ⇒ site_xmat[7] > cos(angle).
-        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
-        this.reachCells.set(key, (this.reachCells.get(key) ?? 0) + 1);
       }
     } finally {
       scratch.delete();
@@ -318,82 +349,45 @@ export class WorkspacePlanner {
   }
 
   /**
-   * The boundary edges of the reachable cell region, in the arm's LOCAL frame (un-rotated by
-   * the sweep's yaw). Each entry is a segment [x1,y1,x2,y2] = a cell edge that borders empty
-   * space. This is the TRUE silhouette of the reachable footprint — so it honestly shows the
-   * base-rotation fan (the SO-101 can't swing a full 360°, only ~±110°) and the inner dead zone,
-   * instead of a misleading ring. (Marching-squares-style edge extraction.)
+   * Build the reach outline from a radial r(θ) profile, in the arm's LOCAL frame (base at origin,
+   * yaw 0). For each occupied angular bin we know [rMin, rMax]; we trace the outer boundary
+   * (rMax) forward through the bins, then the inner boundary (rMin) back — opening the fan at the
+   * largest angular gap (the part the base can't swing to). Because r is single-valued per angle,
+   * the resulting polygon is ALWAYS simple (no self-crossing, no islands, no holes-as-fragments) —
+   * a clean annular fan by construction. If the reach wraps a full 360° (folds all the way round),
+   * emit the outer + inner boundaries as two separate rings instead.
    */
-  private computeLocalSilhouette(source: Map<string, number>): Array<Array<[number, number]>> {
-    if (source.size === 0) return [];
-    // Morphological CLOSE (dilate by R, then erode by R): merges the fragmented top-down precision
-    // shell into one connected fan and fills FK-sampling holes BEFORE contouring — so we get a
-    // single clean outer loop (+ the genuine central dead zone), not the dozens of tiny islands
-    // that read as a "fern". A 1-cell dilation alone was too weak to bridge the sparse shell.
-    const R = 2;
-    const parse = (k: string): [number, number] => { const c = k.indexOf(','); return [+k.slice(0, c), +k.slice(c + 1)]; };
-    const dilate = (src: Set<string>): Set<string> => {
-      const out = new Set<string>();
-      for (const k of src) { const [di, dj] = parse(k); for (let a = -R; a <= R; a++) for (let b = -R; b <= R; b++) out.add((di + a) + ',' + (dj + b)); }
-      return out;
-    };
-    const dil = dilate(new Set(source.keys()));
-    const cells = new Set<string>(); // erode: keep a cell only if its full R-neighbourhood survived
-    for (const k of dil) {
-      const [di, dj] = parse(k);
-      let keep = true;
-      for (let a = -R; a <= R && keep; a++) for (let b = -R; b <= R; b++) { if (!dil.has((di + a) + ',' + (dj + b))) { keep = false; break; } }
-      if (keep) cells.add(k);
-    }
-    const occ = (di: number, dj: number) => cells.has(di + ',' + dj);
+  private radialFan(rad: Radial): Array<Array<[number, number]>> {
+    const N = ANG_BINS;
+    const ang = (b: number) => -Math.PI + (b + 0.5) * (2 * Math.PI / N);
+    const occ: number[] = [];
+    for (let b = 0; b < N; b++) if (rad.rMax[b] >= 0) occ.push(b);
+    if (occ.length < 3) return [];
 
-    // Grid bounds + a 1-cell empty margin ring.
-    let minI = Infinity, maxI = -Infinity, minJ = Infinity, maxJ = -Infinity;
-    for (const key of cells.keys()) {
-      const c = key.indexOf(',');
-      const di = +key.slice(0, c), dj = +key.slice(c + 1);
-      if (di < minI) minI = di; if (di > maxI) maxI = di;
-      if (dj < minJ) minJ = dj; if (dj > maxJ) maxJ = dj;
+    // Largest cyclic gap between occupied bins → the fan opening.
+    let gapAt = 0, gapLen = -1;
+    for (let i = 0; i < occ.length; i++) {
+      const d = (occ[(i + 1) % occ.length] - occ[i] + N) % N;
+      if (d > gapLen) { gapLen = d; gapAt = i; }
     }
-    minI--; maxI++; minJ--; maxJ++;
+    // Order occupied bins by angle starting just after the gap.
+    const ordered: number[] = [];
+    for (let k = 1; k <= occ.length; k++) ordered.push(occ[(gapAt + k) % occ.length]);
 
-    // Flood-fill the EXTERIOR empty cells from the border, so interior holes (sparse-sampling
-    // gaps inside the reachable region) are NOT outlined — only the true outer contour is.
-    const outside = new Set<string>();
-    const stack: Array<[number, number]> = [];
-    const visit = (di: number, dj: number) => {
-      if (di < minI || di > maxI || dj < minJ || dj > maxJ) return;
-      const k = di + ',' + dj;
-      if (occ(di, dj) || outside.has(k)) return;
-      outside.add(k); stack.push([di, dj]);
-    };
-    for (let di = minI; di <= maxI; di++) { visit(di, minJ); visit(di, maxJ); }
-    for (let dj = minJ; dj <= maxJ; dj++) { visit(minI, dj); visit(maxI, dj); }
-    while (stack.length) {
-      const [di, dj] = stack.pop()!;
-      visit(di + 1, dj); visit(di - 1, dj); visit(di, dj + 1); visit(di, dj - 1);
-    }
-    const isExterior = (di: number, dj: number) =>
-      di < minI || di > maxI || dj < minJ || dj > maxJ || outside.has(di + ',' + dj);
+    const pt = (b: number, r: number): [number, number] => [r * Math.cos(ang(b)), r * Math.sin(ang(b))];
+    const hasHole = ordered.some((b) => rad.rMin[b] > CELL * 1.5);
+    const outer = ordered.map((b) => pt(b, rad.rMax[b]));
 
-    // Emit the cell edge wherever an occupied cell borders the exterior → outer silhouette only.
-    const cos = Math.cos(-this.primaryYaw), sin = Math.sin(-this.primaryYaw);
-    const toLocal = (x: number, y: number): [number, number] => [x * cos - y * sin, x * sin + y * cos];
-    const H = CELL / 2;
-    const segs: Array<[number, number, number, number]> = [];
-    for (const key of cells.keys()) {
-      const comma = key.indexOf(',');
-      const di = +key.slice(0, comma), dj = +key.slice(comma + 1);
-      const cx = di * CELL, cy = dj * CELL;
-      if (isExterior(di + 1, dj)) { const [a, b] = toLocal(cx + H, cy - H); const [c, d] = toLocal(cx + H, cy + H); segs.push([a, b, c, d]); }
-      if (isExterior(di - 1, dj)) { const [a, b] = toLocal(cx - H, cy - H); const [c, d] = toLocal(cx - H, cy + H); segs.push([a, b, c, d]); }
-      if (isExterior(di, dj + 1)) { const [a, b] = toLocal(cx - H, cy + H); const [c, d] = toLocal(cx + H, cy + H); segs.push([a, b, c, d]); }
-      if (isExterior(di, dj - 1)) { const [a, b] = toLocal(cx - H, cy - H); const [c, d] = toLocal(cx + H, cy - H); segs.push([a, b, c, d]); }
+    if (gapLen <= 2) {
+      // Full ring: outer + (optional) inner boundary as separate closed loops.
+      const loops = [chaikin(outer, 1)];
+      if (hasHole) loops.push(chaikin(ordered.map((b) => pt(b, Math.max(0, rad.rMin[b]))), 1));
+      return loops;
     }
-    // Chain the axis-aligned cell edges into ordered closed loops, then corner-cut (Chaikin) so the
-    // staircase becomes a smooth organic curve — while KEEPING the topology (the inner dead-zone
-    // hole + the ±110° fan edges are separate loops and survive the smoothing).
-    return chainLoops(segs).map((loop) => chaikin(loop, 2));
+    // Sector: one closed loop = outer arc forward + inner arc back.
+    const inner: Array<[number, number]> = [];
+    for (let i = ordered.length - 1; i >= 0; i--) inner.push(pt(ordered[i], Math.max(0, rad.rMin[ordered[i]])));
+    return [chaikin(outer.concat(inner), 1)];
   }
 
   /**
@@ -411,8 +405,8 @@ export class WorkspacePlanner {
     this.outlineGroup.clear();
     if (this.arms.length === 0) return;
 
-    const maxLocal = this.computeLocalSilhouette(this.reachCellsMax);
-    const precLocal = this.computeLocalSilhouette(this.reachCells);
+    const maxLocal = this.radialFan(this.radMax);
+    const precLocal = this.radialFan(this.radPrec);
 
     const addContour = (loops: Array<Array<[number, number]>>, arm: ArmInstance, color: number, linewidth: number, opacity: number, z: number) => {
       if (loops.length === 0) return;
@@ -508,49 +502,25 @@ export class WorkspacePlanner {
   }
 }
 
-// ── Contour post-processing: staircase cell-edges → smooth closed curves ──
+// ── Radial reach profile: per-angle min/max reachable radius → clean fan ──
 
-/**
- * Chain a soup of axis-aligned cell-edge segments into ordered closed loops. Each boundary
- * vertex has even degree; we walk "take any unused edge at the current vertex" until we return
- * to the start. Multiple loops (outer contour + inner dead-zone hole) come out separately, so
- * the topology is preserved. Returns loops as ordered unique-vertex lists (implicitly closed).
- */
-function chainLoops(segs: Array<[number, number, number, number]>): Array<Array<[number, number]>> {
-  const Q = 1e4;
-  const key = (x: number, y: number) => Math.round(x * Q) + ',' + Math.round(y * Q);
-  const adj = new Map<string, Array<{ pt: [number, number]; seg: number }>>();
-  const add = (k: string, pt: [number, number], seg: number) => {
-    let a = adj.get(k); if (!a) { a = []; adj.set(k, a); } a.push({ pt, seg });
-  };
-  segs.forEach((s, i) => {
-    const a: [number, number] = [s[0], s[1]], b: [number, number] = [s[2], s[3]];
-    add(key(a[0], a[1]), b, i);
-    add(key(b[0], b[1]), a, i);
-  });
+interface Radial { rMin: Float64Array; rMax: Float64Array; }
 
-  const used = new Array(segs.length).fill(false);
-  const loops: Array<Array<[number, number]>> = [];
-  for (let i = 0; i < segs.length; i++) {
-    if (used[i]) continue;
-    used[i] = true;
-    const start: [number, number] = [segs[i][0], segs[i][1]];
-    const loop: Array<[number, number]> = [start];
-    let cur: [number, number] = [segs[i][2], segs[i][3]];
-    let guard = 0;
-    while (guard++ < segs.length * 4) {
-      if (key(cur[0], cur[1]) === key(start[0], start[1])) break; // closed
-      loop.push(cur);
-      const cands = adj.get(key(cur[0], cur[1])) ?? [];
-      let nxt: { pt: [number, number]; seg: number } | null = null;
-      for (const c of cands) { if (!used[c.seg]) { nxt = c; break; } }
-      if (!nxt) break; // dead end (open chain)
-      used[nxt.seg] = true;
-      cur = nxt.pt;
-    }
-    if (loop.length >= 4) loops.push(loop);
-  }
-  return loops;
+function makeRadial(): Radial {
+  const rMin = new Float64Array(ANG_BINS).fill(Infinity);
+  const rMax = new Float64Array(ANG_BINS).fill(-Infinity);
+  return { rMin, rMax };
+}
+function resetRadial(rad: Radial) {
+  rad.rMin.fill(Infinity);
+  rad.rMax.fill(-Infinity);
+}
+/** Record a reach radius at a local angle into its bin (tracks the min & max radius per bin). */
+function accumRadial(rad: Radial, theta: number, r: number) {
+  let b = Math.floor((theta + Math.PI) / (2 * Math.PI) * ANG_BINS);
+  if (b < 0) b = 0; else if (b >= ANG_BINS) b = ANG_BINS - 1;
+  if (r < rad.rMin[b]) rad.rMin[b] = r;
+  if (r > rad.rMax[b]) rad.rMax[b] = r;
 }
 
 /** Chaikin corner-cutting on a CLOSED polygon: each pass quarters every corner → smooth curve. */
