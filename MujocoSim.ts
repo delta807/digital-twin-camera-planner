@@ -223,16 +223,7 @@ export class MujocoSim {
             baseSearchHalfY: Math.max(0.1, this.workcellConfig.width / 2 - 0.05),
         });
         this.renderSys.extraPipHelpers = [this.planner.group, this.planner.gizmoHelper];
-        // Home TCP world transform (from the gripper site) so each ghost arm carries a TCP marker
-        // its own wrist camera can track.
-        const s = this.ikSys.gripperSiteId, xm = this.mjData!.site_xmat, xp = this.mjData!.site_xpos;
-        const tcpWorld = s >= 0 ? new THREE.Matrix4().set(
-            xm[s * 9 + 0], xm[s * 9 + 1], xm[s * 9 + 2], xp[s * 3 + 0],
-            xm[s * 9 + 3], xm[s * 9 + 4], xm[s * 9 + 5], xp[s * 3 + 1],
-            xm[s * 9 + 6], xm[s * 9 + 7], xm[s * 9 + 8], xp[s * 3 + 2],
-            0, 0, 0, 1,
-        ) : undefined;
-        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, tcpWorld);
+        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
         this.renderSys.setPlanningArmInstances(this.armInstances);
         this.planner.setArms(this.armInstances, this.basePose?.yaw ?? 0);
         this.planner.computeReachability();
@@ -243,6 +234,27 @@ export class MujocoSim {
             this.mujoco, m, this.ikSys.gripperSiteId,
             this.armJointQadr, sweptJoints.map((j) => j.lo), sweptJoints.map((j) => j.hi),
         );
+    }
+
+    /** Current gripper-site world transform (orientation + position) for the ghost TCP marker. */
+    private currentTcpWorld(): THREE.Matrix4 | undefined {
+        const s = this.ikSys.gripperSiteId;
+        if (s < 0 || !this.mjData) return undefined;
+        const xm = this.mjData.site_xmat, xp = this.mjData.site_xpos;
+        return new THREE.Matrix4().set(
+            xm[s * 9 + 0], xm[s * 9 + 1], xm[s * 9 + 2], xp[s * 3 + 0],
+            xm[s * 9 + 3], xm[s * 9 + 4], xm[s * 9 + 5], xp[s * 3 + 1],
+            xm[s * 9 + 6], xm[s * 9 + 7], xm[s * 9 + 8], xp[s * 3 + 2],
+            0, 0, 0, 1,
+        );
+    }
+
+    /** Re-snapshot the planning-arm template from the primary's CURRENT pose + re-place the ghosts,
+     *  so every ghost arm mirrors however the primary is posed (and its wrist cam frames to match). */
+    refreshGhostArms(): void {
+        if (this.isFranka || !this.mjModel) return;
+        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
+        this.renderSys.setPlanningArmInstances(this.armInstances);
     }
 
     /** Resolve every actuated arm joint (actuator → joint → body) for interactive posing. */
@@ -286,6 +298,9 @@ export class MujocoSim {
                 rs.simGroup, rs.camera, rs.renderer.domElement,
                 this.mujoco, this.mjModel, this.mjData, rs.controls, onJointLabel,
             );
+            // When the primary is re-posed, ghost arms re-mirror it (so their wrist cams frame the
+            // same way the primary does, instead of staring at the horizon from the home pose).
+            this.jointDrag.onPosed = () => this.refreshGhostArms();
             rs.selection.setEnabled(false); // clicks drive joints, not selection
         } else {
             this.jointDrag?.dispose();

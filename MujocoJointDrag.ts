@@ -110,6 +110,8 @@ export class MujocoJointDrag extends Base {
   private data!: MujocoData;
   private orbit!: OrbitControls;
   onJointLabel?: (name: string | null) => void;
+  /** Fired when a joint drag finishes — lets ghost arms re-mirror the newly-posed primary. */
+  onPosed?: () => void;
 
   static create(
     scene: THREE.Object3D, camera: THREE.Camera, dom: HTMLElement,
@@ -152,7 +154,7 @@ export class MujocoJointDrag extends Base {
   }
 
   onDragStart() { this.orbit.enabled = false; }
-  onDragEnd() { this.orbit.enabled = true; }
+  onDragEnd() { this.orbit.enabled = true; this.onPosed?.(); }
   onHover(joint: JointGroup) { setEmissive(joint, HILITE); this.onJointLabel?.(joint.__jointName ?? null); }
   onUnhover(joint: JointGroup) { setEmissive(joint, null); this.onJointLabel?.(null); }
 }

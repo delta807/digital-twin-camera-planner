@@ -10,13 +10,12 @@ SO-101 + D435i + Jetson rig — so layout, reach, camera placement, and grasps
 chosen in sim hold up in the real world.
 
 ## ACTIVE — new issues (reported Jun 2026, this batch)
-- [ ] **#1 Joint jog doesn't respond to real clicks** — works via synthetic MouseEvents but not a
-      real mouse. Cause: OrbitControls handles pointerdown + preventDefault suppresses the legacy
-      mouse events the vendored URDFDragControls listens for. FIX: rewire the controls to pointer
-      events (reattach the base handlers to pointerdown/move/up). HIGH priority, quick.
-- [ ] **#2 A slider crashes / lags the whole site** — suspect the reach recompute now runs the
-      heavier radial sweep (BASE_STEPS=160 × resolution³ ≈ 100k+ mj_forward) SYNCHRONOUSLY on every
-      slider tick. FIX: debounce + only recompute on release, and/or lighten/async the sweep. HIGH.
+- [x] **#1 Joint jog doesn't respond to real clicks** — FIXED (29520b5): rewired the vendored
+      controls to POINTER events (OrbitControls' preventDefault on pointerdown was suppressing the
+      legacy mousedown). Verified: pointer drag rotates Pitch/Elbow.
+- [x] **#2 A slider crashes / lags the whole site** — FIXED (29520b5): the arm X/Y/Yaw sliders
+      re-swept reachability every tick via applyPlannerState; reach is base-relative-invariant so
+      relocateBase already redraws. Dropped the redundant recompute. Verified: 40 ticks, rAF 6ms.
 - [ ] **#3 Wrist cam on ADDITIONAL (ghost) arms is bad** — framing/feed wrong on non-primary arms.
       Investigate trackFromMatrix on ghost TCP markers + mount offsets.
 - [ ] **#4 Simulated DEPTH footage** — add a depth-render view of the D435i (depth colormap, range

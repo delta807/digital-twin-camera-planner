@@ -346,6 +346,11 @@ export class RenderSystem {
         const clone = material.clone();
         clone.transparent = true;
         clone.opacity = Math.min(0.82, clone.opacity);
+        // Don't let ghosts inherit the jog hover-highlight: if the template is rebuilt while a
+        // primary link is still highlighted (drag end fires before unhover), its emissive would
+        // leak into the clone and tint the ghost pink.
+        const std = clone as THREE.MeshStandardMaterial;
+        if (std.emissive) std.emissive.setHex(0x000000);
         return clone;
     }
 
