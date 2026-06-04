@@ -461,17 +461,13 @@ export function App() {
   };
 
 
-  // The PRIMARY arm is the real physics arm (its base is baked at load), so it only truly moves
-  // via a model reload (relocateBase). Sliders update the ghost/outline live for feedback, then a
-  // debounced reload commits the real arm once the drag settles — so dragging "moves the arm".
+  // The PRIMARY arm's base now moves LIVE (body_pos + mj_forward, no reload) — so dragging the
+  // slider moves the real arm in real time, no "apply pose" step needed.
   const commitPrimaryPose = () => {
     const sim = simRef.current;
     const primary = armInstancesRef.current.find((a) => a.primary);
     if (!sim || !primary) return;
-    setComputingReach(true);
-    sim.relocateBase(primary.x, primary.y, primary.yaw)
-      .then(() => { sim.setArmInstances(armInstancesRef.current); applyPlannerState(); })
-      .finally(() => setComputingReach(false));
+    sim.relocateBase(primary.x, primary.y, primary.yaw).then(() => applyPlannerState());
   };
 
   const handleArmChange = (id: string, patch: Partial<ArmInstance>) => {
@@ -479,11 +475,11 @@ export function App() {
     // these under React 18 StrictMode). armInstancesRef mirrors the latest state.
     const next = armInstancesRef.current.map((arm) => arm.id === id ? { ...arm, ...patch } : arm);
     setArmInstances(next);
-    simRef.current?.setArmInstances(next); // live ghost + reach outline
+    const sim = simRef.current;
+    sim?.setArmInstances(next); // live ghost + reach outline
     const changed = next.find((a) => a.id === id);
-    if (changed?.primary) {
-      if (primaryRelocateRef.current) clearTimeout(primaryRelocateRef.current);
-      primaryRelocateRef.current = setTimeout(commitPrimaryPose, 400); // reload after drag settles
+    if (changed?.primary && sim) {
+      sim.relocateBase(changed.x, changed.y, changed.yaw).then(() => applyPlannerState()); // live, instant
     }
   };
 

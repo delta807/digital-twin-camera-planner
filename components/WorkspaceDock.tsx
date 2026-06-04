@@ -150,7 +150,7 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
             <Slider label="Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.y} onChange={(v) => arms.onChange(arm.id, { y: v })} subtle={subtle} displayUnit={u} />
             <Slider label="Yaw" unit="°" min={-180} max={180} step={1} value={arm.yaw * 180 / Math.PI} onChange={(v) => arms.onChange(arm.id, { yaw: v * Math.PI / 180 })} subtle={subtle} />
             <div className="flex gap-2">
-              <button onClick={arms.onApplyPose} disabled={arms.computing} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`} title="Move the real arm here (reloads its base)">Apply pose</button>
+              <button onClick={arms.onApplyPose} disabled={arms.computing} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`} title="Re-sync reach overlay (the base already moves live as you drag)">Recompute reach</button>
               {!arm.primary && <button onClick={() => arms.onRemove(arm.id)} title="Remove this arm" className={`w-9 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3.5 h-3.5" /></button>}
             </div>
           </>}

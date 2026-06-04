@@ -229,10 +229,27 @@ export class MujocoSim {
     }
 
     /** Reload the model with the arm base moved/rotated — the "drag the mount" path. */
-    async relocateBase(x: number, y: number, yaw = this.basePose?.yaw ?? 0) {
-        if (this.isFranka) return;
+    /**
+     * Move the (welded) arm base LIVE — no model reload. MuJoCo permits editing real-valued
+     * params after compile, so we set the Base body's `body_pos`/`body_quat` and run `mj_forward`
+     * to teleport the whole arm subtree (its joint qpos are relative, so the pose is preserved).
+     * Fixes the old reload-flash + "apply pose" clunk; the reach overlay follows via setArms.
+     */
+    relocateBase(x: number, y: number, yaw = this.basePose?.yaw ?? 0): Promise<void> {
+        if (this.isFranka || !this.mjModel || !this.mjData) return Promise.resolve();
         this.basePose = { x, y, yaw };
-        await this.init(this.robotId, this.sceneFile);
+        const b = this.baseBodyId;
+        const bp = this.mjModel.body_pos as unknown as Float32Array;
+        const bq = this.mjModel.body_quat as unknown as Float32Array;
+        bp[b * 3] = x;
+        bp[b * 3 + 1] = y;
+        // (z left at its loaded value so the base stays on the floor)
+        const h = yaw * 0.5;
+        bq[b * 4] = Math.cos(h); bq[b * 4 + 1] = 0; bq[b * 4 + 2] = 0; bq[b * 4 + 3] = Math.sin(h);
+        this.mujoco.mj_forward(this.mjModel, this.mjData);
+        // Re-place the reach overlay + ghosts at the new base pose (no recompute needed).
+        this.planner?.setArms(this.armInstances, yaw);
+        return Promise.resolve();
     }
 
     /** Live worktop update — the table is Three.js-only now, so NO model reload is needed. */
