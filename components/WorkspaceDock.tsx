@@ -168,7 +168,18 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           <Slider label="Camera-post height" unit="m" min={0.1} max={1.4} step={0.02} value={wc.postHeight} onChange={(v) => workcell.onChange({ ...wc, postHeight: v })} subtle={subtle} displayUnit={u} />
           <Slider label="Post X (right +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postX} onChange={(v) => workcell.onChange({ ...wc, postX: v })} subtle={subtle} displayUnit={u} />
           <Slider label="Post Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postY} onChange={(v) => workcell.onChange({ ...wc, postY: v })} subtle={subtle} displayUnit={u} />
-          <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload.</p>
+
+          {/* Extra mount posts — add your own uprights to mount cameras/sensors on (snappable). */}
+          {(wc.extraPosts ?? []).map((ep, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className={`text-[9px] font-bold uppercase ${subtle} w-10`}>Post {i + 2}</span>
+              <input type="number" step={0.01} value={Number(ep.x.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.extraPosts]; next[i] = { ...next[i], x: v }; workcell.onChange({ ...wc, extraPosts: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
+              <input type="number" step={0.01} value={Number(ep.y.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.extraPosts]; next[i] = { ...next[i], y: v }; workcell.onChange({ ...wc, extraPosts: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
+              <button onClick={() => workcell.onChange({ ...wc, extraPosts: wc.extraPosts.filter((_, j) => j !== i) })} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove post">✕</button>
+            </div>
+          ))}
+          <button onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add mount post</button>
+          <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload. Add posts to mount cameras on (snappable).</p>
         </Section>
 
         {/* ── Arms: placement + reachability ── */}

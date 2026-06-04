@@ -109,6 +109,8 @@ export interface WorkcellConfig {
   /** Camera-post (aluminium upright) world X/Y; origin = table centre. */
   postX: number;
   postY: number;
+  /** Extra user-added upright posts (mount points) — each snappable like the main post. */
+  extraPosts: Array<{ x: number; y: number; height: number }>;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
@@ -121,6 +123,7 @@ export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
   // ~15 cm in from the +X edge of an 0.83 m worktop, centred on Y — matches the real rig.
   postX: 0.265,
   postY: 0.0,
+  extraPosts: [],
 };
 
 export interface ArmInstance {

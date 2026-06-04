@@ -91,6 +91,16 @@ export class BaseBuilder {
     this.postTop.set(px, py, postH);
     // The upright post first — it's the rod users mount the camera on / slide along.
     this.rods.unshift({ a: new THREE.Vector3(px, py, 0), b: new THREE.Vector3(px, py, postH), label: 'Post' });
+
+    // --- Extra user-added upright posts (custom mount points) ---
+    (config.extraPosts ?? []).forEach((ep, i) => {
+      const h = Math.max(0.08, ep.height);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, h), this.railMat);
+      m.position.set(ep.x, ep.y, h / 2);
+      m.castShadow = true;
+      this.group.add(m);
+      this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
+    });
   }
 
   private clear() {
