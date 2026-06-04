@@ -42,11 +42,15 @@ chosen in sim hold up in the real world.
       nice-to-have if idle/upright framing needs improving — deferred, not needed for the bug.
 - [ ] **Staged multi-arm physics** — N real SO-101 arms in one MuJoCo model + per-arm IK (physics
       first; pickup + Gemini multi-control later). [the "big lift"]
-- [~] **Full reskin** to the lab-instrument design. PHASE 1 DONE (b099917): config-level palette
-      remap (slate/indigo → OKLCH lab-instrument ramps), IBM Plex Sans/Mono, categorical overlay
-      colours, crisp panels — whole app re-coloured coherently without rewriting every component.
-      REMAINING (structural, restructures the App shell): live-metrics top bar (coverage/reach %),
-      overlay legend, left mode-rail (Edit/Compare/dock/perceive), Compare A/B mode, tweaks panel.
+- [~] **Full reskin** to the lab-instrument design.
+      DONE: foundation (b099917) — OKLCH palette remap + IBM Plex + crisp panels.
+      DONE: phase 2a (4598789) — overlay legend, metric bar, tweaks panel (theme/accent, persisted).
+      DONE: QA pass (c30fa05) — CodeRabbit + subagent QA → recoloured 3D overlays to the categorical
+            scheme (camera=amber, reach=violet, precision=cyan) so the legend is truthful; theme
+            persistence; a11y; z-index; dropped half-broken density.
+      REMAINING (the two big SHELL restructures): left mode-rail (Edit/Compare/dock/perceive icon
+            strip — shifts the dock right), and Compare A/B mode (two camera setups + metrics). Both
+            re-layout the App shell → do as a dedicated focused pass (risk of half-broken shell).
 
 ## DONE (this batch)
 - [x] ROM reach → clean radial r(θ) fan (6c75c05).
