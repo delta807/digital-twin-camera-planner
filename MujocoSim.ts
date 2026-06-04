@@ -62,7 +62,7 @@ export class MujocoSim {
     private so101Pickup: {
         queue: { pos: THREE.Vector3; markerId: number }[];
         idx: number;
-        phase: number; // 0 approach, 1 descend, 2 close, 3 lift, 4 release
+        phase: number; // 0 approach,1 descend,2 close,3 lift,4 carry,5 lower,6 release
         t: number;     // seconds elapsed in the current phase
         onFinished?: () => void;
         grab: { qposAdr: number; dofAdr: number; offset: THREE.Vector3 } | null;
@@ -112,6 +112,7 @@ export class MujocoSim {
 
         // Tear down any previous model/data/planner (also supports base-relocation reloads).
         if (this.frameId) { cancelAnimationFrame(this.frameId); this.frameId = null; }
+        this.so101Pickup = null; // a mid-flight grasp holds addresses into the OLD model — drop it
         if (this.planner) { this.planner.dispose(); this.planner = null; this.renderSys.extraPipHelpers = []; }
         if (this.numericIk) { this.numericIk.dispose(); this.numericIk = null; }
         if (this.mjData) { try { this.mjData.delete(); } catch (e) { /* ignore */ } this.mjData = null; }
@@ -341,7 +342,8 @@ export class MujocoSim {
         if (pk.t < DUR[pk.phase]) return;
         pk.t = 0;
         if (pk.phase === 2) {
-            // Grasp closes → attach the nearest block to the gripper and clear its ER marker.
+            // Grasp closes → attach the nearest block to the gripper. Clear the ER marker either
+            // way (so a missed grab doesn't leave a stale marker floating over the table).
             const nb = this.nearestTaskBody(new THREE.Vector3(p.x, p.y, p.z));
             if (nb) {
                 const tcp = this.tcpWorld();
@@ -349,8 +351,8 @@ export class MujocoSim {
                     qposAdr: nb.qposAdr, dofAdr: nb.dofAdr,
                     offset: new THREE.Vector3(d.xpos[nb.bodyId * 3] - tcp.x, d.xpos[nb.bodyId * 3 + 1] - tcp.y, d.xpos[nb.bodyId * 3 + 2] - tcp.z),
                 };
-                this.renderSys.removeMarkerById(pk.queue[pk.idx].markerId);
             }
+            this.renderSys.removeMarkerById(pk.queue[pk.idx].markerId);
         } else if (pk.phase === 6) {
             pk.grab = null;        // release → block drops into the bin; advance to the next item
             pk.idx++;
@@ -585,6 +587,7 @@ export class MujocoSim {
     pickupItems(positions: THREE.Vector3[], markerIds: number[], onFinished?: () => void) {
         if (!this.isFranka) {
             // SO-101: numeric-IK grasp choreography (approach → descend → close → lift → release).
+            if (this.so101Pickup) return; // already running — ignore re-entrant calls (button = speed)
             if (!this.numericIk || !this.mjData || positions.length === 0) { onFinished?.(); return; }
             this.so101Pickup = {
                 queue: positions.map((p, i) => ({ pos: p.clone(), markerId: markerIds[i] })),
