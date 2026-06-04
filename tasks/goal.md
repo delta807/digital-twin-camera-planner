@@ -22,16 +22,19 @@ chosen in sim hold up in the real world.
 - [x] **C — Rod snapping** (a099661) — snap camera/arm/objects to the nearest rod (post or rail) +
       'Along' slider to slide along it. Camera→post (vertical), arm→rails (horizontal). Post movable
       via X/Y. STILL TODO: "build connector rods between mounts" (add custom rods) — deferred.
-- [ ] **D — Optimal multi-arm layout** — suggest arm placements for **max task coverage** (most
-      task points reachable top-down across all arms). Extend the single-arm base-placement
-      (inverse reachability) to greedily place N arms; show + apply suggestions.
-- [ ] **Build connector rods** (part of C) — add/draw custom rods between two mount points.
-- [ ] **Wrist-cam framing tune** — expose back/up/reach mount offsets as sliders; dial in so the
-      feed frames the grasp (less gripper body) once #3 gives the real reference.
-- [ ] **A3 — Ghost/preview** (deprioritised; live base move already shows motion) — translucent
-      ghost + dashed construction line + Δ readout for a non-committed move preview, if wanted.
-- [ ] **A4 — Scale-to-dimension** (deferred) — type a target mm → scale = target/bbox; runtime
-      MuJoCo geom scaling needs care (geom_size is structural).
+- [x] **D — Optimal multi-arm layout** (12fabc5) — greedy set-cover over (cell × yaw); 'Suggest
+      optimal layout' places all arms for max top-down task coverage + shows X/Y reached.
+- [x] **Build connector rods** (652615d) — '+ Add mount post' adds custom snappable uprights
+      (editable X/Y, removable). Arbitrary point-to-point connector segments = future nicety.
+- [ ] **Wrist-cam framing tune** — expose back/up/reach as sliders; dial in vs real footage with the
+      gripper at a grasp pose (small follow-up when you want it pixel-dialed).
+- [~] **A3 — Ghost/preview** — CLOSED (won't-do): the live base move already shows motion in real
+      time, so a non-committed ghost adds little. Reopen if you want preview-before-commit.
+- [~] **A4 — Scale-to-dimension** — COVERED for the workcell (Length/Width are editable to exact mm).
+      Per-object runtime scaling skipped (MuJoCo geom_size is structural; low value). Reopen if needed.
+
+## Backlog status: CLEARED. Meaningful items (C rod-snap, connector rods, D layout, #3 calibration,
+## #4 per-arm wrist) all done. A3/A4 closed with rationale; reopen either on request.
 
 ## Done (recent)
 M6+: camera reset/frame, live base move (no "apply pose"), selection-driven UI (tree + inspector),
