@@ -292,6 +292,18 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, cameraToggles.sensorPip]);
 
+  // Wrist camera: a gripper-mounted feed (tracks the arm). Toggle attaches its own PIP.
+  const [wristView, setWristView] = useState(false);
+  const wristViewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wc = simRef.current?.renderSys.wristCamera;
+    if (isLoading || !wc) return;
+    wc.enabled = wristView;
+    if (wristView && wristViewRef.current) wc.attachPip(wristViewRef.current);
+    return () => { simRef.current?.renderSys.wristCamera?.detachPip(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, wristView]);
+
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
     setCameraToggles(prev => ({ ...prev, [key]: value }));
     const r = rig();
@@ -888,6 +900,18 @@ export function App() {
             />
           )}
 
+          {wristView && (
+            <SensorView
+              canvasHostRef={wristViewRef}
+              isDarkMode={isDarkMode}
+              sidebarOpen={showSidebar}
+              aspect={16 / 9}
+              title="Wrist Cam · HBVCAM"
+              secondary={cameraToggles.sensorPip}
+              onClose={() => setWristView(false)}
+            />
+          )}
+
           {/* Consolidated object-centric control dock (SO-101 twin) */}
           {!sceneIsFranka && (
             <WorkspaceDock
@@ -933,6 +957,8 @@ export function App() {
                 onMove: handleCameraMove,
                 onAimDown: handleCameraAimDown,
                 onSnapToPost: handleSnapCameraToPost,
+                wristEnabled: wristView,
+                onWristToggle: setWristView,
               }}
               measure={{
                 active: measureActive,

@@ -136,6 +136,7 @@ export class MujocoSim {
         for (let i = 0; i < this.mjModel.nsite; i++) {
             if (getName(this.mjModel, this.mjModel.name_siteadr[i]).includes('tcp')) { this.ikSys.gripperSiteId = i; break; }
         }
+        this.renderSys.gripperSiteId = this.ikSys.gripperSiteId; // let the wrist cam track the TCP
         for (let i = 0; i < this.mjModel.nu; i++) {
             const an = getName(this.mjModel, this.mjModel.name_actuatoradr[i]);
             if (an.toLowerCase().includes('gripper') || an === 'Jaw') { this.gripperActuatorId = i; break; }

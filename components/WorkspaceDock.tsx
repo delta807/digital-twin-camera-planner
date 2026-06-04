@@ -51,6 +51,8 @@ export interface DockCameraProps {
   onMove: (x: number, y: number, z: number) => void; // type exact coordinates
   onAimDown: () => void;
   onSnapToPost: () => void; // mount on the aluminium post + aim down
+  wristEnabled: boolean; // gripper-mounted wrist camera feed
+  onWristToggle: (v: boolean) => void;
 }
 export interface DockMeasureProps {
   active: boolean;
@@ -196,6 +198,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
         {/* ── Camera (D435i) ── */}
         <Section title="Camera (D435i)" icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <Row label="Show camera" checked={camera.toggles.enabled} onChange={(v) => camera.onToggle('enabled', v)} />
+          <Row label="Wrist camera feed" checked={camera.wristEnabled} onChange={camera.onWristToggle} />
           <div className={`flex gap-1.5 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
             <ModeBtn active={camera.dragMode === 'translate'} onClick={() => camera.onDragMode('translate')} icon={<Move3d className="w-3.5 h-3.5" />} label="Move" isDarkMode={isDarkMode} />
             <ModeBtn active={camera.dragMode === 'rotate'} onClick={() => camera.onDragMode('rotate')} icon={<Rotate3d className="w-3.5 h-3.5" />} label="Aim" isDarkMode={isDarkMode} />

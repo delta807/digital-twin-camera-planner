@@ -12,6 +12,7 @@ import { ArmInstance, MujocoData, MujocoModel, MujocoModule } from './types';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WorkspaceCameraRig } from './WorkspaceCameraRig';
 import { BaseBuilder } from './BaseBuilder';
+import { WristCamera } from './WristCamera';
 import { MeasureTool } from './MeasureTool';
 import { SelectionController } from './SelectionController';
 import { getName } from './utils/StringUtils';
@@ -26,6 +27,9 @@ export class RenderSystem {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     cameraRig: WorkspaceCameraRig;
+    wristCamera!: WristCamera;
+    gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
+    private readonly tmpVec = new THREE.Vector3();
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
     selection!: SelectionController;
@@ -100,6 +104,7 @@ export class RenderSystem {
 
         // Placeable "sensor" camera planner (frustum / PIP / footprint / coverage).
         this.cameraRig = new WorkspaceCameraRig(this.scene, this.camera, this.renderer.domElement, this.controls);
+        this.wristCamera = new WristCamera(this.scene);
         this.baseBuilder = new BaseBuilder(this.scene);
         this.initCoordinateSystem();
 
@@ -223,7 +228,16 @@ export class RenderSystem {
 
         // Sensor-camera overlays + PIP. Runs after the main view so its helper-hiding
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
-        this.cameraRig.update(this.simGroup, [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.extraPipHelpers]);
+        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.extraPipHelpers];
+        this.cameraRig.update(this.simGroup, pipHide);
+
+        // Wrist-cam footage: track the gripper end-effector + render its PIP (hide overlays AND the
+        // floating D435i rig so the wrist feed shows clean footage).
+        if (this.wristCamera.enabled && this.gripperSiteId >= 0) {
+            const s = this.gripperSiteId;
+            this.wristCamera.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
+            this.wristCamera.renderPip([...pipHide, this.cameraRig.gizmo]);
+        }
 
         // Measurement labels (DOM overlay).
         this.cssRenderer.render(this.scene, this.camera);
@@ -496,6 +510,7 @@ export class RenderSystem {
     dispose() {
         window.removeEventListener('resize', this.onResize);
         this.cameraRig.dispose();
+        this.wristCamera.dispose();
         this.baseBuilder.dispose();
         this.measureTool.dispose();
         this.selection.dispose();
