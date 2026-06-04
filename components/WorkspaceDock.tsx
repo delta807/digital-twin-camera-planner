@@ -47,6 +47,9 @@ export interface DockCameraProps {
   dragMode: 'translate' | 'rotate';
   onDragMode: (m: 'translate' | 'rotate') => void;
   onComputeCoverage: () => void;
+  pos: { x: number; y: number; z: number } | null; // live camera world position
+  onMove: (x: number, y: number, z: number) => void; // type exact coordinates
+  onAimDown: () => void;
 }
 export interface DockMeasureProps {
   active: boolean;
@@ -166,6 +169,14 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
             <ModeBtn active={camera.dragMode === 'translate'} onClick={() => camera.onDragMode('translate')} icon={<Move3d className="w-3.5 h-3.5" />} label="Move" isDarkMode={isDarkMode} />
             <ModeBtn active={camera.dragMode === 'rotate'} onClick={() => camera.onDragMode('rotate')} icon={<Rotate3d className="w-3.5 h-3.5" />} label="Aim" isDarkMode={isDarkMode} />
           </div>
+          {/* Exact position entry — type real coordinates (origin = table centre) to replicate the rig. */}
+          <div className={`space-y-1 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Position ({u})</span>
+              <button onClick={camera.onAimDown} className={`text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400`}>Aim down</button>
+            </div>
+            <Vec3Editor pos={camera.pos} unit={u} onChange={camera.onMove} subtle={subtle} />
+          </div>
           <div className={`space-y-1.5 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
             {CAMERA_ROWS.map((r) => <Row key={r.key} label={r.label} checked={camera.toggles[r.key]} onChange={(v) => camera.onToggle(r.key, v)} />)}
             <label className="block">
@@ -264,6 +275,40 @@ function Slider({ label, unit, min, max, step, value, onChange, subtle, suffix, 
         </span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full h-1 accent-indigo-600 cursor-pointer" />
+    </div>
+  );
+}
+
+// Three editable axis fields (X/Y/Z) in the active length unit. Origin = table centre.
+function Vec3Editor({ pos, unit, onChange, subtle }: { pos: { x: number; y: number; z: number } | null; unit: LengthUnit; onChange: (x: number, y: number, z: number) => void; subtle: string }) {
+  const mm = unit === 'mm';
+  const toDisplay = (v: number) => (mm ? v * 1000 : v);
+  const fromDisplay = (d: number) => (mm ? d / 1000 : d);
+  const digits = mm ? 0 : 3;
+  const axes: Array<{ k: 'x' | 'y' | 'z'; hue: string }> = [
+    { k: 'x', hue: 'text-rose-500' },
+    { k: 'y', hue: 'text-emerald-500' },
+    { k: 'z', hue: 'text-sky-500' },
+  ];
+  const cur = pos ?? { x: 0, y: 0, z: 0 };
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {axes.map(({ k, hue }) => (
+        <label key={k} className="flex items-center gap-1">
+          <span className={`text-[9px] font-bold uppercase ${hue}`}>{k}</span>
+          <input
+            type="number" step={mm ? 1 : 0.005} disabled={!pos}
+            value={Number(toDisplay(cur[k]).toFixed(digits))}
+            onChange={(e) => {
+              const d = parseFloat(e.target.value);
+              if (Number.isNaN(d)) return;
+              const next = { ...cur, [k]: fromDisplay(d) };
+              onChange(next.x, next.y, next.z);
+            }}
+            className={`w-full bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle} disabled:opacity-40`}
+          />
+        </label>
+      ))}
     </div>
   );
 }

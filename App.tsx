@@ -340,6 +340,13 @@ export function App() {
     rig()?.setDragMode(mode);
   };
 
+  // Type exact camera coordinates (origin = table centre) to replicate the real rig.
+  const handleCameraMove = (x: number, y: number, z: number) => {
+    rig()?.setPosition(x, y, z);
+    setCameraPos({ x, y, z });
+  };
+  const handleCameraAimDown = () => rig()?.aimDown();
+
   const handleComputeCoverage = () => {
     const sg = simGroup();
     const r = rig();
@@ -830,6 +837,9 @@ export function App() {
                 dragMode,
                 onDragMode: handleDragMode,
                 onComputeCoverage: handleComputeCoverage,
+                pos: cameraPos,
+                onMove: handleCameraMove,
+                onAimDown: handleCameraAimDown,
               }}
               measure={{
                 active: measureActive,

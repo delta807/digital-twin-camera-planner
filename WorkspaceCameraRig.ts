@@ -171,6 +171,21 @@ export class WorkspaceCameraRig {
     this.gizmo.quaternion.setFromRotationMatrix(m);
   }
 
+  /** Move the camera to an exact world position, keeping its current aim. */
+  setPosition(x: number, y: number, z: number) {
+    this.gizmo.position.set(x, y, z);
+  }
+
+  /** Aim the camera straight down (optical axis = world -Z) from its current position. */
+  aimDown() {
+    const p = this.gizmo.position;
+    this.setPose(p.clone(), new THREE.Vector3(p.x, p.y, p.z - 1));
+  }
+
+  getPosition(): THREE.Vector3 {
+    return this.gizmo.position.clone();
+  }
+
   /** Replace the placeholder box gizmo with the real Intel D435i mesh (public/d435i.stl). */
   private loadCameraMesh(...fallback: THREE.Object3D[]) {
     new STLLoader().load('/d435i.stl', (geo) => {
