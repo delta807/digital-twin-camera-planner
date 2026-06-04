@@ -104,6 +104,9 @@ export interface WorkcellConfig {
   barWidth: number;
   postHeight: number;
   shapeSides: number;
+  /** Camera-post (aluminium upright) world X/Y; origin = table centre. */
+  postX: number;
+  postY: number;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
@@ -113,6 +116,9 @@ export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
   barWidth: 0.024,
   postHeight: 0.84,
   shapeSides: 4,
+  // ~15 cm in from the +X edge of an 0.83 m worktop, centred on Y — matches the real rig.
+  postX: 0.265,
+  postY: 0.0,
 };
 
 export interface ArmInstance {

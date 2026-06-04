@@ -50,6 +50,7 @@ export interface DockCameraProps {
   pos: { x: number; y: number; z: number } | null; // live camera world position
   onMove: (x: number, y: number, z: number) => void; // type exact coordinates
   onAimDown: () => void;
+  onSnapToPost: () => void; // mount on the aluminium post + aim down
 }
 export interface DockMeasureProps {
   active: boolean;
@@ -133,6 +134,8 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
           <Slider label="Rail height" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barHeight} onChange={(v) => workcell.onChange({ ...wc, barHeight: v })} subtle={subtle} displayUnit={u} />
           <Slider label="Rail width" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barWidth} onChange={(v) => workcell.onChange({ ...wc, barWidth: v })} subtle={subtle} displayUnit={u} />
           <Slider label="Camera-post height" unit="m" min={0.1} max={1.4} step={0.02} value={wc.postHeight} onChange={(v) => workcell.onChange({ ...wc, postHeight: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Post X (right +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postX} onChange={(v) => workcell.onChange({ ...wc, postX: v })} subtle={subtle} displayUnit={u} />
+          <Slider label="Post Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postY} onChange={(v) => workcell.onChange({ ...wc, postY: v })} subtle={subtle} displayUnit={u} />
           <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload.</p>
         </Section>
 
@@ -173,7 +176,10 @@ export function WorkspaceDock({ isDarkMode, scene, workcell, arms, camera, measu
           <div className={`space-y-1 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between">
               <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Position ({u})</span>
-              <button onClick={camera.onAimDown} className={`text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400`}>Aim down</button>
+              <div className="flex gap-2">
+                <button onClick={camera.onSnapToPost} className="text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Snap to post</button>
+                <button onClick={camera.onAimDown} className="text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Aim down</button>
+              </div>
             </div>
             <Vec3Editor pos={camera.pos} unit={u} onChange={camera.onMove} subtle={subtle} />
           </div>

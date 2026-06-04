@@ -347,6 +347,17 @@ export function App() {
   };
   const handleCameraAimDown = () => rig()?.aimDown();
 
+  // Snap the camera onto the top of the aluminium post and aim it straight down —
+  // one click to replicate "camera mounted N cm up the rod, looking at the worktop".
+  const handleSnapCameraToPost = () => {
+    const r = rig();
+    const post = simRef.current?.renderSys.baseBuilder.postAxis;
+    if (!r || !post) return;
+    r.setPosition(post.x, post.y, post.height);
+    r.aimDown();
+    setCameraPos({ x: post.x, y: post.y, z: post.height });
+  };
+
   const handleComputeCoverage = () => {
     const sg = simGroup();
     const r = rig();
@@ -840,6 +851,7 @@ export function App() {
                 pos: cameraPos,
                 onMove: handleCameraMove,
                 onAimDown: handleCameraAimDown,
+                onSnapToPost: handleSnapCameraToPost,
               }}
               measure={{
                 active: measureActive,

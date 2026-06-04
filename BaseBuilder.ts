@@ -18,6 +18,11 @@ import { WorkcellConfig } from './types';
 export class BaseBuilder {
   readonly group = new THREE.Group();
 
+  /** World position of the camera post (top centre), for snapping the camera onto the rod. */
+  readonly postTop = new THREE.Vector3();
+  /** World X/Y of the post axis + its height — exposed for snapping. */
+  postAxis = { x: 0, y: 0, height: 0 };
+
   private readonly slabMat = new THREE.MeshStandardMaterial({ color: 0xededf2, roughness: 0.85, metalness: 0.05 });
   private readonly railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.6 });
 
@@ -70,11 +75,15 @@ export class BaseBuilder {
       this.group.add(rod);
     }
 
-    // --- Camera post at a corner ---
+    // --- Camera post (aluminium upright) at an explicit world X/Y ---
+    const px = config.postX;
+    const py = config.postY;
     const post = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, postH), this.railMat);
-    post.position.set(halfX - 0.02, -halfY + 0.02, postH / 2);
+    post.position.set(px, py, postH / 2);
     post.castShadow = true;
     this.group.add(post);
+    this.postAxis = { x: px, y: py, height: postH };
+    this.postTop.set(px, py, postH);
   }
 
   private clear() {
