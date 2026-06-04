@@ -20,10 +20,11 @@ export class WristCamera {
   readonly camera: THREE.PerspectiveCamera;
   enabled = false;
 
-  // Mount offsets in the gripper frame (m) — tunable so the footage frames the fingers + grasp.
-  back = 0.06;   // behind the fingertips along the approach axis
-  up = 0.045;    // above the gripper centre-line
-  reach = 0.10;  // how far ahead the camera aims (toward/just past the grasp point)
+  // Mount offsets in the gripper frame (m) — tuned against real LeRobot wrist footage (fingers at
+  // the bottom of frame, the grasp/object ahead). Tunable to dial in further.
+  back = 0.05;   // behind the fingertips along the approach axis
+  up = 0.06;     // above the gripper centre-line (raises the fingers toward frame bottom)
+  reach = 0.14;  // how far ahead the camera aims (toward/just past the grasp point)
 
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
@@ -35,7 +36,8 @@ export class WristCamera {
   private readonly p = new THREE.Vector3();
 
   constructor(private readonly scene: THREE.Scene) {
-    this.camera = new THREE.PerspectiveCamera(43, 16 / 9, 0.01, 5); // ~70° H wrist webcam
+    // Real wrist footage is 640×480 (4:3), ~70° H wide lens → ~55° vertical FOV.
+    this.camera = new THREE.PerspectiveCamera(55, 4 / 3, 0.01, 5);
     this.camera.up.set(0, 0, 1);
   }
 

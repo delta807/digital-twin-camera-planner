@@ -907,7 +907,7 @@ export function App() {
               canvasHostRef={wristViewRef}
               isDarkMode={isDarkMode}
               sidebarOpen={showSidebar}
-              aspect={16 / 9}
+              aspect={4 / 3}
               title={`Wrist Cam · ${armInstances.find((a) => a.id === selectedArmId)?.label ?? 'SO101 1'}`}
               secondary={cameraToggles.sensorPip}
               onClose={() => setWristView(false)}
