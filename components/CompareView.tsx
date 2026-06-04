@@ -16,16 +16,18 @@ interface Props {
   onExit: () => void;
 }
 
-interface Setup { z: number; fovDeg: number }
+interface Setup { z: number; fovDeg: number; aspect: number }
 interface Metrics { heightCm: number; fovDeg: number; footprintCm2: number; coverPct: number }
 
-/** Footprint area + how much of the worktop the camera frames, from height + FOV (top-down model). */
+/** Footprint area + how much of the worktop the camera frames, from height + FOV + aspect
+ *  (top-down model: half-width = z·tan(hFov/2), height derived from the image aspect). */
 function compute(s: Setup): Metrics {
-  const reach = s.z * Math.tan((s.fovDeg * Math.PI / 180) / 2); // half-width on the floor
-  const footprintCm2 = Math.round((reach * 2) * (reach * 1.8) * 1e4);
+  const halfW = s.z * Math.tan((s.fovDeg * Math.PI / 180) / 2);
+  const w = halfW * 2, h = w / (s.aspect || 1.6);
+  const footprintCm2 = Math.round(w * h * 1e4);
   // fraction of an 0.83×0.83 m worktop the footprint spans (capped at 100%).
-  const coverPct = Math.min(100, Math.round(((reach * 2) * (reach * 1.8)) / (0.83 * 0.83) * 100));
-  return { heightCm: Math.round(s.z * 100), fovDeg: s.fovDeg, footprintCm2, coverPct };
+  const coverPct = Math.min(100, Math.round((w * h) / (0.83 * 0.83) * 100));
+  return { heightCm: Math.round(s.z * 100), fovDeg: Math.round(s.fovDeg * 10) / 10, footprintCm2, coverPct };
 }
 
 function Col({ tag, accent, m, isDarkMode }: { tag: string; accent: string; m: Metrics; isDarkMode: boolean }) {
@@ -56,7 +58,7 @@ function Col({ tag, accent, m, isDarkMode }: { tag: string; accent: string; m: M
  * which setup frames more of the worktop, so camera-placement decisions are quantified.
  */
 export function CompareView({ cameraPos, intrinsics, baseResult, taskCount, isDarkMode, onExit }: Props) {
-  const live: Setup = { z: cameraPos?.z ?? 0.85, fovDeg: intrinsics.hFovDeg };
+  const live: Setup = { z: cameraPos?.z ?? 0.85, fovDeg: intrinsics.hFovDeg, aspect: intrinsics.aspect };
   const [setupA, setSetupA] = useState<Setup>(live);
   const mA = compute(setupA);
   const mB = compute(live);
@@ -80,7 +82,8 @@ export function CompareView({ cameraPos, intrinsics, baseResult, taskCount, isDa
 
       <div className="px-4 py-3">
         <p className={`text-[11px] leading-snug mb-3 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-          <b>A</b> is a saved snapshot; <b>B</b> is the live camera — move/aim it (Edit the camera) and B updates.
+          <b>A</b> is a saved snapshot; <b>B</b> is the live camera — <b>drag it in the viewport</b> to
+          reposition and B updates (switch to Edit to re-aim or change FOV).
         </p>
         <div className="flex gap-4">
           <Col tag="A" accent="oklch(0.72 0.13 262)" m={mA} isDarkMode={isDarkMode} />

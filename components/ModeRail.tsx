@@ -26,7 +26,7 @@ function RailBtn({ icon: Icon, label, active, accent, onClick, isDarkMode }: {
     ? accent ? 'bg-indigo-600 text-white' : 'bg-indigo-500/20 text-indigo-500'
     : hover ? (isDarkMode ? 'bg-white/10' : 'bg-black/5') : 'text-current opacity-60';
   return (
-    <div className="relative" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <div className="relative" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}>
       <button onClick={onClick} aria-label={label} aria-pressed={active} className={`w-10 h-10 rounded-xl grid place-items-center transition-colors ${bg}`}>
         <Icon className="w-[18px] h-[18px]" />
       </button>

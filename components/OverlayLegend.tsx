@@ -43,7 +43,7 @@ export function OverlayLegend({ camera, planner, isDarkMode }: Props) {
 
   return (
     <div
-      className={`absolute bottom-6 left-4 min-[660px]:left-[23.25rem] z-30 rounded-xl glass-panel border shadow-lg px-3 py-2.5 ${panel}`}
+      className={`absolute bottom-6 left-[4.25rem] min-[660px]:left-[23.25rem] z-30 rounded-xl glass-panel border shadow-lg px-3 py-2.5 ${panel}`}
       style={{ ['--c-cam' as string]: 'oklch(0.82 0.14 78)', ['--c-reach' as string]: 'oklch(0.70 0.10 292)', ['--c-precision' as string]: 'oklch(0.83 0.13 188)', ['--c-object' as string]: 'oklch(0.78 0.10 35)' }}
     >
       <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-2 opacity-70">Overlays</div>

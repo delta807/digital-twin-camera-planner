@@ -1046,7 +1046,8 @@ export function App() {
                 isDarkMode={isDarkMode}
               />
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
-              {mode === 'edit' && <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />}
+              {/* Legend shows in both modes — the camera footprint/frustum overlays persist into Compare. */}
+              <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />
               {mode === 'compare' && (
                 <CompareView cameraPos={cameraPos} intrinsics={intrinsics} baseResult={baseResult} taskCount={objectEntities.filter((e) => e.kind === 'object').length} isDarkMode={isDarkMode} onExit={() => setMode('edit')} />
               )}
@@ -1055,9 +1056,9 @@ export function App() {
           <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} />
 
           {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
-              Sits just right of the dock so it clears both side panels. */}
+              Offset (22.5rem) to clear the right edge of the rail-shifted dock. */}
           {!sceneIsFranka && (
-            <div className="absolute bottom-6 left-4 min-[660px]:left-[18.25rem] z-30 flex items-center gap-3">
+            <div className="absolute bottom-6 left-4 min-[660px]:left-[22.5rem] z-30 flex items-center gap-3">
               <button
                 onClick={togglePoseMode}
                 title="Click a part of the arm and drag to rotate it about its joint"
