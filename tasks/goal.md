@@ -48,9 +48,11 @@ chosen in sim hold up in the real world.
       DONE: QA pass (c30fa05) — CodeRabbit + subagent QA → recoloured 3D overlays to the categorical
             scheme (camera=amber, reach=violet, precision=cyan) so the legend is truthful; theme
             persistence; a11y; z-index; dropped half-broken density.
-      REMAINING (the two big SHELL restructures): left mode-rail (Edit/Compare/dock/perceive icon
-            strip — shifts the dock right), and Compare A/B mode (two camera setups + metrics). Both
-            re-layout the App shell → do as a dedicated focused pass (risk of half-broken shell).
+      DONE: phase 3 (cda86c2) — left mode-rail (Edit/Compare/dock/perceive) + Compare A/B mode
+            (A snapshot vs live B camera, footprint/coverage metrics + verdict); dock + left overlays
+            shift to clear the rail. + QA fixes (4b6a221): dock overlap, honest compare copy, legend
+            in both modes, rail keyboard a11y, real aspect in footprint.
+      ✅ FULL RESKIN COMPLETE — foundation + 5 structural pieces + 2 CodeRabbit/subagent QA passes.
 
 ## DONE (this batch)
 - [x] ROM reach → clean radial r(θ) fan (6c75c05).
