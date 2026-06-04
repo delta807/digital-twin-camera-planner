@@ -38,6 +38,10 @@ export class SelectionController {
   private readonly outline: THREE.LineSegments;
 
   private selected: SelectionInfo | null = null;
+  private selectedBody: THREE.Object3D | null = null; // task-object ref (tracked each frame)
+  private readonly box = new THREE.Box3();
+  private readonly vSize = new THREE.Vector3();
+  private readonly vCenter = new THREE.Vector3();
   private enabled = true;
   private pointerDown: { x: number; y: number } | null = null;
 
@@ -57,10 +61,12 @@ export class SelectionController {
     this.scene.add(this.proxy);
 
     // Yellow unit-box outline (depth-test off so it reads through geometry).
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     this.outline = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.EdgesGeometry(boxGeo), // copies edges out; the source box can go now
       new THREE.LineBasicMaterial({ color: 0xfacc15, depthTest: false, transparent: true }),
     );
+    boxGeo.dispose();
     this.outline.renderOrder = 999;
     this.outline.visible = false;
     this.outline.frustumCulled = false;
@@ -86,14 +92,20 @@ export class SelectionController {
 
     this.dom.addEventListener('pointerdown', this.handleDown);
     this.dom.addEventListener('pointerup', this.handleUp);
+    this.dom.addEventListener('pointercancel', this.handleCancel);
   }
 
   setEnabled(on: boolean) {
     this.enabled = on;
+    this.pointerDown = null; // never carry a half-finished press across an enable/disable
     if (!on) this.deselect();
   }
 
-  /** Keep the post outline + gizmo synced to the live post each frame (it rebuilds on edits). */
+  /**
+   * Keep the selection synced each frame: the post rebuilds on edits, and task objects have
+   * freejoints so physics (or the pickup sequence) can shove them around — the outline + HUD
+   * coordinates must follow, not freeze at the pose captured when the click happened.
+   */
   update() {
     if (this.selected?.kind === 'post') {
       const p = this.getPostAxis();
@@ -101,6 +113,20 @@ export class SelectionController {
       this.outline.position.set(p.x, p.y, p.height / 2);
       this.outline.scale.set(p.width * 1.6, p.width * 1.6, p.height);
       this.outline.rotation.set(0, 0, 0);
+    } else if (this.selected?.kind === 'object' && this.selectedBody) {
+      this.box.setFromObject(this.selectedBody);
+      this.box.getSize(this.vSize);
+      this.box.getCenter(this.vCenter);
+      this.outline.position.copy(this.vCenter);
+      this.outline.scale.set(Math.max(this.vSize.x, 0.01), Math.max(this.vSize.y, 0.01), Math.max(this.vSize.z, 0.01));
+      // Re-emit only when the centre actually moved (rounded to mm) to avoid HUD churn.
+      const moved = Math.abs(this.vCenter.x - this.selected.x) > 5e-4
+        || Math.abs(this.vCenter.y - this.selected.y) > 5e-4
+        || Math.abs(this.vCenter.z - this.selected.z) > 5e-4;
+      if (moved) {
+        this.selected = { ...this.selected, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z };
+        this.onChange?.(this.selected);
+      }
     }
   }
 
@@ -108,6 +134,8 @@ export class SelectionController {
     if (!this.enabled || e.button !== 0) return;
     this.pointerDown = { x: e.clientX, y: e.clientY };
   };
+
+  private handleCancel = () => { this.pointerDown = null; };
 
   private handleUp = (e: PointerEvent) => {
     if (!this.enabled || !this.pointerDown) return;
@@ -156,6 +184,7 @@ export class SelectionController {
 
   private selectPost() {
     const p = this.getPostAxis();
+    this.selectedBody = null;
     this.control.enabled = true;
     this.helper.visible = true;
     this.outline.visible = true;
@@ -167,21 +196,21 @@ export class SelectionController {
   private selectObject(body: THREE.Object3D) {
     this.control.enabled = false;
     this.helper.visible = false;
-    const box = new THREE.Box3().setFromObject(body);
-    const size = box.getSize(new THREE.Vector3());
-    const c = box.getCenter(new THREE.Vector3());
-    this.outline.position.copy(c);
-    this.outline.scale.set(Math.max(size.x, 0.01), Math.max(size.y, 0.01), Math.max(size.z, 0.01));
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
+    this.selectedBody = body;
     const label = (body.userData.bodyName as string) || `Object ${body.userData.bodyID}`;
-    this.selected = { kind: 'object', label, x: c.x, y: c.y, z: c.z, movable: false };
+    this.box.setFromObject(body);
+    this.box.getCenter(this.vCenter);
+    this.selected = { kind: 'object', label, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: false };
+    this.update();             // size + position the outline from the live bbox
     this.onChange?.(this.selected);
   }
 
   deselect() {
     if (!this.selected) return;
     this.selected = null;
+    this.selectedBody = null;
     this.control.enabled = false;
     this.helper.visible = false;
     this.outline.visible = false;
@@ -191,6 +220,7 @@ export class SelectionController {
   dispose() {
     this.dom.removeEventListener('pointerdown', this.handleDown);
     this.dom.removeEventListener('pointerup', this.handleUp);
+    this.dom.removeEventListener('pointercancel', this.handleCancel);
     this.control.detach();
     this.control.dispose();
     this.outline.geometry.dispose();
