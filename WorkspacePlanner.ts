@@ -74,7 +74,10 @@ export class WorkspacePlanner {
   private static readonly ARM_PALETTE = [0x10b981, 0x6366f1, 0xf59e0b, 0xef4444, 0x06b6d4, 0xec4899];
 
   // Base-relative reachable cells: "di,dj" -> hit count. Reusable for inverse placement.
+  // reachCells = PRECISION (gripper can point down → graspable); reachCellsMax = full reachable
+  // footprint (the arm folds & swings ~340° even with a ±110° base, so this is nearly a ring).
   private reachCells = new Map<string, number>();
+  private reachCellsMax = new Map<string, number>();
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -155,6 +158,7 @@ export class WorkspacePlanner {
       this.readBaseWorld(scratch);
 
       this.reachCells.clear();
+      this.reachCellsMax.clear();
       const n = Math.max(2, resolution);
       const idx = new Array(sweptJoints.length).fill(0);
       const total = Math.pow(n, sweptJoints.length);
@@ -170,17 +174,17 @@ export class WorkspacePlanner {
         mujoco.mj_forward(model, scratch);
         const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
         if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
-        // Top-down filter: count only configs where the gripper approach points roughly DOWN
-        // (graspable from above). Arm folding otherwise lets the TCP reach ~360° of azimuth —
-        // physically real, but not "useful top-down reach", which is what this footprint means.
-        // approach = -localY of the tcp site (fingers extend along Fixed_Jaw -y); its world z
-        // component is -site_xmat[7]; "points down" ⇒ that is negative ⇒ site_xmat[7] > cos(angle).
-        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
         const tx = scratch.site_xpos[tcpSiteId * 3];
         const ty = scratch.site_xpos[tcpSiteId * 3 + 1];
         const di = Math.round((tx - this.baseX) / CELL);
         const dj = Math.round((ty - this.baseY) / CELL);
         const key = di + ',' + dj;
+        // MAX envelope: every config that reaches worktop height (physically reachable).
+        this.reachCellsMax.set(key, (this.reachCellsMax.get(key) ?? 0) + 1);
+        // PRECISION: also require the gripper approach to point roughly DOWN (graspable from
+        // above). approach = -localY of the tcp site; world-z component is -site_xmat[7], so
+        // "points down" ⇒ site_xmat[7] > cos(angle).
+        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
         this.reachCells.set(key, (this.reachCells.get(key) ?? 0) + 1);
       }
     } finally {
@@ -277,12 +281,12 @@ export class WorkspacePlanner {
    * base-rotation fan (the SO-101 can't swing a full 360°, only ~±110°) and the inner dead zone,
    * instead of a misleading ring. (Marching-squares-style edge extraction.)
    */
-  private computeLocalSilhouette(): Array<[number, number, number, number]> {
-    if (this.reachCells.size === 0) return [];
+  private computeLocalSilhouette(source: Map<string, number>): Array<[number, number, number, number]> {
+    if (source.size === 0) return [];
     // Dilate the sampled cells by 1 (8-connected) to close FK-sampling gaps, so the silhouette
     // traces one clean contour instead of a maze of tiny single-sample holes.
     const cells = new Set<string>();
-    for (const key of this.reachCells.keys()) {
+    for (const key of source.keys()) {
       const c = key.indexOf(',');
       const di = +key.slice(0, c), dj = +key.slice(c + 1);
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) cells.add((di + a) + ',' + (dj + b));
@@ -335,7 +339,12 @@ export class WorkspacePlanner {
     return segs;
   }
 
-  /** Draw the reach silhouette per arm (transformed to its x,y,yaw), color-coded. */
+  /**
+   * Draw TWO reach contours per arm (transformed to its x,y,yaw):
+   *  • MAX envelope — the full physically-reachable footprint (~340°, faint grey).
+   *  • PRECISION    — where the gripper can point straight down to grasp (bright, arm-coloured).
+   * Mirrors the Hexagon-Mount mental model: "reaches almost everywhere, grasps in this front fan".
+   */
   private renderOutlines() {
     for (const child of [...this.outlineGroup.children]) {
       const seg = child as LineSegments2;
@@ -343,28 +352,31 @@ export class WorkspacePlanner {
       (seg.material as THREE.Material).dispose();
     }
     this.outlineGroup.clear();
-    if (this.reachCells.size === 0 || this.arms.length === 0) return;
+    if (this.arms.length === 0) return;
 
-    const local = this.computeLocalSilhouette();
-    if (local.length === 0) return;
+    const maxLocal = this.computeLocalSilhouette(this.reachCellsMax);
+    const precLocal = this.computeLocalSilhouette(this.reachCells);
 
-    this.arms.forEach((arm, i) => {
+    const addContour = (local: Array<[number, number, number, number]>, arm: ArmInstance, color: number, linewidth: number, opacity: number, z: number) => {
+      if (local.length === 0) return;
       const c = Math.cos(arm.yaw), s = Math.sin(arm.yaw);
       const positions: number[] = [];
       for (const [x1, y1, x2, y2] of local) {
-        positions.push(arm.x + x1 * c - y1 * s, arm.y + x1 * s + y1 * c, 0.008);
-        positions.push(arm.x + x2 * c - y2 * s, arm.y + x2 * s + y2 * c, 0.008);
+        positions.push(arm.x + x1 * c - y1 * s, arm.y + x1 * s + y1 * c, z);
+        positions.push(arm.x + x2 * c - y2 * s, arm.y + x2 * s + y2 * c, z);
       }
       const geo = new LineSegmentsGeometry();
       geo.setPositions(positions);
-      const mat = new LineMaterial({
-        color: WorkspacePlanner.ARM_PALETTE[i % WorkspacePlanner.ARM_PALETTE.length],
-        linewidth: 2.5, transparent: true, opacity: 0.95,
-      });
+      const mat = new LineMaterial({ color, linewidth, transparent: true, opacity });
       mat.resolution.set(window.innerWidth, window.innerHeight);
       const seg = new LineSegments2(geo, mat);
       seg.frustumCulled = false;
       this.outlineGroup.add(seg);
+    };
+
+    this.arms.forEach((arm, i) => {
+      addContour(maxLocal, arm, 0x94a3b8, 1.5, 0.55, 0.006);  // max envelope (slate, faint)
+      addContour(precLocal, arm, WorkspacePlanner.ARM_PALETTE[i % WorkspacePlanner.ARM_PALETTE.length], 2.5, 0.95, 0.009); // precision
     });
     this.outlineGroup.visible = this.toggles.outline;
   }
