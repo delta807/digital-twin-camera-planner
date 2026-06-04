@@ -123,6 +123,15 @@ export function App() {
   const [mujocoReady, setMujocoReady] = useState(false); 
   
   const [isPaused, setIsPaused] = useState(false);
+  // Interactive joint posing (leLab-style): click a link of the arm + drag to rotate its joint.
+  const [poseMode, setPoseMode] = useState(false);
+  const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
+  const togglePoseMode = () => {
+    const next = !poseMode;
+    setPoseMode(next);
+    if (!next) setHoveredJoint(null);
+    simRef.current?.setPoseMode(next, setHoveredJoint);
+  };
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660); 
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -629,6 +638,7 @@ export function App() {
     }
   };
 
+
   // Suggest + apply a max-coverage arrangement for all current arms (greedy set-cover).
   const [layoutResult, setLayoutResult] = useState<{ covered: number; total: number } | null>(null);
   const handleSuggestLayout = () => {
@@ -965,7 +975,30 @@ export function App() {
             onResetView={handleResetView}
             onFrameSelection={handleFrameSelection}
           />
-          
+
+          {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
+              Sits just right of the dock so it clears both side panels. */}
+          {!sceneIsFranka && (
+            <div className="absolute bottom-6 left-4 min-[660px]:left-[15.5rem] z-30 flex items-center gap-3">
+              <button
+                onClick={togglePoseMode}
+                title="Click a part of the arm and drag to rotate it about its joint"
+                className={`px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide shadow-lg glass-panel border transition-colors ${
+                  poseMode
+                    ? 'bg-indigo-600 text-white border-indigo-500'
+                    : isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white'
+                }`}
+              >
+                {poseMode ? '● Jogging joints' : 'Jog joints'}
+              </button>
+              {poseMode && (
+                <div className="px-3 py-2 rounded-xl glass-panel border border-white/10 bg-slate-900/85 text-slate-100 text-[12px] font-mono shadow-lg pointer-events-none whitespace-nowrap">
+                  {hoveredJoint ? <>Joint: <span className="text-indigo-300 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}
+                </div>
+              )}
+            </div>
+          )}
+
           <UnifiedSidebar 
             isOpen={showSidebar}
             onClose={() => setShowSidebar(false)}
