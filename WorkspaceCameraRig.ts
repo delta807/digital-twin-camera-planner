@@ -52,6 +52,10 @@ export class WorkspaceCameraRig {
   // PIP render target (lazy: only renders once a DOM container is attached).
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
+  // Simulated DEPTH stream: render the PIP through a depth-colormap material clamped to the
+  // D435i's usable range, so we can preview what the depth camera would see (vs the RGB footage).
+  depthMode = false;
+  private depthMaterial: THREE.ShaderMaterial | null = null;
 
   // Reused scratch objects (avoid per-frame allocation).
   private readonly raycaster = new THREE.Raycaster();
@@ -312,6 +316,7 @@ export class WorkspaceCameraRig {
     this.clearTint();
     this.control.detach();
     this.control.dispose();
+    this.depthMaterial?.dispose();
     this.scene.remove(this.gizmo, this.controlHelper, this.frustumLines, this.footprint);
     if (this.coveragePoints) this.scene.remove(this.coveragePoints);
   }
@@ -435,10 +440,58 @@ export class WorkspaceCameraRig {
     const prev = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
 
-    this.pipRenderer.render(this.scene, this.sensorCamera);
+    if (this.depthMode) {
+      // Depth pass: override every surface with the depth-colormap shader + black background
+      // (no geometry / out-of-range = "no depth data", like a real depth sensor).
+      const mat = this.ensureDepthMaterial();
+      mat.uniforms.uNear.value = this.intrinsics.near;
+      mat.uniforms.uFar.value = this.intrinsics.far;
+      const bg = this.scene.background;
+      this.scene.background = null;
+      this.scene.overrideMaterial = mat;
+      this.pipRenderer.setClearColor(0x000000, 1);
+      this.pipRenderer.render(this.scene, this.sensorCamera);
+      this.scene.overrideMaterial = null;
+      this.scene.background = bg;
+    } else {
+      this.pipRenderer.render(this.scene, this.sensorCamera);
+    }
 
     hidden.forEach((o, i) => (o.visible = prev[i]));
   }
+
+  /** Depth-colormap material: view-space distance → jet colormap, clamped to [near, far].
+   *  Near = red, far = blue (RealSense-style); outside the range renders black (no data). */
+  private ensureDepthMaterial(): THREE.ShaderMaterial {
+    if (this.depthMaterial) return this.depthMaterial;
+    this.depthMaterial = new THREE.ShaderMaterial({
+      uniforms: { uNear: { value: 0.3 }, uFar: { value: 3.0 } },
+      vertexShader: `
+        varying float vDist;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vDist = -mv.z;              // view-space distance to the surface (meters)
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform float uNear; uniform float uFar;
+        varying float vDist;
+        vec3 jet(float t) {
+          return vec3(
+            clamp(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0),
+            clamp(1.5 - abs(4.0 * t - 2.0), 0.0, 1.0),
+            clamp(1.5 - abs(4.0 * t - 1.0), 0.0, 1.0));
+        }
+        void main() {
+          if (vDist < uNear || vDist > uFar) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+          float t = (vDist - uNear) / (uFar - uNear);
+          gl_FragColor = vec4(jet(1.0 - t), 1.0); // near surfaces warm, far surfaces cool
+        }`,
+    });
+    return this.depthMaterial;
+  }
+
+  setDepthMode(on: boolean) { this.depthMode = on; }
 
   private applyToggleVisibility() {
     const on = this.toggles.enabled;

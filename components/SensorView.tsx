@@ -28,6 +28,8 @@ interface SensorViewProps {
   topRem?: number;
   /** When provided, shows a real-vs-sim superimpose control + overlays the real frame on the PIP. */
   compare?: CompareOverlay;
+  /** When provided, shows an RGB/Depth toggle (simulated D435i depth stream). */
+  depth?: { on: boolean; onToggle: (v: boolean) => void };
 }
 
 /**
@@ -36,7 +38,7 @@ interface SensorViewProps {
  * sensor camera — "what the footage looks like" to the robot / teleoperator.
  * The inner host div follows the selected camera stream profile aspect ratio.
  */
-export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onClose, title = 'Sensor View · D435i', secondary = false, topRem, compare }: SensorViewProps) {
+export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onClose, title = 'Sensor View · D435i', secondary = false, topRem, compare, depth }: SensorViewProps) {
   const panelStyle = isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/70 border-white/80 text-slate-800';
   // Tuck the panel left of the analysis sidebar when it's open (desktop only).
   const rightClass = sidebarOpen ? 'min-[660px]:right-[25rem]' : 'min-[660px]:right-6';
@@ -53,6 +55,15 @@ export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onC
           <span className="text-[10px] font-bold uppercase tracking-widest">{title}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          {depth && (
+            <button
+              onClick={() => depth.onToggle(!depth.on)}
+              title="Toggle simulated D435i depth stream (RGB ↔ Depth)"
+              className={`px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider ${depth.on ? 'bg-indigo-600 text-white' : isDarkMode ? 'bg-white/10 text-slate-300 hover:bg-white/15' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}
+            >
+              {depth.on ? 'DEPTH' : 'RGB'}
+            </button>
+          )}
           {compare && (
             <button
               onClick={() => compare.onToggle(!compare.on)}

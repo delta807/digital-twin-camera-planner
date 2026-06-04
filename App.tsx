@@ -170,6 +170,9 @@ export function App() {
   const [wristOverlayOn, setWristOverlayOn] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const [overlayBlend, setOverlayBlend] = useState<'normal' | 'difference'>('normal');
+  // Simulated D435i DEPTH stream toggle for the overhead PIP (depth colormap, 0.3–3 m range).
+  const [depthView, setDepthView] = useState(false);
+  useEffect(() => { simRef.current?.renderSys.cameraRig.setDepthMode(depthView); }, [depthView, isLoading]);
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
   cameraTogglesRef.current = cameraToggles;
 
@@ -1064,6 +1067,7 @@ export function App() {
                 opacity: overlayOpacity, onOpacity: setOverlayOpacity,
                 blend: overlayBlend, onBlend: setOverlayBlend,
               }}
+              depth={{ on: depthView, onToggle: setDepthView }}
             />
           )}
 
