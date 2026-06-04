@@ -7,14 +7,16 @@ import * as THREE from 'three';
 import { MujocoData, MujocoModel, MujocoModule } from './types';
 
 /**
- * NumericIk — robot-agnostic position-only inverse kinematics.
+ * NumericIk — robot-agnostic numeric inverse kinematics (position, optionally + gripper-down).
  *
  * The SO-101 has no closed-form IK (5-DOF, no spherical wrist), so we use the loaded MuJoCo
  * model itself as the forward-kinematics oracle: perturb each driving joint, mj_forward, read
- * the TCP site delta → that's a finite-difference Jacobian. Then a damped-least-squares step
- * (Levenberg–Marquardt) drives the TCP toward a 3-D target, clamped to joint limits. All work
+ * the TCP site delta → that's a finite-difference Jacobian. A damped-least-squares step
+ * (Levenberg–Marquardt, N×N normal form) drives the TCP toward a 3-D target, and when
+ * `downWeight > 0` also drives the gripper's approach axis toward straight-down (a 6×N Jacobian) —
+ * which makes the base rotate to face side targets and orients for a top-down grasp. All work
  * happens on a SCRATCH MjData so the live arm is never disturbed. ~1–10 ms/solve, no new deps.
- * (Parameters per the SO-101 IK research: λ=0.05, dq=1e-4, 20 iters, 1 mm tol, 0.2 rad clamp.)
+ * (Parameters per the SO-101 IK research: λ=0.05, dq=1e-4, 24 iters, 1 mm tol, 0.2 rad clamp.)
  */
 export class NumericIk {
   private readonly scratch: MujocoData;
