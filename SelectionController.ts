@@ -41,6 +41,7 @@ export class SelectionController {
 
   private selected: SelectionInfo | null = null;
   private selectedBody: THREE.Object3D | null = null; // task-object ref (tracked each frame)
+  private selectedArmId: string | undefined = undefined; // which arm to outline (undefined = primary/physics)
   private readonly box = new THREE.Box3();
   private readonly box2 = new THREE.Box3();
   private readonly vSize = new THREE.Vector3();
@@ -104,8 +105,8 @@ export class SelectionController {
   }
 
   /** Programmatic selection (from the object tree), without a viewport raycast. */
-  selectByKind(kind: 'arm' | 'post' | 'camera') {
-    if (kind === 'arm') return this.selectArm();
+  selectByKind(kind: 'arm' | 'post' | 'camera', armId?: string) {
+    if (kind === 'arm') return this.selectArm(armId);
     if (kind === 'post') return this.selectPost();
     for (const root of this.getSelectables()) {
       if (root.userData?.selectable === 'camera') { this.selectCamera(root); return; }
@@ -145,7 +146,7 @@ export class SelectionController {
     }
     // Object / camera bbox the tracked Object3D; arm unions all its links.
     let box: THREE.Box3 | null = null;
-    if (k === 'arm') box = this.armBox();
+    if (k === 'arm') box = this.armBox(this.selectedArmId);
     else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
@@ -198,7 +199,7 @@ export class SelectionController {
       const s = node.userData?.selectable as string | undefined;
       if (s === 'post') { this.selectPost(); return; }
       if (s === 'object') { this.selectObject(node); return; }
-      if (s === 'arm') { this.selectArm(); return; }
+      if (s === 'arm') { this.selectArm(node.userData?.armId as string | undefined); return; }
       if (s === 'camera') {
         // Outline the whole camera gizmo, not just the lens/body child that was hit.
         let cam = node;
@@ -235,8 +236,9 @@ export class SelectionController {
     this.onChange?.(this.selected);
   }
 
-  /** Select the whole arm (any clicked link) — outline its full bounding box. */
-  private selectArm() {
+  /** Select a specific arm (by id; undefined = the primary physics arm) — outline its bbox. */
+  private selectArm(armId?: string) {
+    this.selectedArmId = armId;
     this.selectedBody = null;
     this.control.enabled = false;
     this.helper.visible = false;
@@ -261,18 +263,28 @@ export class SelectionController {
     this.onChange?.(this.selected);
   }
 
-  /** Union world bbox of every mesh tagged selectable='arm' (the arm spans many links). */
-  private armBox(): THREE.Box3 | null {
+  /**
+   * Union world bbox of one arm's links. A non-primary arm is a ghost clone tagged with its armId;
+   * the primary physics arm's links carry no armId. So if `armId` matches ghost links, outline
+   * those; otherwise (primary) outline the physics arm links (the ones with no armId).
+   */
+  private armBox(armId?: string): THREE.Box3 | null {
+    if (armId) { const ghost = this.unionArmMeshes(armId); if (ghost) return ghost; }
+    return this.unionArmMeshes(undefined);
+  }
+
+  private unionArmMeshes(armId?: string): THREE.Box3 | null {
     const box = this.box.makeEmpty();
     for (const root of this.getSelectables()) {
       root.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh || !m.visible || !m.geometry) return;
-        let isArm = false;
+        let isArm = false, meshArmId: string | undefined;
         for (let p: THREE.Object3D | null = o; p; p = p.parent) {
-          if (p.userData?.selectable === 'arm') { isArm = true; break; }
+          if (p.userData?.selectable === 'arm') { isArm = true; meshArmId = p.userData.armId as string | undefined; break; }
         }
         if (!isArm) return;
+        if (armId === undefined ? meshArmId !== undefined : meshArmId !== armId) return; // physics vs a specific ghost
         this.box2.setFromObject(m);
         if (!this.box2.isEmpty()) box.union(this.box2);
       });

@@ -121,7 +121,7 @@ export class RenderSystem {
         // Click-to-select (outline + post drag-gizmo). Selectables: task objects + the camera post.
         this.selection = new SelectionController(
             this.scene, this.camera, this.renderer.domElement, this.controls,
-            () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo],
+            () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo, this.planningArmsGroup],
             () => this.baseBuilder.postAxis);
 
         window.addEventListener('resize', this.onResize);
@@ -313,6 +313,7 @@ export class RenderSystem {
             clone.position.set(instance.x, instance.y, 0);
             clone.rotation.z = instance.yaw;
             clone.userData.armId = instance.id;
+            clone.userData.selectable = 'arm'; // pickable + carries its armId for per-arm outline
             this.planningArmsGroup.add(clone);
         }
     }
