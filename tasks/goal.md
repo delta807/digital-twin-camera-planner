@@ -26,8 +26,8 @@ chosen in sim hold up in the real world.
       optimal layout' places all arms for max top-down task coverage + shows X/Y reached.
 - [x] **Build connector rods** (652615d) — '+ Add mount post' adds custom snappable uprights
       (editable X/Y, removable). Arbitrary point-to-point connector segments = future nicety.
-- [ ] **Wrist-cam framing tune** — expose back/up/reach as sliders; dial in vs real footage with the
-      gripper at a grasp pose (small follow-up when you want it pixel-dialed).
+- [x] **Wrist-cam framing tune** (62fd366) — back/up/reach + FOV exposed as live dock sliders;
+      defaults dialed vs real footage (fingers at frame bottom, objects ahead). Tune further anytime.
 - [~] **A3 — Ghost/preview** — CLOSED (won't-do): the live base move already shows motion in real
       time, so a non-committed ghost adds little. Reopen if you want preview-before-commit.
 - [~] **A4 — Scale-to-dimension** — COVERED for the workcell (Length/Width are editable to exact mm).
