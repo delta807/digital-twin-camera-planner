@@ -27,18 +27,13 @@ const ACCENTS: { name: string; h: number }[] = [
  */
 export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
   const [open, setOpen] = useState(false);
-  const [hue, setHue] = useState(() => Number(localStorage.getItem('accent-h')) || 262);
-  const [compact, setCompact] = useState(() => localStorage.getItem('density') === 'compact');
+  const stored = Number(localStorage.getItem('accent-h'));
+  const [hue, setHue] = useState(() => (Number.isFinite(stored) && stored > 0 ? stored : 262));
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-h', String(hue));
     localStorage.setItem('accent-h', String(hue));
   }, [hue]);
-  useEffect(() => {
-    document.documentElement.dataset.density = compact ? 'compact' : 'spacious';
-    document.documentElement.style.fontSize = compact ? '13.5px' : '16px';
-    localStorage.setItem('density', compact ? 'compact' : 'spacious');
-  }, [compact]);
 
   const panel = isDarkMode ? 'bg-slate-900/90 border-white/10 text-slate-100' : 'bg-white/95 border-white/80 text-slate-800';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
@@ -51,14 +46,14 @@ export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
         <div className={`w-56 rounded-2xl glass-panel border shadow-xl p-3 space-y-3 ${panel}`}>
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-70">Tweaks</span>
-            <button onClick={() => setOpen(false)} className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setOpen(false)} aria-label="Close tweaks" className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
           </div>
 
           <div className="space-y-1">
             <div className={`text-[9px] font-bold uppercase ${subtle}`}>Theme</div>
             <div className="flex gap-1">
-              <button onClick={() => isDarkMode && onToggleTheme()} className={seg(!isDarkMode)}><Sun className="w-3 h-3 inline mr-1" />Light</button>
-              <button onClick={() => !isDarkMode && onToggleTheme()} className={seg(isDarkMode)}><Moon className="w-3 h-3 inline mr-1" />Dark</button>
+              <button onClick={() => isDarkMode && onToggleTheme()} aria-pressed={!isDarkMode} className={seg(!isDarkMode)}><Sun className="w-3 h-3 inline mr-1" />Light</button>
+              <button onClick={() => !isDarkMode && onToggleTheme()} aria-pressed={isDarkMode} className={seg(isDarkMode)}><Moon className="w-3 h-3 inline mr-1" />Dark</button>
             </div>
           </div>
 
@@ -67,19 +62,11 @@ export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
             <div className="flex gap-1.5">
               {ACCENTS.map((a) => (
                 <button
-                  key={a.h} onClick={() => setHue(a.h)} title={a.name}
+                  key={a.h} onClick={() => setHue(a.h)} title={a.name} aria-label={`${a.name} accent`} aria-pressed={hue === a.h}
                   className={`w-6 h-6 rounded-full border-2 ${hue === a.h ? 'border-current' : 'border-transparent'}`}
                   style={{ background: `oklch(0.72 0.14 ${a.h})` }}
                 />
               ))}
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className={`text-[9px] font-bold uppercase ${subtle}`}>Density</div>
-            <div className="flex gap-1">
-              <button onClick={() => setCompact(false)} className={seg(!compact)}>Spacious</button>
-              <button onClick={() => setCompact(true)} className={seg(compact)}>Compact</button>
             </div>
           </div>
         </div>
@@ -87,7 +74,7 @@ export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
 
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Appearance tweaks"
+        title="Appearance tweaks" aria-label="Appearance tweaks"
         className={`w-10 h-10 rounded-full glass-panel border shadow-lg grid place-items-center ${open ? 'bg-indigo-600 text-white border-indigo-500' : panel}`}
       >
         <Sliders className="w-4 h-4" />

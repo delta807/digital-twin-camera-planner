@@ -84,7 +84,7 @@ export class WorkspaceCameraRig {
     );
     const lens = new THREE.Mesh(
       new THREE.ConeGeometry(0.025, 0.05, 20),
-      new THREE.MeshStandardMaterial({ color: 0x4f46e5, emissive: 0x312e81, roughness: 0.4 }),
+      new THREE.MeshStandardMaterial({ color: 0xe0a530, emissive: 0x3d2a00, roughness: 0.4 }),
     );
     lens.geometry.rotateX(-Math.PI / 2); // cone apex -> -Z (the camera look direction)
     lens.position.set(0, 0, -0.04);
@@ -120,7 +120,7 @@ export class WorkspaceCameraRig {
     frustumGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3));
     this.frustumLines = new THREE.LineSegments(
       frustumGeo,
-      new THREE.LineBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.9 }),
+      new THREE.LineBasicMaterial({ color: 0xe0a530, transparent: true, opacity: 0.9 }),
     );
     this.frustumLines.frustumCulled = false;
     this.scene.add(this.frustumLines);
@@ -132,7 +132,7 @@ export class WorkspaceCameraRig {
     this.footprint = new THREE.Mesh(
       fpGeo,
       new THREE.MeshBasicMaterial({
-        color: 0x4f46e5,
+        color: 0xe0a530,
         transparent: true,
         opacity: 0.18,
         side: THREE.DoubleSide,

@@ -77,7 +77,9 @@ export class WorkspacePlanner {
   private readonly outlineGroup = new THREE.Group();
   private arms: ArmInstance[] = [];
   private primaryYaw = 0;
-  private static readonly ARM_PALETTE = [0x10b981, 0x6366f1, 0xf59e0b, 0xef4444, 0x06b6d4, 0xec4899];
+  // Precision grasp fan, per arm. Index 0 (primary) = the categorical "precision" cyan so it matches
+  // the overlay legend; the rest stay distinct so multiple arms' fans are tellable apart.
+  private static readonly ARM_PALETTE = [0x2dd4cf, 0x6366f1, 0xf59e0b, 0xef4444, 0x10b981, 0xec4899];
 
   // Base-relative reachable cells: "di,dj" -> hit count. Reusable for inverse placement.
   // reachCells = PRECISION (gripper can point down → graspable); reachCellsMax = full reachable
@@ -431,7 +433,7 @@ export class WorkspacePlanner {
     };
 
     this.arms.forEach((arm, i) => {
-      addContour(maxLocal, arm, 0x94a3b8, 1.5, 0.55, 0.006);  // max envelope (slate, faint)
+      addContour(maxLocal, arm, 0x9d8cc9, 1.5, 0.6, 0.006);  // max reach envelope (violet = "reach")
       addContour(precLocal, arm, WorkspacePlanner.ARM_PALETTE[i % WorkspacePlanner.ARM_PALETTE.length], 2.5, 0.95, 0.009); // precision
     });
     this.outlineGroup.visible = this.toggles.outline;

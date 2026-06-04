@@ -139,7 +139,11 @@ export function App() {
   };
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660); 
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
+  });
+  // Apply the persisted theme to the 3D scene once the sim is ready.
+  useEffect(() => { if (!isLoading) simRef.current?.renderSys.setDarkMode(isDarkMode); }, [isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
   
   const [erLoading, setErLoading] = useState(false);
   const [logs, setLogs] = useState<Array<LogEntry>>([]);
@@ -738,6 +742,7 @@ export function App() {
   const toggleDarkMode = () => {
     const next = !isDarkMode;
     setIsDarkMode(next);
+    try { localStorage.setItem('theme', next ? 'dark' : 'light'); } catch { /* ignore */ }
     simRef.current?.renderSys.setDarkMode(next);
   };
 

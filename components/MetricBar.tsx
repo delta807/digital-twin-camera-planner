@@ -11,10 +11,12 @@ interface Props {
 }
 
 function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
+  // Mid-lightness hues so the value reads on BOTH the white and dark panel variants.
+  const color = good === undefined ? undefined : good ? 'oklch(0.58 0.15 150)' : 'oklch(0.64 0.15 70)';
   return (
     <div className="flex flex-col items-end leading-none">
       <span className="text-[8px] font-bold uppercase tracking-[0.08em] opacity-60 whitespace-nowrap">{label}</span>
-      <span className="font-mono text-[12px] font-semibold tabular-nums" style={good !== undefined ? { color: good ? 'oklch(0.70 0.15 150)' : 'var(--c-cam)' } : undefined}>{value}</span>
+      <span className="font-mono text-[12px] font-semibold tabular-nums" style={color ? { color } : undefined}>{value}</span>
     </div>
   );
 }
@@ -29,7 +31,7 @@ export function MetricBar({ armCount, baseResult, isPaused, isDarkMode }: Props)
 
   return (
     <div
-      className={`absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 rounded-full glass-panel border shadow-lg px-4 py-1.5 ${panel}`}
+      className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4 rounded-full glass-panel border shadow-lg px-4 py-1.5 ${panel}`}
       style={{ ['--c-cam' as string]: 'oklch(0.82 0.14 78)' }}
     >
       <span className="text-[11px] font-semibold whitespace-nowrap">SO-101 Digital Twin</span>
