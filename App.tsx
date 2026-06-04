@@ -22,6 +22,9 @@ import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { LayoutProfiles } from './components/LayoutProfiles';
+import { OverlayLegend } from './components/OverlayLegend';
+import { TweaksPanel } from './components/TweaksPanel';
+import { MetricBar } from './components/MetricBar';
 
 /** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
  *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
@@ -1023,6 +1026,14 @@ export function App() {
               isDarkMode={isDarkMode}
             />
           )}
+
+          {!sceneIsFranka && (
+            <>
+              <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
+              <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />
+            </>
+          )}
+          <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} />
 
           {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
               Sits just right of the dock so it clears both side panels. */}
