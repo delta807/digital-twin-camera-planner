@@ -88,8 +88,30 @@ compile cleanly. Remaining gaps were closed here:
 - [ ] **Deferred** — corner orientation nav cube via an isolated renderer (three ViewHelper broke
       the main viewport; the coordinate HUD + origin axes already deliver #1). Pure polish.
 
+## Milestone 5 — Selection, measure snapping, SO-101 pickup (DONE, verified 2026-06-04)
+Driven by the user's "#8 selection → #7 measure snapping → #2 pickup" + B1/B2 (replicate the real
+rig via coordinates). Per-phase ritual (implement → tsc → Playwright → commit → CodeRabbit → QA).
+- [x] **B2 editable camera X/Y/Z + aim-down** (acf7c97) — type exact coords (origin=table centre);
+      `WorkspaceCameraRig.setPosition/aimDown` + dock `Vec3Editor`. Verified X=0.265 Z=0.87 moves cam.
+- [x] **B1/B2 movable camera post + snap-to-post** (97b950f) — `WorkcellConfig.postX/postY` sliders;
+      post defaults to the real rig (~15 cm in from +X edge, centred Y); "Snap to post" mounts the
+      camera on the rod top + aims down. Verified post at (0.265,0); snap → cam (0.27,0,0.84).
+- [x] **#8 click-to-select** (9e3ad02, QA 157f066) — `SelectionController`: click task object/post →
+      yellow BoxHelper outline + HUD chip (label, live X/Y/Z); post gets an X/Y translate gizmo that
+      writes postX/postY (live). Arm/floor/empty → deselect. Only tagged bodies pickable. Outline/
+      gizmo hidden from PIP; disabled during measure. QA: tracks physics-moved objects each frame,
+      frees BoxGeometry, robust pointer state. Verified post/bin/deselect; 0 errors. CodeRabbit clean.
+- [x] **#7 measure snapping** (755b3ad) — OrcaSlicer-style vertex→edge→surface snap chosen in screen
+      space (SNAP_PX=12) off the hit triangle; colour-coded hover dot (green/blue/amber); Shift=free.
+      Verified green vertex dot + 0.176 m two-vertex measurement.
+- [x] **#2 SO-101 pickup** (00bcf3d, QA 4f4c6a6) — numeric-IK grasp state machine: approach→descend→
+      close→lift→carry→lower→release per detected item. Orange task blocks made DYNAMIC (freejoint on
+      the menagerie floor); grabbed block kinematically pinned to the TCP; placed into the teal bin.
+      Verified task0 (0.16,0.12)→(0.28,0.164,0.058) in the bin; 15 cm lift. CodeRabbit: 2 minor, fixed
+      (clear stale grasp on reload, re-entry guard, marker hygiene, phase comment).
+
 ## Repo
-Private: github.com/delta807/digital-twin-camera-planner — all phases pushed (origin/master @ 64cd4ec).
+Private: github.com/delta807/digital-twin-camera-planner — all phases pushed (origin/master @ 4f4c6a6).
 Per-phase ritual followed throughout: implement → Playwright verify → commit → CodeRabbit → subagent QA → fix.
 
 ## Out of scope (later)
