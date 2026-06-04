@@ -21,9 +21,12 @@ import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
 
-/** Live overhead D435i feed from the Jetson Orin Nano (Tailscale) — FPV MJPEG dashboard on :8080.
- *  Used to superimpose the REAL overhead frame over the sim PIP and tune the sim camera to match. */
-const JETSON_OVERHEAD_STREAM = 'http://100.68.215.10:8080/stream.mjpg';
+/** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
+ *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
+ *    • scene = the OVERHEAD D435i (post-mounted, looks down across the worktop) → the D435i PIP.
+ *    • wrist = the gripper-mounted HBVCAM (the follower's wrist) → the primary arm's wrist PIP. */
+const JETSON_SCENE_STREAM = 'http://100.68.215.10:8088/scene.mjpg';
+const JETSON_WRIST_STREAM = 'http://100.68.215.10:8088/wrist.mjpg';
 
 /**
  * Default prompt parts for different detection types.
@@ -151,9 +154,11 @@ export function App() {
   const [selectedProfileId, setSelectedProfileId] = useState(D435I_DEFAULT_PROFILE_ID);
   const [dragMode, setDragMode] = useState<'translate' | 'rotate'>('translate');
   const sensorViewRef = useRef<HTMLDivElement>(null);
-  // Superimpose the live real overhead feed (Jetson FPV MJPEG) over the sim PIP to tune the sim
-  // camera until they match. Both app + Jetson are http (no mixed-content); <img> needs no CORS.
-  const [overlayOn, setOverlayOn] = useState(false);
+  // Superimpose the live real feeds (Jetson MJPEG) over their matching sim PIPs to tune the sim
+  // until they match. Both app + Jetson are http (no mixed-content); <img> needs no CORS.
+  // Independent enable per feed (overhead scene + primary wrist); shared opacity + blend mode.
+  const [sceneOverlayOn, setSceneOverlayOn] = useState(false);
+  const [wristOverlayOn, setWristOverlayOn] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const [overlayBlend, setOverlayBlend] = useState<'normal' | 'difference'>('normal');
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
@@ -1016,8 +1021,8 @@ export function App() {
               aspect={intrinsics.aspect}
               onClose={() => handleCameraToggle('sensorPip', false)}
               compare={{
-                src: JETSON_OVERHEAD_STREAM,
-                on: overlayOn, onToggle: setOverlayOn,
+                src: JETSON_SCENE_STREAM,
+                on: sceneOverlayOn, onToggle: setSceneOverlayOn,
                 opacity: overlayOpacity, onOpacity: setOverlayOpacity,
                 blend: overlayBlend, onBlend: setOverlayBlend,
               }}
@@ -1035,6 +1040,13 @@ export function App() {
               // Stack under the D435i feed (if shown), then one below another (~13rem each).
               topRem={(cameraToggles.sensorPip ? 15.5 : 1.5) + i * 13}
               onClose={() => setWristView(false)}
+              // Only the PRIMARY arm has a real wrist cam to compare against (the follower's HBVCAM).
+              compare={arm.primary ? {
+                src: JETSON_WRIST_STREAM,
+                on: wristOverlayOn, onToggle: setWristOverlayOn,
+                opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                blend: overlayBlend, onBlend: setOverlayBlend,
+              } : undefined}
             />
           ))}
 
