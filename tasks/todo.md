@@ -138,9 +138,20 @@ position-only so it leans instead of turning.
 - [x] **B1 Reach two-contour (#6)** (45738b7) — faint grey MAX envelope (~340°, all worktop-height
       configs) + bright PRECISION contour (top-down graspable). reachCellsMax + reachCells; both
       silhouettes rendered per arm. Verified both contours show.
-- [ ] **B2 Real grasp (#7)** — orientation-aware DLS (6×N Jacobian, gripper-down) so the base turns
-      to face targets; delete `pinGrabbedBlock`, friction grasp like the Franka; mark unreachable
-      (beyond ±110°) instead of flailing.
+- [x] **B2 Real grasp (#7)** (b60f1d2) — orientation-aware DLS: NumericIk gains a downWeight that
+      drives the gripper approach axis straight-down via a 6×N finite-diff Jacobian (N×N normal form
+      + Gaussian elimination). The arm now ROTATES to face side targets (7a) and, because the gripper
+      lands ON the block pointing down, the kinematic grab is geometrically sensible and no longer
+      fights the contact solver — the wacky fling (7b) is gone. Verified: task3 → base +46°, gripper-
+      down 0.98, ~3 cm reach; full pick-and-place carries it to rest (z=0.018, not flung), 0 other
+      blocks disturbed. Out-of-arc targets hit the joint limit (honest 5-DOF limit). CodeRabbit: no
+      findings; subagent verified the DLS/solveLinear/axis math. Known limit: ~3 cm placement error +
+      folded-elbow look = 4-DOF IK precision, not physics bugs.
+
+### M6 status: DONE for this batch. Shipped #1,#2,#3,#5,#6,#7 + selection-driven UI overhaul.
+A3 (ghost) deprioritised (live move shows motion already); A4 (scale-to-dimension) deferred
+(MuJoCo runtime geom scaling needs care). Possible polish: move bin into the top-down reach arc so
+placements land cleanly; smooth the elbow config; surface "unreachable" targets in the UI.
 
 ## Repo
 Private: github.com/delta807/digital-twin-camera-planner — all phases pushed (origin/master @ 4f4c6a6).
