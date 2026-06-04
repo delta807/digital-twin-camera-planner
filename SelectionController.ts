@@ -54,8 +54,11 @@ export class SelectionController {
   onChange?: (sel: SelectionInfo | null) => void;
   onPostMove?: (x: number, y: number) => void;
   onArmMove?: (armId: string | undefined, x: number, y: number) => void;
+  /** Arm "aim" gizmo (rotate mode) → write the base yaw (radians). */
+  onArmRotate?: (armId: string | undefined, yaw: number) => void;
   /** App provides the selected arm's base pose so the gizmo can sit on it + track it. */
-  getArmPose?: (armId: string | undefined) => { x: number; y: number } | null;
+  getArmPose?: (armId: string | undefined) => { x: number; y: number; yaw?: number } | null;
+  private armAim = false; // arm gizmo in rotate (aim) mode vs translate (move)
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -92,7 +95,11 @@ export class SelectionController {
       this.orbit.enabled = !(e as unknown as { value: boolean }).value;
     });
     this.control.addEventListener('objectChange', () => {
-      if (this.selected?.kind === 'arm') { this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y); return; }
+      if (this.selected?.kind === 'arm') {
+        if (this.armAim) this.onArmRotate?.(this.selected.armId, this.proxy.rotation.z);
+        else this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y);
+        return;
+      }
       if (this.selected?.kind !== 'post') return;
       this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
@@ -117,6 +124,39 @@ export class SelectionController {
     for (const root of this.getSelectables()) {
       if (root.userData?.selectable === 'camera') { this.selectCamera(root); return; }
     }
+  }
+
+  /** Raycast at a screen point, select what's there, and return its kind — for the right-click
+   *  radial menu (so it knows which modes to offer for the object under the cursor). */
+  selectAt(clientX: number, clientY: number): SelectionKind | null {
+    const rect = this.dom.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const meshes: THREE.Mesh[] = [];
+    for (const root of this.getSelectables()) root.traverse((c) => { if ((c as THREE.Mesh).isMesh && c.visible) meshes.push(c as THREE.Mesh); });
+    const hasSelectable = (o: THREE.Object3D) => { for (let n: THREE.Object3D | null = o; n; n = n.parent) if (n.userData?.selectable) return true; return false; };
+    const hit = this.raycaster.intersectObjects(meshes, false).find((h) => hasSelectable(h.object));
+    if (!hit) return null;
+    this.selectFromHit(hit.object);
+    return this.selected?.kind ?? null;
+  }
+
+  /** Switch the ARM gizmo between Move (translate on XY) and Aim (rotate the base yaw). */
+  setArmAim(rotate: boolean) {
+    this.armAim = rotate;
+    if (this.selected?.kind !== 'arm') return;
+    if (rotate) {
+      const pose = this.getArmPose?.(this.selectedArmId);
+      this.proxy.rotation.z = pose?.yaw ?? 0;
+      this.control.setMode('rotate');
+      this.control.showX = false; this.control.showY = false; this.control.showZ = true;
+    } else {
+      this.proxy.rotation.z = 0;
+      this.control.setMode('translate');
+      this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    }
+    this.control.enabled = true;
+    this.helper.visible = true;
   }
 
   /** Select a task block by its MuJoCo bodyID (from the object tree). */
@@ -257,6 +297,9 @@ export class SelectionController {
   private selectArm(armId?: string) {
     this.selectedArmId = armId;
     this.selectedBody = null;
+    this.armAim = false; // a fresh arm selection starts in move (translate) mode
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    this.proxy.rotation.set(0, 0, 0);
     const pose = this.getArmPose?.(armId);
     if (pose) this.proxy.position.set(pose.x, pose.y, 0.02);
     this.control.enabled = !!pose;   // XY translate gizmo on the arm base, like the camera's

@@ -27,6 +27,8 @@ import { TweaksPanel } from './components/TweaksPanel';
 import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
+import { RadialMenu, RadialItem } from './components/RadialMenu';
+import { Hand, Move as MoveIcon, RotateCw } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
@@ -165,6 +167,9 @@ export function App() {
     if (!next) setHoveredJoint(null);
     simRef.current?.setPoseMode(next, setHoveredJoint);
   };
+  // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
+  // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
@@ -497,6 +502,31 @@ export function App() {
     rig()?.setDragMode(mode);
   };
 
+  // Right-click an arm/camera → open the radial mode menu at the cursor.
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (sceneIsFranka || isLoading) return;
+    const k = simRef.current?.renderSys.selection.selectAt(e.clientX, e.clientY);
+    if (k === 'arm' || k === 'camera') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
+  };
+  const radialItems = (kind: 'arm' | 'camera'): RadialItem[] =>
+    kind === 'arm'
+      ? [
+          { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
+          { id: 'move', label: 'Move', icon: MoveIcon },
+          { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
+        ]
+      : [
+          { id: 'move', label: 'Move', icon: MoveIcon, active: dragMode === 'translate' },
+          { id: 'aim', label: 'Aim', icon: RotateCw, active: dragMode === 'rotate' },
+        ];
+  const handleRadialSelect = (id: string) => {
+    const kind = radial?.kind;
+    if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
+    if (poseMode) togglePoseMode(); // move/aim need jog OFF (jog disables selection gizmos)
+    if (kind === 'camera') { handleDragMode(id === 'aim' ? 'rotate' : 'translate'); return; }
+    if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
+  };
+
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
   const handleCameraMove = (x: number, y: number, z: number) => {
     rig()?.setPosition(x, y, z);
@@ -608,8 +638,9 @@ export function App() {
     };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
     // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
-    sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y } : null; };
+    sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
     sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
+    sel.onArmRotate = (armId, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { yaw }); };
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
@@ -974,7 +1005,7 @@ export function App() {
   return (
     <div className={`w-full h-full relative overflow-hidden font-sans transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* 3D Container */}
-      <div ref={containerRef} className="w-full h-full absolute inset-0 bg-slate-200" />
+      <div ref={containerRef} onContextMenu={handleContextMenu} className="w-full h-full absolute inset-0 bg-slate-200" />
       
       {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
@@ -1070,6 +1101,15 @@ export function App() {
             </>
           )}
           <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} />
+          {radial && (
+            <RadialMenu
+              x={radial.x} y={radial.y}
+              items={radialItems(radial.kind)}
+              onSelect={handleRadialSelect}
+              onClose={() => setRadial(null)}
+              isDarkMode={isDarkMode}
+            />
+          )}
 
           {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
               Offset (22.5rem) to clear the right edge of the rail-shifted dock. */}
