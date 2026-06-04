@@ -21,7 +21,7 @@ chosen in sim hold up in the real world.
 ## Backlog (ordered, roughly)
 - [x] **C — Rod snapping** (a099661) — snap camera/arm/objects to the nearest rod (post or rail) +
       'Along' slider to slide along it. Camera→post (vertical), arm→rails (horizontal). Post movable
-      via X/Y. STILL TODO: "build connector rods between mounts" (add custom rods) — deferred.
+      via X/Y. (Custom connector rods now handled by "Build connector rods" below.)
 - [x] **D — Optimal multi-arm layout** (12fabc5) — greedy set-cover over (cell × yaw); 'Suggest
       optimal layout' places all arms for max top-down task coverage + shows X/Y reached.
 - [x] **Build connector rods** (652615d) — '+ Add mount post' adds custom snappable uprights

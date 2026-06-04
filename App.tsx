@@ -16,7 +16,7 @@ import { RobotSelector } from './components/RobotSelector';
 import { SensorView } from './components/SensorView';
 import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
-import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
+import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_RGB_640X480_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
@@ -142,7 +142,7 @@ export function App() {
   // --- Sensor-camera planner state ---
   const [cameraToggles, setCameraToggles] = useState<CameraViewToggles>({ ...DEFAULT_CAMERA_TOGGLES });
   // Initialise from the DEFAULT stream profile (now RGB 640×480 4:3, matching the real rig).
-  const defaultProfileIntrinsics = D435I_STREAM_PROFILES.find((p) => p.id === D435I_DEFAULT_PROFILE_ID)?.intrinsics ?? D435I_PRESET;
+  const defaultProfileIntrinsics = D435I_STREAM_PROFILES.find((p) => p.id === D435I_DEFAULT_PROFILE_ID)?.intrinsics ?? D435I_RGB_640X480_PRESET;
   const [intrinsics, setIntrinsics] = useState<CameraIntrinsics>({ ...defaultProfileIntrinsics });
   const [selectedProfileId, setSelectedProfileId] = useState(D435I_DEFAULT_PROFILE_ID);
   const [dragMode, setDragMode] = useState<'translate' | 'rotate'>('translate');

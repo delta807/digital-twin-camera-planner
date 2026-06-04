@@ -233,8 +233,11 @@ export class WorkspacePlanner {
     const halfX = this.cfg.baseSearchHalfX ?? 0.4;
     const halfY = this.cfg.baseSearchHalfY ?? 0.4;
     const yaws = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, -Math.PI / 4, -Math.PI / 2, -(3 * Math.PI) / 4];
-    const reaches = (t: { x: number; y: number }, cx: number, cy: number, c: number, s: number): boolean => {
-      const dx = t.x - cx, dy = t.y - cy;            // task relative to mount, then un-yaw into base frame
+    // reachCells were computed with the base at `primaryYaw`, so to test a candidate at yaw φ we
+    // rotate the task by (primaryYaw − φ) into the cell frame (= −φ only when primaryYaw is 0).
+    const reaches = (t: { x: number; y: number }, cx: number, cy: number, angle: number): boolean => {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      const dx = t.x - cx, dy = t.y - cy;
       const di = Math.round((dx * c - dy * s) / CELL), dj = Math.round((dx * s + dy * c) / CELL);
       return (this.reachCells.get(di + ',' + dj) ?? 0) > 0;
     };
@@ -246,9 +249,9 @@ export class WorkspacePlanner {
       for (let cx = -halfX; cx <= halfX + 1e-6; cx += CELL) {
         for (let cy = -halfY; cy <= halfY + 1e-6; cy += CELL) {
           for (const yaw of yaws) {
-            const c = Math.cos(-yaw), s = Math.sin(-yaw);
+            const angle = this.primaryYaw - yaw;
             const set: number[] = [];
-            for (const idx of remaining) if (reaches(tasks[idx], cx, cy, c, s)) set.push(idx);
+            for (const idx of remaining) if (reaches(tasks[idx], cx, cy, angle)) set.push(idx);
             if (set.length > bestCov) { bestCov = set.length; bestPose = { x: cx, y: cy, yaw }; bestSet = set; }
           }
         }
