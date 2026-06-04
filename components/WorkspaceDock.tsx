@@ -112,7 +112,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
   const u = scene.unit; // active length unit (m / mm) for the length sliders
 
   return (
-    <div className={`absolute left-4 top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
+    <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
         <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
         <span className={`block text-[9px] ${subtle}`}>origin = table center · X→ Y↑ Z out</span>

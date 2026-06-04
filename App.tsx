@@ -25,6 +25,8 @@ import { LayoutProfiles } from './components/LayoutProfiles';
 import { OverlayLegend } from './components/OverlayLegend';
 import { TweaksPanel } from './components/TweaksPanel';
 import { MetricBar } from './components/MetricBar';
+import { ModeRail, WorkMode } from './components/ModeRail';
+import { CompareView } from './components/CompareView';
 
 /** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
  *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
@@ -138,7 +140,10 @@ export function App() {
     simRef.current?.setPoseMode(next, setHoveredJoint);
   };
   // Initialize sidebar based on screen width (hidden on mobile by default)
-  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660); 
+  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
+  // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
+  const [mode, setMode] = useState<WorkMode>('edit');
+  const [dockOpen, setDockOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
   });
@@ -1034,8 +1039,17 @@ export function App() {
 
           {!sceneIsFranka && (
             <>
+              <ModeRail
+                mode={mode} onMode={setMode}
+                dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => !v)}
+                perceiveOpen={showSidebar} onTogglePerceive={() => setShowSidebar((v) => !v)}
+                isDarkMode={isDarkMode}
+              />
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
-              <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />
+              {mode === 'edit' && <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />}
+              {mode === 'compare' && (
+                <CompareView cameraPos={cameraPos} intrinsics={intrinsics} baseResult={baseResult} taskCount={objectEntities.filter((e) => e.kind === 'object').length} isDarkMode={isDarkMode} onExit={() => setMode('edit')} />
+              )}
             </>
           )}
           <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} />
@@ -1043,7 +1057,7 @@ export function App() {
           {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
               Sits just right of the dock so it clears both side panels. */}
           {!sceneIsFranka && (
-            <div className="absolute bottom-6 left-4 min-[660px]:left-[15.5rem] z-30 flex items-center gap-3">
+            <div className="absolute bottom-6 left-4 min-[660px]:left-[18.25rem] z-30 flex items-center gap-3">
               <button
                 onClick={togglePoseMode}
                 title="Click a part of the arm and drag to rotate it about its joint"
@@ -1149,7 +1163,7 @@ export function App() {
           ))}
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
-          {!sceneIsFranka && (
+          {!sceneIsFranka && dockOpen && mode === 'edit' && (
             <WorkspaceDock
               isDarkMode={isDarkMode}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect }}
