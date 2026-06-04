@@ -39,7 +39,8 @@ export function UnifiedSidebar({
   isPickingUp = false,
   playbackSpeed = 1
 }: UnifiedSidebarProps) {
-  const [prompt, setPrompt] = useState('red cubes');
+  // Default scene is the SO-101 twin, whose pickable task props are orange blocks.
+  const [prompt, setPrompt] = useState('orange blocks');
   const [type, setType] = useState<DetectType>('2D bounding boxes');
   const [temperature, setTemperature] = useState(0.1);
   const [enableThinking, setEnableThinking] = useState(true);

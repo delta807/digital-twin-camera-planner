@@ -57,6 +57,7 @@ export class MujocoSim {
 
     private userIkEnabled = false;
     private firstIkEnable = true; // Track first enable to enforce default rotation
+    private lastLoopMs = 0;       // wall-clock of the previous frame (frame-rate-independent timing)
 
     /** SO-101 scripted grasp sequence (approach → descend → close → lift → release per item). */
     private so101Pickup: {
@@ -321,19 +322,21 @@ export class MujocoSim {
         if (pk.idx >= pk.queue.length) { this.finishSo101Pickup(); return; }
 
         const JAW_OPEN = 1.2, JAW_CLOSED = -0.1;                  // SO-101 Jaw range [-0.17, 1.75]
-        const APPROACH = 0.14, GRASP = 0.03, LIFT = 0.20;         // heights above the block centre
+        // Absolute (table-relative) heights — blocks rest on the floor, so this is robust to the
+        // detected point landing on the block's top surface rather than its centre.
+        const APPROACH = 0.16, GRASP = 0.05, LIFT = 0.22;
         const DUR = [1.2, 1.2, 0.6, 1.0, 1.6, 1.0, 0.5];          // seconds per phase
         const p = pk.queue[pk.idx].pos;
         const bin = this.binDropTarget();
         const setJaw = (v: number) => { if (this.gripperActuatorId >= 0) d.ctrl[this.gripperActuatorId] = v; };
-        const above = (z: number) => new THREE.Vector3(p.x, p.y, p.z + z);
+        const at = (z: number) => new THREE.Vector3(p.x, p.y, z);
 
         pk.t += dt;
         switch (pk.phase) {
-            case 0: this.moveArmTo(above(APPROACH)); setJaw(JAW_OPEN); break;                              // approach above
-            case 1: this.moveArmTo(above(GRASP)); setJaw(JAW_OPEN); break;                                 // descend onto it
-            case 2: this.moveArmTo(above(GRASP)); setJaw(JAW_CLOSED); break;                               // close gripper
-            case 3: this.moveArmTo(above(LIFT)); setJaw(JAW_CLOSED); break;                                // lift clear
+            case 0: this.moveArmTo(at(APPROACH)); setJaw(JAW_OPEN); break;                                 // approach above
+            case 1: this.moveArmTo(at(GRASP)); setJaw(JAW_OPEN); break;                                    // descend onto it
+            case 2: this.moveArmTo(at(GRASP)); setJaw(JAW_CLOSED); break;                                  // close gripper
+            case 3: this.moveArmTo(at(LIFT)); setJaw(JAW_CLOSED); break;                                   // lift clear
             case 4: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.20)); setJaw(JAW_CLOSED); break; // carry over the bin
             case 5: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_CLOSED); break; // lower into the bin
             case 6: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_OPEN); break;    // release
@@ -474,6 +477,11 @@ export class MujocoSim {
                  return;
             }
 
+            // Real frame delta (s), clamped so a backgrounded tab can't fast-forward scripts.
+            const nowMs = performance.now();
+            const frameDt = this.lastLoopMs ? Math.min((nowMs - this.lastLoopMs) / 1000, 0.05) : 1 / 60;
+            this.lastLoopMs = nowMs;
+
             this.dragStateManager.update();
             if (this.draggedBodyId() !== null) this.mjData.xfrc_applied.fill(0);
             if (this.dragStateManager.active && this.dragStateManager.physicsObject) {
@@ -507,7 +515,8 @@ export class MujocoSim {
                     }
                 } else if (this.so101Pickup) {
                     // Drive the grasp phases (sets arm ctrl + jaw) before integrating physics.
-                    this.tickSo101Pickup((1 / 60) * this.speedMultiplier);
+                    // Wall-clock delta → phase timing is identical at 60 / 120 / 144 Hz.
+                    this.tickSo101Pickup(frameDt * this.speedMultiplier);
                 }
 
                 const startSimTime = this.mjData.time;
