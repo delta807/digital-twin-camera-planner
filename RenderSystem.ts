@@ -357,6 +357,54 @@ export class RenderSystem {
     }
 
     /**
+     * Frame an object (or the whole workcell) in view — OrcaSlicer "reset view" / FreeCAD
+     * fit-all. Computes the bounding sphere and places the camera so it fills ~70% of the
+     * narrower FOV. `keepDirection` keeps the current view angle (zoom-to-selection); otherwise
+     * snaps to the default Z-up isometric. Returns the animation promise.
+     */
+    frameView(object?: THREE.Object3D | null, keepDirection = false, durationMs = 320): Promise<void> {
+        const box = new THREE.Box3();
+        if (object) {
+            box.setFromObject(object);
+        } else {
+            // Whole scene: robot + task objects + worktop, but EXCLUDE the worldbody floor plane
+            // (bodyID 0 — an effectively-infinite MuJoCo plane that would blow up the bounds) and
+            // any other absurdly large mesh (lights have no geometry and are skipped automatically).
+            this.simGroup.updateMatrixWorld(true);
+            const tmp = new THREE.Box3();
+            this.simGroup.traverse((o) => {
+                const m = o as THREE.Mesh;
+                if (!m.isMesh || !m.visible || !m.geometry) return;
+                for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.userData?.bodyID === 0) return;
+                tmp.setFromObject(m);
+                if (tmp.isEmpty()) return;
+                const s = tmp.getSize(new THREE.Vector3());
+                if (s.x > 5 || s.y > 5 || s.z > 5) return; // skip huge planes/backdrops
+                box.union(tmp);
+            });
+            const baseBox = new THREE.Box3().setFromObject(this.baseBuilder.group);
+            if (!baseBox.isEmpty()) box.union(baseBox);
+        }
+        if (box.isEmpty()) return Promise.resolve();
+
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        const r = Math.max(sphere.radius, 0.05);
+        const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
+        const dist = Math.max(r / Math.sin(vFov / 2), r / Math.sin(hFov / 2)) / 0.7;
+
+        // Keep the current view angle for "frame selection"; else default Z-up iso (front-right-top).
+        const dir = keepDirection
+            ? this.camera.position.clone().sub(this.controls.target).normalize()
+            : new THREE.Vector3(1, -1, 0.85).normalize();
+        if (dir.lengthSq() < 1e-6) dir.set(1, -1, 0.85).normalize();
+
+        const target = sphere.center.clone();
+        const position = target.clone().addScaledVector(dir, dist);
+        return this.moveCameraTo(position, target, durationMs);
+    }
+
+    /**
      * Captures a snapshot of the current renderer state.
      * @param width Desired width of snapshot
      * @param height Desired height of snapshot

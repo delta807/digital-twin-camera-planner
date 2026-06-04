@@ -110,6 +110,32 @@ rig via coordinates). Per-phase ritual (implement → tsc → Playwright → com
       Verified task0 (0.16,0.12)→(0.28,0.164,0.058) in the bin; 15 cm lift. CodeRabbit: 2 minor, fixed
       (clear stale grasp on reload, re-entry guard, marker hygiene, phase comment).
 
+## Milestone 6 — OrcaSlicer-style selection-driven UI + reach/grasp bug fixes (IN PROGRESS)
+User batch (7 items) + 3 subagent investigations. Decisions: reach overlay = **two contours**
+(max ~340° envelope + inner precision/top-down workspace); pickup = **real grasp** (orientation-
+aware IK + friction, no kinematic pin); sequence = **UI foundation first**.
+Key findings: (a) #6 360° is NOT a bug — arm folds & reaches ~340°; show max+precision contours.
+(b) #5 "apply pose" is NOT a MuJoCo requirement — move base live via body_pos+mj_forward; ghost
+preview is pure Three.js. (c) #7 SO-101 never really grasps (kinematic pin fights solver) + IK is
+position-only so it leans instead of turning.
+
+### Phase A — UI foundation (selection-driven)
+- [x] **A1 Camera framing (#1/#2)** — `RenderSystem.frameView(object?, keepDirection)` (bounding-
+      sphere fit, excludes worldbody floor plane + oversized meshes); Toolbar Home(=reset iso) +
+      Focus(=frame selection) buttons + keys Home/F. Verified reset frames the workcell cleanly.
+- [ ] **A2 Selection-driven transform (#3)** — single selection authority; translate/rotate/scale
+      gizmo modes + two-way numeric fields; group-vs-part (base assembly); fix-centre-to-origin.
+- [ ] **A3 Ghost preview + kill "apply pose" (#5)** — live base move (body_pos+mj_forward), translucent
+      ghost during drag, dashed construction line + CSS2D coord/delta readout.
+- [ ] **A4 Scale-to-dimension (#4)** — type target mm → scale = target/bbox; aspect lock; local bbox.
+
+### Phase B — Bug fixes (on the new foundation)
+- [ ] **B1 Reach two-contour (#6)** — max envelope (~340°) + inner precision workspace (gripper can
+      point down); compute about the pan axis (offset ~3.9 cm), weaken dilation so real gaps show.
+- [ ] **B2 Real grasp (#7)** — orientation-aware DLS (6×N Jacobian, gripper-down) so the base turns
+      to face targets; delete `pinGrabbedBlock`, friction grasp like the Franka; mark unreachable
+      (beyond ±110°) instead of flailing.
+
 ## Repo
 Private: github.com/delta807/digital-twin-camera-planner — all phases pushed (origin/master @ 4f4c6a6).
 Per-phase ritual followed throughout: implement → Playwright verify → commit → CodeRabbit → subagent QA → fix.

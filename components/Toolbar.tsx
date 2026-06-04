@@ -4,16 +4,18 @@
 */
 
 
-import { Moon, PanelRight, Pause, Play, RotateCcw, Sun } from 'lucide-react';
+import { Focus, House, Moon, PanelRight, Pause, Play, RotateCcw, Sun } from 'lucide-react';
 
 interface ToolbarProps {
-  isPaused: boolean; 
-  togglePause: () => void; 
+  isPaused: boolean;
+  togglePause: () => void;
   onReset: () => void;
   showSidebar: boolean;
   toggleSidebar: () => void;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+  onResetView: () => void;       // recenter to default iso view (Home)
+  onFrameSelection: () => void;  // zoom to the selected object (F)
 }
 
 /**
@@ -27,7 +29,9 @@ export function Toolbar({
   showSidebar,
   toggleSidebar,
   isDarkMode,
-  toggleDarkMode
+  toggleDarkMode,
+  onResetView,
+  onFrameSelection
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
@@ -46,12 +50,30 @@ export function Toolbar({
       </button>
       
       {/* Reset Button */}
-      <button 
-        onClick={onReset} 
+      <button
+        onClick={onReset}
         className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panelStyle}`}
         title="Reset Simulation"
       >
         <RotateCcw className="w-6 h-6" />
+      </button>
+
+      {/* Reset View (Home) — recenter the camera if you get lost in orientation */}
+      <button
+        onClick={onResetView}
+        className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panelStyle}`}
+        title="Reset view (Home)"
+      >
+        <House className="w-6 h-6" />
+      </button>
+
+      {/* Frame Selection (F) — zoom to the selected object */}
+      <button
+        onClick={onFrameSelection}
+        className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panelStyle}`}
+        title="Frame selection (F)"
+      >
+        <Focus className="w-6 h-6" />
       </button>
 
       {/* Dark Mode Toggle */}

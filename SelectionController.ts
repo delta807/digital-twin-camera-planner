@@ -95,6 +95,11 @@ export class SelectionController {
     this.dom.addEventListener('pointercancel', this.handleCancel);
   }
 
+  /** The outline box of the current selection (sized to it) — for zoom-to-selection framing. */
+  get focusTarget(): THREE.Object3D | null {
+    return this.selected ? this.outline : null;
+  }
+
   setEnabled(on: boolean) {
     this.enabled = on;
     this.pointerDown = null; // never carry a half-finished press across an enable/disable

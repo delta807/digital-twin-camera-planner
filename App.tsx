@@ -383,6 +383,24 @@ export function App() {
 
   useEffect(() => { simRef.current?.renderSys.measureTool?.setUnit(lengthUnit); }, [lengthUnit]);
 
+  // Camera framing (OrcaSlicer/FreeCAD style): Home = reset to iso view, F = frame selection.
+  const handleResetView = () => simRef.current?.renderSys.frameView(null, false);
+  const handleFrameSelection = () => {
+    const sim = simRef.current; if (!sim) return;
+    sim.renderSys.frameView(sim.renderSys.selection?.focusTarget ?? null, true);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+      if (e.key === 'Home') { e.preventDefault(); handleResetView(); }
+      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); handleFrameSelection(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Click-to-select wiring: report the selection to the HUD; dragging the post gizmo writes
   // its X/Y back into the workcell config (live rebuild). RenderSystem persists across reloads.
   useEffect(() => {
@@ -787,6 +805,8 @@ export function App() {
             toggleSidebar={() => setShowSidebar(!showSidebar)}
             isDarkMode={isDarkMode}
             toggleDarkMode={toggleDarkMode}
+            onResetView={handleResetView}
+            onFrameSelection={handleFrameSelection}
           />
           
           <UnifiedSidebar 
