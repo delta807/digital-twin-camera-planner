@@ -22,9 +22,9 @@ export class WristCamera {
 
   // Mount offsets in the gripper frame (m) — tuned against real LeRobot wrist footage (fingers at
   // the bottom of frame, the grasp/object ahead). Tunable via the dock sliders.
-  back = 0.05;   // behind the fingertips along the approach axis
-  up = 0.09;     // above the gripper centre-line (raises the fingers toward frame bottom)
-  reach = 0.06;  // how far ahead the camera aims (toward/just past the grasp point)
+  back = 0.035;  // behind the fingertips — closer = the gripper fills more of the frame (like real)
+  up = 0.055;    // above the gripper centre-line (keeps the fingers at the bottom edge)
+  reach = 0.05;  // how far ahead the camera aims (toward/just past the grasp point)
 
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;

@@ -330,7 +330,7 @@ export function App() {
   useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
-  const [wristMount, setWristMount] = useState({ back: 0.05, up: 0.09, reach: 0.06, fov: 58 });
+  const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.055, reach: 0.05, fov: 58 });
   useEffect(() => {
     const wc = simRef.current?.renderSys.wristCamera; if (!wc) return;
     wc.back = wristMount.back; wc.up = wristMount.up; wc.reach = wristMount.reach;
@@ -496,8 +496,9 @@ export function App() {
     if (isLoading || !sel) return;
     sel.onChange = (s) => {
       setSelection(s);
-      // Clicking the (physics) arm in the viewport targets the primary arm in the inspector.
-      if (s?.kind === 'arm') setSelectedArmId(armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
+      // Target the arm carried by the selection (a ghost's id, or the primary). Using s.armId — not
+      // always the primary — keeps the editor on the SAME arm across per-frame re-emits (no glitch).
+      if (s?.kind === 'arm') setSelectedArmId(s.armId ?? armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
     };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree

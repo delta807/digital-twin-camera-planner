@@ -19,6 +19,8 @@ export interface SelectionInfo {
   movable: boolean;
   /** MuJoCo bodyID for kind==='object' (task block), so the panel can write its freejoint qpos. */
   bodyId?: number;
+  /** Arm instance id for kind==='arm' (undefined = the primary physics arm). */
+  armId?: string;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -244,7 +246,7 @@ export class SelectionController {
     this.helper.visible = false;
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
-    this.selected = { kind: 'arm', label: 'SO-101 arm', x: 0, y: 0, z: 0, movable: true };
+    this.selected = { kind: 'arm', label: 'SO-101 arm', x: 0, y: 0, z: 0, movable: true, armId };
     this.update();
     this.onChange?.(this.selected);
   }
