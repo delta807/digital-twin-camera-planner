@@ -23,3 +23,14 @@ in a double-quoted `-m`.
 (the parent repo, CWD-drift again), NOT the project dir. Find via
 `find /Users/laptop/Projects/lerobot -maxdepth 1 -name x.jpeg`, Read it, then rm it so it
 never lands in the wrong repo's git. (Verifying images this way works well.)
+
+## A "diagnostic test" can give false confidence — check the SETUP confound (2026-06-05)
+Chasing "the additional arms' wrist cams are bad," I ran an overlap test (two arms at the SAME
+pose) and saw identical feeds → concluded the tracking was correct, twice, and even shipped a
+wrong "robust" rewrite + proposed an unrelated tilt fix. The overlap was the confound: with arms
+stacked, the GHOST's wrist cam saw the still-visible PRIMARY arm sitting where its own (hidden)
+gripper would be — so it looked fine for the wrong reason. The real bug: the wrist feeds reused the
+overhead PIP's hide-list, which hides ALL ghost arms, so a ghost's own wrist cam rendered itself
+hidden. RULE: when a test "passes," ask what ELSE could produce that result. Test at the REAL
+configuration (here: arms at DIFFERENT positions), not a degenerate one. And when the USER insists a
+bug is real after you've "ruled it out," re-investigate from scratch — they were right.
