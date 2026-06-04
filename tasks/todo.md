@@ -5,7 +5,7 @@
 User decisions: order = ROM→superimpose→design→multi-arm · multi-arm = staged (physics+IK first)
 · reference img = capture from live Jetson · design = FULL reskin.
 
-## Phase 1 — ROM fan fix (radial r(θ) reach) ← IN PROGRESS
+## Phase 1 — ROM fan fix (radial r(θ) reach) ✅ DONE (6c75c05)
 Root cause (subagent): grid-march (9⁴ sweep) + weak R=2 morph-close + buggy chainLoops/Chaikin →
 fragmented, self-crossing, non-fan. Fix = change representation to a radial profile.
 - [ ] Sweep base-rotation joint finely (BASE_STEPS) × other joints (resolution); per angular bin
@@ -16,7 +16,8 @@ fragmented, self-crossing, non-fan. Fix = change representation to a radial prof
 - [ ] Remove computeLocalSilhouette morphology + chainLoops (dead). Keep chaikin (light smooth).
 - [ ] tsc → Playwright verify clean fan (1 + 2 arms) → commit.
 
-## Phase 2 — Camera superimpose vs live Jetson
+## Phase 2 — Camera superimpose vs live Jetson ✅ DONE (ccb0805)
+Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 848×480).
 - [ ] Place overhead D435i at (0.415, 0.265, 0.85) m = (41.5, 26.5, 85) cm.
 - [ ] Capture a frame from the live Jetson dashboard (Tailscale 100.68.215.10, user jetson) → overlay
       on the sim Sensor PIP with opacity/blend slider + alignment guides, to tune sim cam to match.
