@@ -591,6 +591,21 @@ export function App() {
     }
   };
 
+  // Suggest + apply a max-coverage arrangement for all current arms (greedy set-cover).
+  const [layoutResult, setLayoutResult] = useState<{ covered: number; total: number } | null>(null);
+  const handleSuggestLayout = () => {
+    const sim = simRef.current; if (!sim) return;
+    const arms = armInstancesRef.current;
+    const res = sim.suggestArmLayout(arms.length);
+    if (!res) return;
+    const next = arms.map((a, i) => ({ ...a, x: res.poses[i].x, y: res.poses[i].y, yaw: res.poses[i].yaw }));
+    setArmInstances(next);
+    sim.setArmInstances(next);
+    const primary = next.find((a) => a.primary);
+    if (primary) sim.relocateBase(primary.x, primary.y, primary.yaw).then(() => applyPlannerState());
+    setLayoutResult({ covered: res.covered, total: res.total });
+  };
+
   const handleAddArm = () => {
     const armNumber = nextArmNumberRef.current++;
     const id = `so101-${armNumber}`;
@@ -1010,6 +1025,8 @@ export function App() {
                 onRecompute: handleRecompute,
                 computing: computingReach,
                 baseResult,
+                onSuggestLayout: handleSuggestLayout,
+                layoutResult,
               }}
               camera={{
                 toggles: cameraToggles,

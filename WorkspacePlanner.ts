@@ -222,6 +222,46 @@ export class WorkspacePlanner {
     this.lastBaseResult = { x: best.x, y: best.y, covered: Math.max(0, best.covered), total: tasks.length };
   }
 
+  /**
+   * Suggest placements for N arms that MAXIMISE top-down task coverage (greedy set-cover over
+   * mount cell × yaw): repeatedly place an arm where it newly covers the most still-uncovered tasks.
+   * Uses the PRECISION reach set (graspable), translated+rotated under each candidate. Returns the
+   * N poses + how many of the total tasks the set covers.
+   */
+  suggestArmLayout(n: number): { poses: Array<{ x: number; y: number; yaw: number }>; covered: number; total: number } {
+    const tasks = this.taskWorldPoints();
+    const halfX = this.cfg.baseSearchHalfX ?? 0.4;
+    const halfY = this.cfg.baseSearchHalfY ?? 0.4;
+    const yaws = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, -Math.PI / 4, -Math.PI / 2, -(3 * Math.PI) / 4];
+    const reaches = (t: { x: number; y: number }, cx: number, cy: number, c: number, s: number): boolean => {
+      const dx = t.x - cx, dy = t.y - cy;            // task relative to mount, then un-yaw into base frame
+      const di = Math.round((dx * c - dy * s) / CELL), dj = Math.round((dx * s + dy * c) / CELL);
+      return (this.reachCells.get(di + ',' + dj) ?? 0) > 0;
+    };
+
+    const remaining = new Set(tasks.map((_, i) => i));
+    const poses: Array<{ x: number; y: number; yaw: number }> = [];
+    for (let k = 0; k < Math.max(1, n) && remaining.size > 0; k++) {
+      let bestCov = 0, bestPose: { x: number; y: number; yaw: number } | null = null, bestSet: number[] = [];
+      for (let cx = -halfX; cx <= halfX + 1e-6; cx += CELL) {
+        for (let cy = -halfY; cy <= halfY + 1e-6; cy += CELL) {
+          for (const yaw of yaws) {
+            const c = Math.cos(-yaw), s = Math.sin(-yaw);
+            const set: number[] = [];
+            for (const idx of remaining) if (reaches(tasks[idx], cx, cy, c, s)) set.push(idx);
+            if (set.length > bestCov) { bestCov = set.length; bestPose = { x: cx, y: cy, yaw }; bestSet = set; }
+          }
+        }
+      }
+      if (!bestPose || bestCov === 0) break;
+      poses.push(bestPose);
+      bestSet.forEach((i) => remaining.delete(i));
+    }
+    // Pad with the primary spot if fewer placements than arms (e.g. everything already covered).
+    while (poses.length < Math.max(1, n)) poses.push({ x: this.baseX, y: this.baseY, yaw: 0 });
+    return { poses, covered: tasks.length - remaining.size, total: tasks.length };
+  }
+
   dispose() {
     this.control.detach();
     this.control.dispose();

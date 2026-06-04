@@ -299,6 +299,11 @@ export class MujocoSim {
         this.mujoco.mj_forward(m, d);
     }
 
+    /** Greedy max-coverage placements for `n` arms (null if no planner). */
+    suggestArmLayout(n: number) {
+        return this.planner?.suggestArmLayout(n) ?? null;
+    }
+
     setArmInstances(instances: ArmInstance[]) {
         this.armInstances = instances.map((arm) => ({ ...arm }));
         this.renderSys.setPlanningArmInstances(this.armInstances);

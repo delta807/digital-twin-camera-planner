@@ -34,6 +34,8 @@ export interface DockArmsProps {
   onRecompute: () => void;
   computing: boolean;
   baseResult: { covered: number; total: number } | null;
+  onSuggestLayout: () => void; // place all arms for max task coverage
+  layoutResult: { covered: number; total: number } | null;
 }
 export interface DockCameraProps {
   toggles: CameraViewToggles;
@@ -193,6 +195,8 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
             {arms.computing && <Loader2 className="w-3 h-3 animate-spin" />}{arms.computing ? 'Computing…' : 'Recompute reach'}
           </button>
           {arms.toggles.basePlacement && arms.baseResult && <p className={`text-[10px] text-center ${subtle}`}>Best mount covers <span className="font-bold text-emerald-500">{arms.baseResult.covered}/{arms.baseResult.total}</span> objects</p>}
+          <button onClick={arms.onSuggestLayout} className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`} title="Place all arms to maximise task coverage">Suggest optimal layout ({arms.list.length} {arms.list.length === 1 ? 'arm' : 'arms'})</button>
+          {arms.layoutResult && <p className={`text-[10px] text-center ${subtle}`}>Layout reaches <span className="font-bold text-indigo-500">{arms.layoutResult.covered}/{arms.layoutResult.total}</span> objects top-down</p>}
         </Section>
 
         {/* ── Camera (D435i) ── */}
