@@ -123,15 +123,21 @@ position-only so it leans instead of turning.
 - [x] **A1 Camera framing (#1/#2)** — `RenderSystem.frameView(object?, keepDirection)` (bounding-
       sphere fit, excludes worldbody floor plane + oversized meshes); Toolbar Home(=reset iso) +
       Focus(=frame selection) buttons + keys Home/F. Verified reset frames the workcell cleanly.
-- [ ] **A2 Selection-driven transform (#3)** — single selection authority; translate/rotate/scale
-      gizmo modes + two-way numeric fields; group-vs-part (base assembly); fix-centre-to-origin.
-- [ ] **A3 Ghost preview + kill "apply pose" (#5)** — live base move (body_pos+mj_forward), translucent
-      ghost during drag, dashed construction line + CSS2D coord/delta readout.
-- [ ] **A4 Scale-to-dimension (#4)** — type target mm → scale = target/bbox; aspect lock; local bbox.
+- [x] **#5 Live base move** (63af579) — relocateBase now edits Base body_pos/body_quat + mj_forward
+      (no reload, no flash); primary arm slider moves the real arm live; "apply pose" dependency gone.
+- [x] **A2 Selection-driven transform (#3)** (5e22d39, 260afb6, 0346c31) — unified SelectionController
+      (arm + camera + post + task blocks all selectable); floating SelectionInspector with per-kind
+      editable coords + write-backs (arm→base, camera→pose, post→workcell, block→qpos); Objects tree
+      in the dock; viewport↔tree↔inspector two-way synced. Verified: edit arm X→0.25 moves it live.
+- [~] **A3 Ghost preview (#5)** — DEPRIORITISED: live base move already shows the move in real time,
+      so the "shadow before commit" is largely moot. Revisit only if a non-committed preview is wanted.
+- [~] **A4 Scale-to-dimension (#4)** — DEFERRED: runtime geom scaling in MuJoCo needs care (geom_size
+      is structural-ish / may need recompile); the workcell already has Length/Width sliders. Revisit.
 
 ### Phase B — Bug fixes (on the new foundation)
-- [ ] **B1 Reach two-contour (#6)** — max envelope (~340°) + inner precision workspace (gripper can
-      point down); compute about the pan axis (offset ~3.9 cm), weaken dilation so real gaps show.
+- [x] **B1 Reach two-contour (#6)** (45738b7) — faint grey MAX envelope (~340°, all worktop-height
+      configs) + bright PRECISION contour (top-down graspable). reachCellsMax + reachCells; both
+      silhouettes rendered per arm. Verified both contours show.
 - [ ] **B2 Real grasp (#7)** — orientation-aware DLS (6×N Jacobian, gripper-down) so the base turns
       to face targets; delete `pinGrabbedBlock`, friction grasp like the Franka; mark unreachable
       (beyond ±110°) instead of flailing.
