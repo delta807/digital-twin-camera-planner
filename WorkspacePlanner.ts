@@ -281,7 +281,7 @@ export class WorkspacePlanner {
    * base-rotation fan (the SO-101 can't swing a full 360°, only ~±110°) and the inner dead zone,
    * instead of a misleading ring. (Marching-squares-style edge extraction.)
    */
-  private computeLocalSilhouette(source: Map<string, number>): Array<[number, number, number, number]> {
+  private computeLocalSilhouette(source: Map<string, number>): Array<Array<[number, number]>> {
     if (source.size === 0) return [];
     // Dilate the sampled cells by 1 (8-connected) to close FK-sampling gaps, so the silhouette
     // traces one clean contour instead of a maze of tiny single-sample holes.
@@ -336,7 +336,10 @@ export class WorkspacePlanner {
       if (isExterior(di, dj + 1)) { const [a, b] = toLocal(cx - H, cy + H); const [c, d] = toLocal(cx + H, cy + H); segs.push([a, b, c, d]); }
       if (isExterior(di, dj - 1)) { const [a, b] = toLocal(cx - H, cy - H); const [c, d] = toLocal(cx + H, cy - H); segs.push([a, b, c, d]); }
     }
-    return segs;
+    // Chain the axis-aligned cell edges into ordered closed loops, then corner-cut (Chaikin) so the
+    // staircase becomes a smooth organic curve — while KEEPING the topology (the inner dead-zone
+    // hole + the ±110° fan edges are separate loops and survive the smoothing).
+    return chainLoops(segs).map((loop) => chaikin(loop, 2));
   }
 
   /**
@@ -357,13 +360,18 @@ export class WorkspacePlanner {
     const maxLocal = this.computeLocalSilhouette(this.reachCellsMax);
     const precLocal = this.computeLocalSilhouette(this.reachCells);
 
-    const addContour = (local: Array<[number, number, number, number]>, arm: ArmInstance, color: number, linewidth: number, opacity: number, z: number) => {
-      if (local.length === 0) return;
+    const addContour = (loops: Array<Array<[number, number]>>, arm: ArmInstance, color: number, linewidth: number, opacity: number, z: number) => {
+      if (loops.length === 0) return;
       const c = Math.cos(arm.yaw), s = Math.sin(arm.yaw);
       const positions: number[] = [];
-      for (const [x1, y1, x2, y2] of local) {
-        positions.push(arm.x + x1 * c - y1 * s, arm.y + x1 * s + y1 * c, z);
-        positions.push(arm.x + x2 * c - y2 * s, arm.y + x2 * s + y2 * c, z);
+      for (const loop of loops) {
+        // Closed smoothed polyline → consecutive vertex pairs (wrapping last→first).
+        for (let i = 0; i < loop.length; i++) {
+          const [x1, y1] = loop[i];
+          const [x2, y2] = loop[(i + 1) % loop.length];
+          positions.push(arm.x + x1 * c - y1 * s, arm.y + x1 * s + y1 * c, z);
+          positions.push(arm.x + x2 * c - y2 * s, arm.y + x2 * s + y2 * c, z);
+        }
       }
       const geo = new LineSegmentsGeometry();
       geo.setPositions(positions);
@@ -444,4 +452,65 @@ export class WorkspacePlanner {
     this.gizmoHelper.visible = this.toggles.baseDrag;
     this.control.enabled = this.toggles.baseDrag;
   }
+}
+
+// ── Contour post-processing: staircase cell-edges → smooth closed curves ──
+
+/**
+ * Chain a soup of axis-aligned cell-edge segments into ordered closed loops. Each boundary
+ * vertex has even degree; we walk "take any unused edge at the current vertex" until we return
+ * to the start. Multiple loops (outer contour + inner dead-zone hole) come out separately, so
+ * the topology is preserved. Returns loops as ordered unique-vertex lists (implicitly closed).
+ */
+function chainLoops(segs: Array<[number, number, number, number]>): Array<Array<[number, number]>> {
+  const Q = 1e4;
+  const key = (x: number, y: number) => Math.round(x * Q) + ',' + Math.round(y * Q);
+  const adj = new Map<string, Array<{ pt: [number, number]; seg: number }>>();
+  const add = (k: string, pt: [number, number], seg: number) => {
+    let a = adj.get(k); if (!a) { a = []; adj.set(k, a); } a.push({ pt, seg });
+  };
+  segs.forEach((s, i) => {
+    const a: [number, number] = [s[0], s[1]], b: [number, number] = [s[2], s[3]];
+    add(key(a[0], a[1]), b, i);
+    add(key(b[0], b[1]), a, i);
+  });
+
+  const used = new Array(segs.length).fill(false);
+  const loops: Array<Array<[number, number]>> = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    const start: [number, number] = [segs[i][0], segs[i][1]];
+    const loop: Array<[number, number]> = [start];
+    let cur: [number, number] = [segs[i][2], segs[i][3]];
+    let guard = 0;
+    while (guard++ < segs.length * 4) {
+      if (key(cur[0], cur[1]) === key(start[0], start[1])) break; // closed
+      loop.push(cur);
+      const cands = adj.get(key(cur[0], cur[1])) ?? [];
+      let nxt: { pt: [number, number]; seg: number } | null = null;
+      for (const c of cands) { if (!used[c.seg]) { nxt = c; break; } }
+      if (!nxt) break; // dead end (open chain)
+      used[nxt.seg] = true;
+      cur = nxt.pt;
+    }
+    if (loop.length >= 4) loops.push(loop);
+  }
+  return loops;
+}
+
+/** Chaikin corner-cutting on a CLOSED polygon: each pass quarters every corner → smooth curve. */
+function chaikin(loop: Array<[number, number]>, iters: number): Array<[number, number]> {
+  let pts = loop;
+  for (let it = 0; it < iters; it++) {
+    const out: Array<[number, number]> = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], q = pts[(i + 1) % n];
+      out.push([0.75 * p[0] + 0.25 * q[0], 0.75 * p[1] + 0.25 * q[1]]);
+      out.push([0.25 * p[0] + 0.75 * q[0], 0.25 * p[1] + 0.75 * q[1]]);
+    }
+    pts = out;
+  }
+  return pts;
 }
