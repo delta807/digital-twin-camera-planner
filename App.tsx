@@ -28,6 +28,8 @@ import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
 
+const GEMINI_API_KEY = process.env.API_KEY || '';
+
 /** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
  *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
  *    • scene = the OVERHEAD D435i (post-mounted, looks down across the worktop) → the D435i PIP.
@@ -50,6 +52,30 @@ export const defaultPromptParts = {
     ' in the scene and mark them with points. DO NOT mark items that only match the description partially. Follow the JSON format: [{"point": [y, x], "label": "label"}, ...]. The points are in [y, x] format normalized to 0-1000.',
   ],
 };
+
+function normalizeGeminiDetections(value: unknown): Array<{ box_2d?: number[]; point?: number[]; label: string }> {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const normalized = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as { box_2d?: unknown; point?: unknown; label?: unknown };
+    const label = typeof record.label === 'string' ? record.label.slice(0, 120) : 'detected';
+    const box = Array.isArray(record.box_2d) ? record.box_2d.map(Number) : null;
+    const point = Array.isArray(record.point) ? record.point.map(Number) : null;
+    const coords = box?.length === 4 ? box : point?.length === 2 ? point : null;
+    if (!coords || !coords.every((coord) => Number.isFinite(coord) && coord >= 0 && coord <= 1000)) continue;
+    const detection = box?.length === 4 ? { box_2d: coords, label } : { point: coords, label };
+    const serialized = JSON.stringify(detection);
+    if (seen.has(serialized)) continue;
+    seen.add(serialized);
+    normalized.push(detection);
+    if (normalized.length >= 25) break;
+  }
+
+  return normalized;
+}
 
 interface LogOverlayProps {
   log: LogEntry;
@@ -163,7 +189,7 @@ export function App() {
   const [gizmoStats, setGizmoStats] = useState<{pos: string, rot: string} | null>(null);
 
   // --- Coordinate readout (Phase 3) ---
-  const [lengthUnit, setLengthUnit] = useState<LengthUnit>('m');
+  const [lengthUnit, setLengthUnit] = useState<LengthUnit>('mm');
   const [axesVisible, setAxesVisible] = useState(true);
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
@@ -770,6 +796,7 @@ export function App() {
 
   const handleErSend = async (prompt: string, type: DetectType, temperature: number, enableThinking: boolean, modelId: string) => {
       if (!simRef.current || erLoading) return;
+      if (!GEMINI_API_KEY) return;
       setErLoading(true);
       simRef.current.renderSys.clearErMarkers();
       detectedTargets.current = []; 
@@ -840,7 +867,7 @@ export function App() {
       await simRef.current.renderSys.moveCameraTo(savedState.position, savedState.target, 1500);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
           const response = await ai.models.generateContent({
               model: modelId,
               contents: {
@@ -863,19 +890,8 @@ export function App() {
               jsonText = jsonText.substring(firstBracket, lastBracket + 1);
           }
 
-          let result;
-          try { result = JSON.parse(jsonText); } catch (e) { result = []; }
-
-          // Remove absolute duplicates
-          if (Array.isArray(result)) {
-              const seen = new Set();
-              result = result.filter((item: unknown) => {
-                  const serialized = JSON.stringify(item);
-                  if (seen.has(serialized)) return false;
-                  seen.add(serialized);
-                  return true;
-              });
-          }
+          let result: Array<{ box_2d?: number[]; point?: number[]; label: string }>;
+          try { result = normalizeGeminiDetections(JSON.parse(jsonText)); } catch (e) { result = []; }
 
           setLogs(prev => prev.map(l => l.id === logId ? { ...l, result } : l));
 
@@ -1090,6 +1106,7 @@ export function App() {
             isDarkMode={isDarkMode}
             isPickingUp={isPickingUp}
             playbackSpeed={playbackSpeed}
+            geminiEnabled={Boolean(GEMINI_API_KEY)}
           />
 
           {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object). */}
