@@ -36,8 +36,9 @@ export class WristCamera {
   private readonly p = new THREE.Vector3();
 
   constructor(private readonly scene: THREE.Scene) {
-    // Real wrist footage is 640×480 (4:3), wide lens — ~70° vertical matches the captured framing.
-    this.camera = new THREE.PerspectiveCamera(70, 4 / 3, 0.01, 5);
+    // Live wrist feed is 16:9 wide (HBVCAM native), wide lens — ~58° vertical → ~90° horizontal,
+    // matching the fish-eyed real FPV (gripper at the bottom, workspace filling the width).
+    this.camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.01, 5);
     this.camera.up.set(0, 0, 1);
   }
 

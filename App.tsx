@@ -330,11 +330,11 @@ export function App() {
   useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
-  const [wristMount, setWristMount] = useState({ back: 0.05, up: 0.09, reach: 0.06, fov: 70 });
+  const [wristMount, setWristMount] = useState({ back: 0.05, up: 0.09, reach: 0.06, fov: 58 });
   useEffect(() => {
     const wc = simRef.current?.renderSys.wristCamera; if (!wc) return;
     wc.back = wristMount.back; wc.up = wristMount.up; wc.reach = wristMount.reach;
-    wc.setIntrinsics(wristMount.fov, 4 / 3);
+    wc.setIntrinsics(wristMount.fov, 16 / 9); // live wrist feed is 16:9 wide
   }, [wristMount, isLoading, wristView]);
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
@@ -998,7 +998,7 @@ export function App() {
               canvasHostRef={wristViewRef}
               isDarkMode={isDarkMode}
               sidebarOpen={showSidebar}
-              aspect={4 / 3}
+              aspect={16 / 9}
               title={`Wrist Cam · ${armInstances.find((a) => a.id === selectedArmId)?.label ?? 'SO101 1'}`}
               secondary={cameraToggles.sensorPip}
               onClose={() => setWristView(false)}
