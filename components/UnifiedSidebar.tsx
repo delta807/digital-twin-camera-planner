@@ -20,6 +20,7 @@ interface UnifiedSidebarProps {
   isDarkMode: boolean;
   isPickingUp?: boolean;
   playbackSpeed?: number;
+  geminiEnabled?: boolean;
 }
 
 /**
@@ -37,7 +38,8 @@ export function UnifiedSidebar({
   onOpenLog, 
   isDarkMode,
   isPickingUp = false,
-  playbackSpeed = 1
+  playbackSpeed = 1,
+  geminiEnabled = false
 }: UnifiedSidebarProps) {
   // Default scene is the SO-101 twin, whose pickable task props are orange blocks.
   const [prompt, setPrompt] = useState('orange blocks');
@@ -55,6 +57,7 @@ export function UnifiedSidebar({
   const selectorBg = isDarkMode ? "bg-slate-800/40 border-white/5" : "bg-slate-100/50 border-slate-200/50";
   const selectorActive = isDarkMode ? "bg-slate-700 text-indigo-400" : "bg-white text-indigo-600 shadow-sm";
   const logCardBg = isDarkMode ? "bg-white/5 border-white/5 hover:bg-white/10" : "bg-white/40 border-slate-100 hover:bg-white hover:shadow-md";
+  const detectDisabled = isLoading || !prompt.trim() || !geminiEnabled;
 
   return (
     // Changed positioning: centered on mobile (left-4 right-4), positioned right on desktop (min-[660px]:right-10 min-[660px]:w-96)
@@ -175,10 +178,10 @@ export function UnifiedSidebar({
           <div className="flex gap-3">
             <button 
                 onClick={() => onSend(prompt, type, temperature, enableThinking, modelId)}
-                disabled={isLoading || !prompt.trim()}
-                title="Detect: Trigger Gemini analysis of current workspace"
+                disabled={detectDisabled}
+                title={geminiEnabled ? "Detect: Trigger Gemini analysis of current workspace" : "Gemini API key is not configured"}
                 className={`flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  isLoading 
+                  detectDisabled 
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600' 
                     : 'bg-slate-900 text-white hover:bg-black shadow-lg active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
                 }`}

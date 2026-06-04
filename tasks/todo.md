@@ -73,15 +73,22 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
 
 ### Plan
 
-- [ ] Check local repo/generated artifacts for secrets or dangling deploy files.
+- [x] Check local repo/generated artifacts for secrets or dangling deploy files.
   - Verify: grep/status checks show no tracked or generated API-key literals beyond ignored local env files.
-- [ ] Check Netlify public state.
+- [x] Check Netlify public state.
   - Verify: live app and final deploy return 200, stale asset and deleted deploys return 404.
-- [ ] Check dependency/header posture.
+- [x] Check dependency/header posture.
   - Verify: `npm audit` triaged and live response headers inspected.
-- [ ] Reconcile subagent findings.
+- [x] Reconcile subagent findings.
   - Verify: every concrete issue is fixed or explicitly reported.
 
 ### Review
 
-- Pending.
+- Subagents confirmed generated artifacts and Netlify state were clean of the exposed key; `.env.local` remains ignored but must be rotated because of the earlier brief deploy exposure.
+- Hardened accidental-build behavior: `vite.config.ts` now exposes `GEMINI_API_KEY` to the browser only when `EXPOSE_GEMINI_API_KEY_TO_BROWSER=true`.
+- Public Detect is disabled unless a browser key is deliberately exposed; Gemini JSON output is bounded to 25 validated detections with 0..1000 coordinates.
+- Extended `.gitignore` for `.env`, `.env.*`, `.env.example` exception, and `.netlify`.
+- Ran `npm audit fix`; `npm audit` and `npm audit --omit=dev` now report 0 vulnerabilities.
+- Netlify deploy inventory contains only final deploy `6a21c1f93cf8b1b844dbaa12`; all earlier deploy permalinks checked are deleted/404.
+- Live headers now include CSP, Permissions-Policy, Referrer-Policy, X-Content-Type-Options, X-Frame-Options, and HSTS.
+- Playwright showed the strict CSP blocks the current MuJoCo/Emscripten runtime because it requires `unsafe-eval`; deploy of that CSP relaxation needs explicit approval, or the runtime should be replaced/packaged differently.
