@@ -191,6 +191,22 @@ export class WorkspaceCameraRig {
     this.gizmo.position.set(x, y, z);
   }
 
+  /** Capture the full camera pose (position + aim/roll + FOV) for saving a layout profile. */
+  getPose(): { position: [number, number, number]; quaternion: [number, number, number, number]; hFovDeg: number } {
+    return {
+      position: this.gizmo.position.toArray() as [number, number, number],
+      quaternion: this.gizmo.quaternion.toArray() as [number, number, number, number],
+      hFovDeg: this.intrinsics.hFovDeg,
+    };
+  }
+
+  /** Restore a saved camera pose. */
+  applyPose(p: { position: [number, number, number]; quaternion: [number, number, number, number]; hFovDeg: number }) {
+    this.gizmo.position.fromArray(p.position);
+    this.gizmo.quaternion.fromArray(p.quaternion);
+    this.setIntrinsics({ hFovDeg: p.hFovDeg });
+  }
+
   /** Aim the camera straight down (optical axis = world -Z) from its current position. */
   aimDown() {
     const p = this.gizmo.position;

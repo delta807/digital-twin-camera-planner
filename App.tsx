@@ -20,6 +20,8 @@ import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
+import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
+import { LayoutProfiles } from './components/LayoutProfiles';
 
 /** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
  *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
@@ -173,6 +175,34 @@ export function App() {
   // Simulated D435i DEPTH stream toggle for the overhead PIP (depth colormap, 0.3–3 m range).
   const [depthView, setDepthView] = useState(false);
   useEffect(() => { simRef.current?.renderSys.cameraRig.setDepthMode(depthView); }, [depthView, isLoading]);
+
+  // Saved layout profiles: the positional config (worktop + arm bases + overhead camera) the user
+  // mapped to the real rig, persisted so they can save/switch named bench layouts.
+  const [profiles, setProfiles] = useState<LayoutProfile[]>(() => listProfiles());
+  const handleSaveProfile = (name: string) => {
+    const rig = simRef.current?.renderSys.cameraRig;
+    setProfiles(saveProfile({
+      name, savedAt: Date.now(),
+      workcell: workcellConfigRef.current,
+      arms: armInstancesRef.current.map((a) => ({ ...a })),
+      camera: rig ? rig.getPose() : null,
+    }));
+  };
+  const handleDeleteProfile = (name: string) => setProfiles(deleteProfile(name));
+  const handleLoadProfile = (p: LayoutProfile) => {
+    const sim = simRef.current;
+    // Worktop (live rebuild).
+    setWorkcellConfig(p.workcell);
+    sim?.setWorkcell(p.workcell);
+    // Arms: restore all instances + relocate the primary base, then re-place ghosts.
+    setArmInstances(p.arms.map((a) => ({ ...a })));
+    sim?.setArmInstances(p.arms);
+    const primary = p.arms.find((a) => a.primary);
+    if (primary && sim) sim.relocateBase(primary.x, primary.y, primary.yaw);
+    setSelectedArmId(primary?.id ?? p.arms[0]?.id ?? 'so101-1');
+    // Overhead camera pose (position + aim/roll + FOV).
+    if (p.camera) simRef.current?.renderSys.cameraRig.applyPose(p.camera);
+  };
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
   cameraTogglesRef.current = cameraToggles;
 
@@ -983,6 +1013,16 @@ export function App() {
             onResetView={handleResetView}
             onFrameSelection={handleFrameSelection}
           />
+
+          {!sceneIsFranka && (
+            <LayoutProfiles
+              profiles={profiles}
+              onSave={handleSaveProfile}
+              onLoad={handleLoadProfile}
+              onDelete={handleDeleteProfile}
+              isDarkMode={isDarkMode}
+            />
+          )}
 
           {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
               Sits just right of the dock so it clears both side panels. */}
