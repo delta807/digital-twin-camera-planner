@@ -60,7 +60,7 @@ export interface DockMeasureProps {
   onClear: () => void;
   onRemove: (id: string) => void;
 }
-export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number; armId?: string }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;

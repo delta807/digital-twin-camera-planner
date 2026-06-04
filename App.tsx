@@ -408,7 +408,11 @@ export function App() {
   useEffect(() => {
     const sel = simRef.current?.renderSys.selection;
     if (isLoading || !sel) return;
-    sel.onChange = (s) => setSelection(s);
+    sel.onChange = (s) => {
+      setSelection(s);
+      // Clicking the (physics) arm in the viewport targets the primary arm in the inspector.
+      if (s?.kind === 'arm') setSelectedArmId(armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
+    };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,8 +420,8 @@ export function App() {
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number }[] = [];
-    armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label }));
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number; armId?: string }[] = [];
+    armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
     list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
@@ -426,12 +430,14 @@ export function App() {
   const primaryArmId = armInstances.find((a) => a.primary)?.id ?? 'so101-1';
   const selectedKey = !selection ? null
     : selection.kind === 'object' ? `obj:${selection.bodyId}`
-    : selection.kind === 'arm' ? `arm:${primaryArmId}`
+    : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
     : selection.kind; // 'camera' | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number }) => {
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number; armId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
-    if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
+    // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
+    if (e.kind === 'arm') { sel.selectByKind('arm'); if (e.armId) setSelectedArmId(e.armId); }
+    else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
   };
 
@@ -848,10 +854,10 @@ export function App() {
             selection={selection}
             unit={lengthUnit}
             isDarkMode={isDarkMode}
-            arm={(() => { const a = armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
+            arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
             cameraPos={cameraPos}
             post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
-            onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
+            onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
             onCamera={handleCameraMove}
             onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
             onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
