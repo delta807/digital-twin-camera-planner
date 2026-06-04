@@ -53,6 +53,9 @@ export class SelectionController {
 
   onChange?: (sel: SelectionInfo | null) => void;
   onPostMove?: (x: number, y: number) => void;
+  onArmMove?: (armId: string | undefined, x: number, y: number) => void;
+  /** App provides the selected arm's base pose so the gizmo can sit on it + track it. */
+  getArmPose?: (armId: string | undefined) => { x: number; y: number } | null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -89,6 +92,7 @@ export class SelectionController {
       this.orbit.enabled = !(e as unknown as { value: boolean }).value;
     });
     this.control.addEventListener('objectChange', () => {
+      if (this.selected?.kind === 'arm') { this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y); return; }
       if (this.selected?.kind !== 'post') return;
       this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
@@ -148,8 +152,11 @@ export class SelectionController {
     }
     // Object / camera bbox the tracked Object3D; arm unions all its links.
     let box: THREE.Box3 | null = null;
-    if (k === 'arm') box = this.armBox(this.selectedArmId);
-    else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
+    if (k === 'arm') {
+      box = this.armBox(this.selectedArmId);
+      const pose = this.getArmPose?.(this.selectedArmId); // keep the drag gizmo on the arm base
+      if (pose && !(this.control as unknown as { dragging: boolean }).dragging) this.proxy.position.set(pose.x, pose.y, 0.02);
+    } else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
     box.getCenter(this.vCenter);
@@ -238,12 +245,14 @@ export class SelectionController {
     this.onChange?.(this.selected);
   }
 
-  /** Select a specific arm (by id; undefined = the primary physics arm) — outline its bbox. */
+  /** Select a specific arm (by id; undefined = the primary physics arm) — outline + drag gizmo. */
   private selectArm(armId?: string) {
     this.selectedArmId = armId;
     this.selectedBody = null;
-    this.control.enabled = false;
-    this.helper.visible = false;
+    const pose = this.getArmPose?.(armId);
+    if (pose) this.proxy.position.set(pose.x, pose.y, 0.02);
+    this.control.enabled = !!pose;   // XY translate gizmo on the arm base, like the camera's
+    this.helper.visible = !!pose;
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
     this.selected = { kind: 'arm', label: 'SO-101 arm', x: 0, y: 0, z: 0, movable: true, armId };

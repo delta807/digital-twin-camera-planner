@@ -501,6 +501,9 @@ export function App() {
       if (s?.kind === 'arm') setSelectedArmId(s.armId ?? armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
     };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
+    // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
+    sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y } : null; };
+    sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
