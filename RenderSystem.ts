@@ -232,7 +232,9 @@ export class RenderSystem {
 
         // Sensor-camera overlays + PIP. Runs after the main view so its helper-hiding
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
-        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.extraPipHelpers];
+        // Hide the camera post in every PIP: the real D435i is mounted ON the post, so its footage
+        // never contains the post — the sim PIP should match that to represent reality faithfully.
+        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers];
         this.cameraRig.update(this.simGroup, pipHide);
 
         // Wrist-cam footage: one feed per arm. Each tracks its own end-effector + renders its PIP

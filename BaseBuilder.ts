@@ -18,6 +18,9 @@ import { WorkcellConfig } from './types';
 export class BaseBuilder {
   readonly group = new THREE.Group();
 
+  /** The camera-post mesh(es). Hidden during PIP renders so the sim "footage" matches the real
+   *  D435i, which is mounted ON the post and therefore never sees it. */
+  postMeshes: THREE.Object3D[] = [];
   /** World position of the camera post (top centre), for snapping the camera onto the rod. */
   readonly postTop = new THREE.Vector3();
   /** World X/Y of the post axis + its height + cross-section — exposed for snapping/selection. */
@@ -36,6 +39,7 @@ export class BaseBuilder {
   /** Rebuild the worktop from config. Cheap — call on every slider change. */
   rebuild(config: WorkcellConfig) {
     this.clear();
+    this.postMeshes = [];
 
     const sides = Math.max(3, Math.min(8, Math.round(config.shapeSides)));
     const halfX = Math.max(0.175, config.length / 2);
@@ -87,6 +91,7 @@ export class BaseBuilder {
     post.castShadow = true;
     post.userData.selectable = 'post'; // pickable by the SelectionController
     this.group.add(post);
+    this.postMeshes.push(post);
     this.postAxis = { x: px, y: py, height: postH, width: barW };
     this.postTop.set(px, py, postH);
     // The upright post first — it's the rod users mount the camera on / slide along.
@@ -99,6 +104,7 @@ export class BaseBuilder {
       m.position.set(ep.x, ep.y, h / 2);
       m.castShadow = true;
       this.group.add(m);
+      this.postMeshes.push(m);
       this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
     });
   }
