@@ -120,7 +120,9 @@ export function App() {
 
   // --- Sensor-camera planner state ---
   const [cameraToggles, setCameraToggles] = useState<CameraViewToggles>({ ...DEFAULT_CAMERA_TOGGLES });
-  const [intrinsics, setIntrinsics] = useState<CameraIntrinsics>({ ...D435I_PRESET });
+  // Initialise from the DEFAULT stream profile (now RGB 640×480 4:3, matching the real rig).
+  const defaultProfileIntrinsics = D435I_STREAM_PROFILES.find((p) => p.id === D435I_DEFAULT_PROFILE_ID)?.intrinsics ?? D435I_PRESET;
+  const [intrinsics, setIntrinsics] = useState<CameraIntrinsics>({ ...defaultProfileIntrinsics });
   const [selectedProfileId, setSelectedProfileId] = useState(D435I_DEFAULT_PROFILE_ID);
   const [dragMode, setDragMode] = useState<'translate' | 'rotate'>('translate');
   const sensorViewRef = useRef<HTMLDivElement>(null);

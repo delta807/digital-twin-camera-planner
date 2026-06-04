@@ -85,7 +85,9 @@ export const D435I_STREAM_PROFILES: CameraStreamProfile[] = [
 ];
 
 // Default to a true 16:9 RGB mode (the natural "footage" aspect), not the depth-native 848x480.
-export const D435I_DEFAULT_PROFILE_ID = 'rgb-1280x720';
+// Default to RGB 640×480 (4:3) — what the real LeRobot rig actually records the D435i at (verified
+// from recorded episodes on the Jetson). Switch to 1280×720 in the dock for the wider 16:9 view.
+export const D435I_DEFAULT_PROFILE_ID = 'rgb-640x480';
 export const D435I_PRESET: CameraIntrinsics = { ...D435I_RGB_PRESET };
 
 export const DEFAULT_CAMERA_TOGGLES: CameraViewToggles = {
