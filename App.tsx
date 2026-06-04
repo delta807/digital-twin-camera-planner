@@ -21,6 +21,10 @@ import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
 
+/** Live overhead D435i feed from the Jetson Orin Nano (Tailscale) — FPV MJPEG dashboard on :8080.
+ *  Used to superimpose the REAL overhead frame over the sim PIP and tune the sim camera to match. */
+const JETSON_OVERHEAD_STREAM = 'http://100.68.215.10:8080/stream.mjpg';
+
 /**
  * Default prompt parts for different detection types.
  */
@@ -147,6 +151,11 @@ export function App() {
   const [selectedProfileId, setSelectedProfileId] = useState(D435I_DEFAULT_PROFILE_ID);
   const [dragMode, setDragMode] = useState<'translate' | 'rotate'>('translate');
   const sensorViewRef = useRef<HTMLDivElement>(null);
+  // Superimpose the live real overhead feed (Jetson FPV MJPEG) over the sim PIP to tune the sim
+  // camera until they match. Both app + Jetson are http (no mixed-content); <img> needs no CORS.
+  const [overlayOn, setOverlayOn] = useState(false);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5);
+  const [overlayBlend, setOverlayBlend] = useState<'normal' | 'difference'>('normal');
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
   cameraTogglesRef.current = cameraToggles;
 
@@ -1006,6 +1015,12 @@ export function App() {
               sidebarOpen={showSidebar}
               aspect={intrinsics.aspect}
               onClose={() => handleCameraToggle('sensorPip', false)}
+              compare={{
+                src: JETSON_OVERHEAD_STREAM,
+                on: overlayOn, onToggle: setOverlayOn,
+                opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                blend: overlayBlend, onBlend: setOverlayBlend,
+              }}
             />
           )}
 

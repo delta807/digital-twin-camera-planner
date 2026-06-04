@@ -91,9 +91,10 @@ export class WorkspaceCameraRig {
     this.scene.add(this.gizmo);
     this.loadCameraMesh(body, lens); // swap the placeholder for the real D435i mesh once loaded
 
-    // Sensible starting pose: mounted above the worktop, looking straight DOWN (top-down view,
-    // like the real rig's overhead D435i). User can reposition / re-aim from here.
-    this.setPose(new THREE.Vector3(0.15, -0.15, 0.7), new THREE.Vector3(0.15, -0.15, 0));
+    // Starting pose = the REAL rig's overhead D435i mount, measured on the bench:
+    // (41.5, 26.5, 85) cm from table centre → (0.415, 0.265, 0.85) m, looking down. This is the
+    // anchor for superimposing the live Jetson overhead feed against the sim PIP to tune them to match.
+    this.setPose(new THREE.Vector3(0.415, 0.265, 0.85), new THREE.Vector3(0.415, 0.265, 0));
 
     // --- Drag handle (reuses the project's TransformControls pattern; getHelper() is the
     //     correct API in three 0.181 where TransformControls no longer extends Object3D) ---
