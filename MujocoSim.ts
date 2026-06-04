@@ -300,10 +300,10 @@ export class MujocoSim {
      * SO-101: solve position-only numeric IK toward `target` and drive the (primary) arm there
      * via its position actuators. Returns whether the target was reachable. No-op for Franka.
      */
-    moveArmTo(target: THREE.Vector3): boolean {
+    moveArmTo(target: THREE.Vector3, downWeight = 0): boolean {
         if (this.isFranka || !this.numericIk || !this.mjData) return false;
         const seed = this.armJointQadr.map((a) => this.mjData!.qpos[a]);
-        const { q, ok } = this.numericIk.solve(target, seed, this.mjData.qpos);
+        const { q, ok } = this.numericIk.solve(target, seed, this.mjData.qpos, downWeight);
         // Actuators 0..N-1 drive exactly the swept joints (Rotation, Pitch, Elbow, Wrist_Pitch).
         for (let j = 0; j < q.length; j++) this.mjData.ctrl[j] = q[j];
         return ok;
@@ -371,18 +371,20 @@ export class MujocoSim {
         const DUR = [1.2, 1.2, 0.6, 1.0, 1.6, 1.0, 0.5];          // seconds per phase
         const p = pk.queue[pk.idx].pos;
         const bin = this.binDropTarget();
+        const DOWN_W = 0.7; // orientation weight → arm rotates to face the target + points down
         const setJaw = (v: number) => { if (this.gripperActuatorId >= 0) d.ctrl[this.gripperActuatorId] = v; };
         const at = (z: number) => new THREE.Vector3(p.x, p.y, z);
+        const overBin = (z: number) => new THREE.Vector3(bin.x, bin.y, bin.z + z);
 
         pk.t += dt;
         switch (pk.phase) {
-            case 0: this.moveArmTo(at(APPROACH)); setJaw(JAW_OPEN); break;                                 // approach above
-            case 1: this.moveArmTo(at(GRASP)); setJaw(JAW_OPEN); break;                                    // descend onto it
-            case 2: this.moveArmTo(at(GRASP)); setJaw(JAW_CLOSED); break;                                  // close gripper
-            case 3: this.moveArmTo(at(LIFT)); setJaw(JAW_CLOSED); break;                                   // lift clear
-            case 4: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.20)); setJaw(JAW_CLOSED); break; // carry over the bin
-            case 5: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_CLOSED); break; // lower into the bin
-            case 6: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_OPEN); break;    // release
+            case 0: this.moveArmTo(at(APPROACH), DOWN_W); setJaw(JAW_OPEN); break;     // approach above
+            case 1: this.moveArmTo(at(GRASP), DOWN_W); setJaw(JAW_OPEN); break;        // descend onto it
+            case 2: this.moveArmTo(at(GRASP), DOWN_W); setJaw(JAW_CLOSED); break;      // close gripper
+            case 3: this.moveArmTo(at(LIFT), DOWN_W); setJaw(JAW_CLOSED); break;       // lift clear
+            case 4: this.moveArmTo(overBin(0.20), DOWN_W); setJaw(JAW_CLOSED); break;  // carry over the bin
+            case 5: this.moveArmTo(overBin(0.08), DOWN_W); setJaw(JAW_CLOSED); break;  // lower into the bin
+            case 6: this.moveArmTo(overBin(0.08), DOWN_W); setJaw(JAW_OPEN); break;    // release
         }
 
         if (pk.t < DUR[pk.phase]) return;
