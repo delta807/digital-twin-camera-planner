@@ -42,8 +42,11 @@ chosen in sim hold up in the real world.
       nice-to-have if idle/upright framing needs improving — deferred, not needed for the bug.
 - [ ] **Staged multi-arm physics** — N real SO-101 arms in one MuJoCo model + per-arm IK (physics
       first; pickup + Gemini multi-control later). [the "big lift"]
-- [ ] **Full reskin** to the lab-instrument design from the zip (OKLCH tokens, mode-rail, compare
-      A/B, metric bar, legend, tweaks). Big, all-or-nothing — do as a focused pass.
+- [~] **Full reskin** to the lab-instrument design. PHASE 1 DONE (b099917): config-level palette
+      remap (slate/indigo → OKLCH lab-instrument ramps), IBM Plex Sans/Mono, categorical overlay
+      colours, crisp panels — whole app re-coloured coherently without rewriting every component.
+      REMAINING (structural, restructures the App shell): live-metrics top bar (coverage/reach %),
+      overlay legend, left mode-rail (Edit/Compare/dock/perceive), Compare A/B mode, tweaks panel.
 
 ## DONE (this batch)
 - [x] ROM reach → clean radial r(θ) fan (6c75c05).
