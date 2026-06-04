@@ -9,6 +9,38 @@ A camera/arm/workcell planner whose sim decisions transfer 1:1 to the physical
 SO-101 + D435i + Jetson rig — so layout, reach, camera placement, and grasps
 chosen in sim hold up in the real world.
 
+## ACTIVE — new issues (reported Jun 2026, this batch)
+- [ ] **#1 Joint jog doesn't respond to real clicks** — works via synthetic MouseEvents but not a
+      real mouse. Cause: OrbitControls handles pointerdown + preventDefault suppresses the legacy
+      mouse events the vendored URDFDragControls listens for. FIX: rewire the controls to pointer
+      events (reattach the base handlers to pointerdown/move/up). HIGH priority, quick.
+- [ ] **#2 A slider crashes / lags the whole site** — suspect the reach recompute now runs the
+      heavier radial sweep (BASE_STEPS=160 × resolution³ ≈ 100k+ mj_forward) SYNCHRONOUSLY on every
+      slider tick. FIX: debounce + only recompute on release, and/or lighten/async the sweep. HIGH.
+- [ ] **#3 Wrist cam on ADDITIONAL (ghost) arms is bad** — framing/feed wrong on non-primary arms.
+      Investigate trackFromMatrix on ghost TCP markers + mount offsets.
+- [ ] **#4 Simulated DEPTH footage** — add a depth-render view of the D435i (depth colormap, range
+      0.3–3 m) so we can preview what the depth camera would see, alongside the RGB PIP.
+
+## PARKED — finish camera alignment (the "camera thing, later")
+- [ ] User moved the overhead D435i to the −X−Y corner (−0.357, −0.375, 0.85). Still to finalize:
+      the roll/FOV to pixel-match the real `scene.mjpg`, AND move the primary arm base to where the
+      real arm is (CAD render: clamped to the FRONT-RIGHT edge, facing INTO the table). Use the live
+      Difference overlay to converge. (setPose roll support already landed.)
+
+## BIGGER BACKLOG (agreed earlier, not yet started)
+- [ ] **Staged multi-arm physics** — N real SO-101 arms in one MuJoCo model + per-arm IK (physics
+      first; pickup + Gemini multi-control later). [the "big lift"]
+- [ ] **Full reskin** to the lab-instrument design from the zip (OKLCH tokens, mode-rail, compare
+      A/B, metric bar, legend, tweaks). Big, all-or-nothing — do as a focused pass.
+
+## DONE (this batch)
+- [x] ROM reach → clean radial r(θ) fan (6c75c05).
+- [x] Superimpose live Jetson feeds, correctly paired (overhead↔scene, wrist↔wrist) (2cf8b40);
+      angled overhead + post hidden in PIP (f523386); setPose roll (c5d91cc).
+- [x] Interactive joint posing "Jog joints" — vendored urdf-loader drag engine + MuJoCo adapter
+      (da7f0c8). [blocked by #1 for real mouse — fix pending]
+
 ## Needs a decision
 - [ ] **D435i framing vs reality** — real recorded "front" cam (= the D435i, only non-wrist cam)
       is a CROSS-TABLE front-elevated view (arm right, table left), NOT top-down like the sim.

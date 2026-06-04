@@ -118,7 +118,28 @@ export class MujocoJointDrag extends Base {
   ): MujocoJointDrag {
     const c = new MujocoJointDrag(scene, camera, dom);
     c.mujoco = mujoco; c.model = model; c.data = data; c.orbit = orbit; c.onJointLabel = onJointLabel;
+    // The vendored controls bind to MOUSE events, but OrbitControls handles pointerdown and
+    // preventDefault()s it — which suppresses the compat mousedown, so real clicks never grab a
+    // joint (only synthetic MouseEvents did). Re-bind the SAME handlers to POINTER events, which
+    // coexist with OrbitControls. (Handlers read e.clientX/clientY — present on PointerEvent too.)
+    const h = c as unknown as { _mouseDown: (e: Event) => void; _mouseMove: (e: Event) => void; _mouseUp: (e: Event) => void };
+    dom.removeEventListener('mousedown', h._mouseDown);
+    dom.removeEventListener('mousemove', h._mouseMove);
+    dom.removeEventListener('mouseup', h._mouseUp);
+    dom.addEventListener('pointerdown', h._mouseDown);
+    dom.addEventListener('pointermove', h._mouseMove);
+    dom.addEventListener('pointerup', h._mouseUp);
+    c.dom = dom;
     return c;
+  }
+
+  private dom!: HTMLElement;
+  dispose() {
+    const h = this as unknown as { _mouseDown: (e: Event) => void; _mouseMove: (e: Event) => void; _mouseUp: (e: Event) => void };
+    this.dom.removeEventListener('pointerdown', h._mouseDown);
+    this.dom.removeEventListener('pointermove', h._mouseMove);
+    this.dom.removeEventListener('pointerup', h._mouseUp);
+    this.orbit.enabled = true; // never leave orbit disabled if we were mid-drag
   }
 
   updateJoint(joint: JointGroup, angle: number) {

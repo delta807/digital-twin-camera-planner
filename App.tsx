@@ -634,7 +634,12 @@ export function App() {
     sim?.setArmInstances(next); // live ghost + reach outline
     const changed = next.find((a) => a.id === id);
     if (changed?.primary && sim) {
-      sim.relocateBase(changed.x, changed.y, changed.yaw).then(() => applyPlannerState()); // live, instant
+      // Just move the base — relocateBase already redraws the reach overlay (setArms). Do NOT
+      // recompute reachability here: the reachable set is BASE-RELATIVE (invariant under the base's
+      // x/y/yaw), so a re-sweep is wasted work — and the heavier radial sweep made that re-sweep,
+      // running on every slider tick, freeze/crash the page. Re-sweep only happens on the explicit
+      // "Recompute reach" button or a model reload.
+      sim.relocateBase(changed.x, changed.y, changed.yaw); // live, instant — no recompute
     }
   };
 
