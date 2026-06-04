@@ -211,8 +211,10 @@ export class RobotLoader {
         const blocks: Array<[number, number]> = [
             [0.16, 0.12], [0.02, 0.24], [-0.14, 0.16], [0.12, -0.16], [-0.18, -0.06],
         ];
+        // Orange blocks are DYNAMIC (freejoint) so the SO-101 can actually pick them up — they
+        // rest on the menagerie floor plane at z=0. Cup/tape/bin stay static scene props.
         blocks.forEach(([x, y], i) => {
-            s += `<body name="task${i}" pos="${x} ${y} 0.018"><geom type="box" size="0.018 0.018 0.018" rgba="${ORANGE}"/></body>`;
+            s += `<body name="task${i}" pos="${x} ${y} 0.018"><freejoint/><geom type="box" size="0.018 0.018 0.018" rgba="${ORANGE}" mass="0.03" friction="1.5 0.3 0.1" solref="0.01 1" solimp="0.95 0.99 0.001 0.5 2" condim="4"/></body>`;
         });
         // Cup (white cylinder), tape (beige flat cylinder), bin (teal box).
         s += `<body name="task5" pos="0.24 -0.02 0.015"><geom type="cylinder" size="0.025 0.015" rgba="0.95 0.95 0.95 1"/></body>`;

@@ -58,6 +58,16 @@ export class MujocoSim {
     private userIkEnabled = false;
     private firstIkEnable = true; // Track first enable to enforce default rotation
 
+    /** SO-101 scripted grasp sequence (approach → descend → close → lift → release per item). */
+    private so101Pickup: {
+        queue: { pos: THREE.Vector3; markerId: number }[];
+        idx: number;
+        phase: number; // 0 approach, 1 descend, 2 close, 3 lift, 4 release
+        t: number;     // seconds elapsed in the current phase
+        onFinished?: () => void;
+        grab: { qposAdr: number; dofAdr: number; offset: THREE.Vector3 } | null;
+    } | null = null;
+
     // Gizmo Interpolation State
     private gizmoAnim = {
         active: false,
@@ -254,6 +264,108 @@ export class MujocoSim {
         return ok;
     }
 
+    // ───────────────────────── SO-101 scripted grasp ─────────────────────────
+
+    /** Current TCP (gripper site) world position. */
+    private tcpWorld(): THREE.Vector3 {
+        const d = this.mjData!, s = this.ikSys.gripperSiteId;
+        return new THREE.Vector3(d.site_xpos[s * 3], d.site_xpos[s * 3 + 1], d.site_xpos[s * 3 + 2]);
+    }
+
+    /** Nearest DYNAMIC task block (freejoint) to a point, with its qpos/dof addresses. */
+    private nearestTaskBody(p: THREE.Vector3): { bodyId: number; qposAdr: number; dofAdr: number } | null {
+        const m = this.mjModel!, d = this.mjData!;
+        let best = -1, bestD = Infinity;
+        for (let i = 0; i < m.nbody; i++) {
+            if (!getName(m, m.name_bodyadr[i]).startsWith('task')) continue;
+            const jadr = m.body_jntadr[i];
+            if (jadr < 0 || m.jnt_type[jadr] !== 0) continue; // 0 = free joint; skip static props
+            const dx = d.xpos[i * 3] - p.x, dy = d.xpos[i * 3 + 1] - p.y, dz = d.xpos[i * 3 + 2] - p.z;
+            const dd = dx * dx + dy * dy + dz * dz;
+            if (dd < bestD) { bestD = dd; best = i; }
+        }
+        if (best < 0) return null;
+        const jadr = m.body_jntadr[best];
+        return { bodyId: best, qposAdr: m.jnt_qposadr[jadr], dofAdr: m.jnt_dofadr[jadr] };
+    }
+
+    /** Hold the grabbed block at a fixed offset from the TCP (and zero its velocity). */
+    private pinGrabbedBlock() {
+        const g = this.so101Pickup?.grab, d = this.mjData;
+        if (!g || !d) return;
+        const tcp = this.tcpWorld(), a = g.qposAdr;
+        d.qpos[a] = tcp.x + g.offset.x;
+        d.qpos[a + 1] = tcp.y + g.offset.y;
+        d.qpos[a + 2] = tcp.z + g.offset.z;
+        d.qpos[a + 3] = 1; d.qpos[a + 4] = 0; d.qpos[a + 5] = 0; d.qpos[a + 6] = 0;
+        for (let k = 0; k < 6; k++) d.qvel[g.dofAdr + k] = 0;
+    }
+
+    /** Drop target: the teal bin (task7) top, with a sane fallback if it isn't in the scene. */
+    private binDropTarget(): THREE.Vector3 {
+        const m = this.mjModel!, d = this.mjData!;
+        for (let i = 0; i < m.nbody; i++) {
+            if (getName(m, m.name_bodyadr[i]) === 'task7') return new THREE.Vector3(d.xpos[i * 3], d.xpos[i * 3 + 1], 0.05);
+        }
+        return new THREE.Vector3(0.28, 0.16, 0.05);
+    }
+
+    /**
+     * Advance the grasp state machine — a full pick-and-place per detected item:
+     * approach → descend → close → lift → carry to the bin → lower → release.
+     */
+    private tickSo101Pickup(dt: number) {
+        const pk = this.so101Pickup, d = this.mjData;
+        if (!pk || !d) return;
+        if (pk.idx >= pk.queue.length) { this.finishSo101Pickup(); return; }
+
+        const JAW_OPEN = 1.2, JAW_CLOSED = -0.1;                  // SO-101 Jaw range [-0.17, 1.75]
+        const APPROACH = 0.14, GRASP = 0.03, LIFT = 0.20;         // heights above the block centre
+        const DUR = [1.2, 1.2, 0.6, 1.0, 1.6, 1.0, 0.5];          // seconds per phase
+        const p = pk.queue[pk.idx].pos;
+        const bin = this.binDropTarget();
+        const setJaw = (v: number) => { if (this.gripperActuatorId >= 0) d.ctrl[this.gripperActuatorId] = v; };
+        const above = (z: number) => new THREE.Vector3(p.x, p.y, p.z + z);
+
+        pk.t += dt;
+        switch (pk.phase) {
+            case 0: this.moveArmTo(above(APPROACH)); setJaw(JAW_OPEN); break;                              // approach above
+            case 1: this.moveArmTo(above(GRASP)); setJaw(JAW_OPEN); break;                                 // descend onto it
+            case 2: this.moveArmTo(above(GRASP)); setJaw(JAW_CLOSED); break;                               // close gripper
+            case 3: this.moveArmTo(above(LIFT)); setJaw(JAW_CLOSED); break;                                // lift clear
+            case 4: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.20)); setJaw(JAW_CLOSED); break; // carry over the bin
+            case 5: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_CLOSED); break; // lower into the bin
+            case 6: this.moveArmTo(new THREE.Vector3(bin.x, bin.y, bin.z + 0.08)); setJaw(JAW_OPEN); break;    // release
+        }
+
+        if (pk.t < DUR[pk.phase]) return;
+        pk.t = 0;
+        if (pk.phase === 2) {
+            // Grasp closes → attach the nearest block to the gripper and clear its ER marker.
+            const nb = this.nearestTaskBody(new THREE.Vector3(p.x, p.y, p.z));
+            if (nb) {
+                const tcp = this.tcpWorld();
+                pk.grab = {
+                    qposAdr: nb.qposAdr, dofAdr: nb.dofAdr,
+                    offset: new THREE.Vector3(d.xpos[nb.bodyId * 3] - tcp.x, d.xpos[nb.bodyId * 3 + 1] - tcp.y, d.xpos[nb.bodyId * 3 + 2] - tcp.z),
+                };
+                this.renderSys.removeMarkerById(pk.queue[pk.idx].markerId);
+            }
+        } else if (pk.phase === 6) {
+            pk.grab = null;        // release → block drops into the bin; advance to the next item
+            pk.idx++;
+            pk.phase = 0;
+            return;
+        }
+        pk.phase++;
+    }
+
+    private finishSo101Pickup() {
+        const cb = this.so101Pickup?.onFinished;
+        this.so101Pickup = null;
+        cb?.();
+    }
+
     private descendantBodyIds(baseBodyId: number): number[] {
         const m = this.mjModel;
         if (!m) return [];
@@ -391,12 +503,22 @@ export class MujocoSim {
                          this.syncIkState();
                          this.ikSys.update(this.mjModel, this.mjData);
                     }
+                } else if (this.so101Pickup) {
+                    // Drive the grasp phases (sets arm ctrl + jaw) before integrating physics.
+                    this.tickSo101Pickup((1 / 60) * this.speedMultiplier);
                 }
 
                 const startSimTime = this.mjData.time;
                 // Allow simulation to run faster than real-time based on speedMultiplier
                 while (this.mjData.time - startSimTime < (1.0 / 60.0) * this.speedMultiplier) {
                     this.mujoco.mj_step(this.mjModel, this.mjData);
+                }
+
+                // Keep the grabbed block pinned to the gripper (kinematic grasp — position-only IK
+                // can't guarantee a force-closure grip, so we ride the block on the TCP during lift).
+                if (this.so101Pickup?.grab) {
+                    this.pinGrabbedBlock();
+                    this.mujoco.mj_forward(this.mjModel, this.mjData); // refresh xpos for rendering
                 }
             }
 
@@ -461,7 +583,15 @@ export class MujocoSim {
     }
 
     pickupItems(positions: THREE.Vector3[], markerIds: number[], onFinished?: () => void) {
-        if (!this.isFranka) return; // scripted pickup uses Franka analytical IK
+        if (!this.isFranka) {
+            // SO-101: numeric-IK grasp choreography (approach → descend → close → lift → release).
+            if (!this.numericIk || !this.mjData || positions.length === 0) { onFinished?.(); return; }
+            this.so101Pickup = {
+                queue: positions.map((p, i) => ({ pos: p.clone(), markerId: markerIds[i] })),
+                idx: 0, phase: 0, t: 0, onFinished, grab: null,
+            };
+            return;
+        }
         if (this.sequenceAnimator && this.mjData) {
             this.ikSys.syncToSite(this.mjData);
             this.sequenceAnimator.start(
@@ -482,7 +612,8 @@ export class MujocoSim {
         if (!this.mjModel || !this.mjData) return;
         this.renderSys.clearErMarkers();
         this.gizmoAnim.active = false;
-        this.sequenceAnimator.reset(); 
+        this.so101Pickup = null;
+        this.sequenceAnimator.reset();
         this.mujoco.mj_resetData(this.mjModel, this.mjData);
         this.setInitialPose();
         this.randomizeCubes(); 
