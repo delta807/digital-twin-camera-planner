@@ -16,10 +16,12 @@ chosen in sim hold up in the real world.
 - [x] **#2 A slider crashes / lags the whole site** — FIXED (29520b5): the arm X/Y/Yaw sliders
       re-swept reachability every tick via applyPlannerState; reach is base-relative-invariant so
       relocateBase already redraws. Dropped the redundant recompute. Verified: 40 ticks, rAF 6ms.
-- [ ] **#3 Wrist cam on ADDITIONAL (ghost) arms is bad** — framing/feed wrong on non-primary arms.
-      Investigate trackFromMatrix on ghost TCP markers + mount offsets.
-- [ ] **#4 Simulated DEPTH footage** — add a depth-render view of the D435i (depth colormap, range
-      0.3–3 m) so we can preview what the depth camera would see, alongside the RGB PIP.
+- [x] **#3 Wrist cam on ADDITIONAL (ghost) arms is bad** — FIXED (2c91aa9): ghosts were frozen at
+      the home pose (wrist cams stared at the horizon). Now ghosts re-mirror the primary's CURRENT
+      pose on jog-end (refreshGhostArms), so wrist cams frame consistently; ghosts no longer inherit
+      the pink hover highlight.
+- [x] **#4 Simulated DEPTH footage** — DONE (5de4283): RGB/DEPTH toggle on the Sensor View; depth
+      pass renders a jet-colormap of view-space distance clamped to the D435i near/far (0.3–3 m).
 
 ## PARKED — finish camera alignment (the "camera thing, later")
 - [ ] User moved the overhead D435i to the −X−Y corner (−0.357, −0.375, 0.85). Still to finalize:
