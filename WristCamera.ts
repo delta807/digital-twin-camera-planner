@@ -32,6 +32,7 @@ export class WristCamera {
   private readonly approach = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
+  private readonly p = new THREE.Vector3();
 
   constructor(private readonly scene: THREE.Scene) {
     this.camera = new THREE.PerspectiveCamera(43, 16 / 9, 0.01, 5); // ~70° H wrist webcam
@@ -50,6 +51,19 @@ export class WristCamera {
     // MuJoCo site_xmat is row-major local→world; columns are the local axes in world coords.
     this.ly.set(xmat[base + 1], xmat[base + 4], xmat[base + 7]); // local Y (fingers extend along -localY)
     this.lz.set(xmat[base + 2], xmat[base + 5], xmat[base + 8]); // local Z (gripper "up")
+    this.aim(pos);
+  }
+
+  /** Re-pose from a gripper world Matrix4 (used for static ghost arms via their TCP marker). */
+  trackFromMatrix(m: THREE.Matrix4) {
+    const e = m.elements; // column-major: col1 = localY, col2 = localZ, col3 = translation
+    this.ly.set(e[4], e[5], e[6]);
+    this.lz.set(e[8], e[9], e[10]);
+    this.aim(this.p.set(e[12], e[13], e[14]));
+  }
+
+  /** Place the camera behind+above the gripper, looking toward the grasp point. */
+  private aim(pos: THREE.Vector3) {
     this.approach.copy(this.ly).negate().normalize();
     this.lz.normalize();
     this.camPos.copy(pos).addScaledVector(this.approach, -this.back).addScaledVector(this.lz, this.up);

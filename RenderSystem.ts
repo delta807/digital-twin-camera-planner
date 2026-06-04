@@ -29,6 +29,7 @@ export class RenderSystem {
     cameraRig: WorkspaceCameraRig;
     wristCamera!: WristCamera;
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
+    wristSelectedArmId: string | undefined = undefined; // which arm's wrist cam to show (undefined = primary)
     private readonly tmpVec = new THREE.Vector3();
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
@@ -236,9 +237,19 @@ export class RenderSystem {
         // Wrist-cam footage: track the gripper end-effector + render its PIP (hide overlays AND the
         // floating D435i rig so the wrist feed shows clean footage).
         if (this.wristCamera.enabled && this.gripperSiteId >= 0) {
-            const s = this.gripperSiteId;
-            this.wristCamera.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
-            this.wristCamera.renderPip([...pipHide, ...this.cameraRig.overlays]); // hide the whole D435i rig (gizmo + frustum + footprint)
+            // Selected a (static) ghost arm → track its TCP marker; else the live primary TCP.
+            const armId = this.wristSelectedArmId;
+            const ghost = armId ? this.planningArmsGroup.children.find((c) => c.userData.armId === armId) : undefined;
+            let marker: THREE.Object3D | undefined;
+            if (ghost) ghost.traverse((o) => { if (!marker && o.userData?.isTcp) marker = o; });
+            if (marker) {
+                marker.updateWorldMatrix(true, false);
+                this.wristCamera.trackFromMatrix(marker.matrixWorld);
+            } else {
+                const s = this.gripperSiteId;
+                this.wristCamera.track(this.tmpVec.fromArray(mjData.site_xpos as unknown as number[], s * 3), mjData.site_xmat as unknown as ArrayLike<number>, s * 9);
+            }
+            this.wristCamera.renderPip([...pipHide, ...this.cameraRig.overlays]); // hide the whole D435i rig
         }
 
         // Measurement labels (DOM overlay).
@@ -275,12 +286,19 @@ export class RenderSystem {
         }
     }
 
-    buildPlanningArmTemplate(bodyIds: number[], baseBodyId: number) {
+    buildPlanningArmTemplate(bodyIds: number[], baseBodyId: number, tcpWorld?: THREE.Matrix4) {
         const base = this.bodies[baseBodyId];
         if (!base) return;
         base.updateMatrixWorld(true);
         const invBase = new THREE.Matrix4().copy(base.matrixWorld).invert();
         const template = new THREE.Group();
+        // TCP marker in base-local space → each ghost clone carries it so its wrist cam can track.
+        if (tcpWorld) {
+            const marker = new THREE.Object3D();
+            marker.applyMatrix4(new THREE.Matrix4().multiplyMatrices(invBase, tcpWorld));
+            marker.userData.isTcp = true;
+            template.add(marker);
+        }
         for (const bodyId of bodyIds) {
             const body = this.bodies[bodyId];
             if (!body || body.children.length === 0) continue;

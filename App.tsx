@@ -303,6 +303,8 @@ export function App() {
     return () => { simRef.current?.renderSys.wristCamera?.detachPip(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, wristView]);
+  // The wrist feed follows the selected arm (primary = live; a ghost arm = static mount preview).
+  useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
     setCameraToggles(prev => ({ ...prev, [key]: value }));
@@ -906,7 +908,7 @@ export function App() {
               isDarkMode={isDarkMode}
               sidebarOpen={showSidebar}
               aspect={16 / 9}
-              title="Wrist Cam · HBVCAM"
+              title={`Wrist Cam · ${armInstances.find((a) => a.id === selectedArmId)?.label ?? 'SO101 1'}`}
               secondary={cameraToggles.sensorPip}
               onClose={() => setWristView(false)}
             />
