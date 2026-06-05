@@ -26,13 +26,23 @@ export class StationCamera {
     this.scene.add(this.glyph);
   }
 
-  setGlyphVisible(v: boolean) { this.glyph.visible = v; }
+  setGlyphVisible(v: boolean) { this.glyph.visible = v && !this.glyph.userData.hiddenByUser; }
 
   /** Mount on the post (camX,camY,camZ) looking straight down at the worktop centre (lookX,lookY,0). */
   setPose(camX: number, camY: number, camZ: number, lookX: number, lookY: number) {
     this.camera.position.set(camX, camY, camZ);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(lookX, lookY, 0);
+    this.camera.updateMatrixWorld();
+    this.glyph.position.copy(this.camera.position);
+    this.glyph.quaternion.copy(this.camera.quaternion);
+  }
+
+  /** Pose by explicit euler aim (rx,ry,rz). 0,0,0 = identity = looks straight DOWN (-Z) with +Y up,
+   *  matching the straight-down default; rotate to tilt/aim. Used by the placeable extra cameras. */
+  setPoseEuler(camX: number, camY: number, camZ: number, rx: number, ry: number, rz: number) {
+    this.camera.position.set(camX, camY, camZ);
+    this.camera.rotation.set(rx, ry, rz);
     this.camera.updateMatrixWorld();
     this.glyph.position.copy(this.camera.position);
     this.glyph.quaternion.copy(this.camera.quaternion);

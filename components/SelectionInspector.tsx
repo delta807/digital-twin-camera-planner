@@ -14,6 +14,8 @@ export interface InspectorProps {
   arm: { x: number; y: number; yaw: number } | null;
   station: { x: number; y: number; yaw: number } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number }) => void;
+  extraCamera: { x: number; y: number; z: number } | null;
+  onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
   cameraPos: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
@@ -98,7 +100,25 @@ export function SelectionInspector(p: InspectorProps) {
         </div>
       )}
 
-      {sel.kind === 'camera' && p.cameraPos && (
+      {sel.kind === 'camera' && sel.cameraId && p.extraCamera && (
+        <div className="space-y-1.5">
+          <Row3 unit={p.unit} subtle={subtle}
+            fields={[
+              { k: 'X', v: p.extraCamera.x, on: (v) => p.onExtraCamera({ x: v }) },
+              { k: 'Y', v: p.extraCamera.y, on: (v) => p.onExtraCamera({ y: v }) },
+              { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
+            ]} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.extraCamera.x, min: -2, max: 2, on: (v) => p.onExtraCamera({ x: v }) },
+            { k: 'Y', v: p.extraCamera.y, min: -2, max: 2, on: (v) => p.onExtraCamera({ y: v }) },
+            { k: 'Z', v: p.extraCamera.z, min: 0, max: 2, on: (v) => p.onExtraCamera({ z: v }) },
+          ]} />
+          <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
+          <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>
+        </div>
+      )}
+
+      {sel.kind === 'camera' && !sel.cameraId && p.cameraPos && (
         <div className="space-y-1.5">
           <Row3 unit={p.unit} subtle={subtle}
             fields={[

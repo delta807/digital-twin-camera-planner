@@ -130,7 +130,8 @@ export class RenderSystem {
         // Click-to-select (outline + post drag-gizmo). Selectables: task objects + the camera post.
         this.selection = new SelectionController(
             this.scene, this.camera, this.renderer.domElement, this.controls,
-            () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo, this.planningArmsGroup],
+            () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo, this.planningArmsGroup,
+                   ...Array.from(this.extraCameras.values()).map((c) => c.glyph)],
             () => this.baseBuilder.postAxis);
 
         window.addEventListener('resize', this.onResize);
@@ -632,18 +633,24 @@ export class RenderSystem {
 
     ensureExtraCamera(id: string): StationCamera {
         let cam = this.extraCameras.get(id);
-        if (!cam) { cam = new StationCamera(this.scene); this.extraCameras.set(id, cam); }
+        if (!cam) {
+            cam = new StationCamera(this.scene);
+            // tag the glyph (group + children) so the SelectionController can pick THIS camera.
+            cam.glyph.userData.selectable = 'camera'; cam.glyph.userData.cameraId = id;
+            cam.glyph.traverse((o) => { o.userData.selectable = 'camera'; o.userData.cameraId = id; });
+            this.extraCameras.set(id, cam);
+        }
         return cam;
     }
     getExtraCamera(id: string): StationCamera | undefined { return this.extraCameras.get(id); }
 
-    /** Reconcile the extra overhead cameras with config: each looks straight DOWN from (x,y,z). */
-    syncExtraCameras(cams: Array<{ id: string; x: number; y: number; z: number }>) {
+    /** Reconcile the extra overhead cameras with config: position (x,y,z) + euler aim (rotX/Y/Z). */
+    syncExtraCameras(cams: Array<{ id: string; x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }>) {
         const keep = new Set(cams.map((c) => c.id));
         for (const [id, cam] of this.extraCameras) {
             if (!keep.has(id)) { cam.dispose(); this.extraCameras.delete(id); }
         }
-        for (const c of cams) this.ensureExtraCamera(c.id).setPose(c.x, c.y, c.z, c.x, c.y);
+        for (const c of cams) this.ensureExtraCamera(c.id).setPoseEuler(c.x, c.y, c.z, c.rotX, c.rotY, c.rotZ);
     }
 
     /** Dispose wrist feeds whose arm no longer exists (called when arms are added/removed). */

@@ -23,6 +23,8 @@ export interface SelectionInfo {
   armId?: string;
   /** Workstation id for kind==='station'. */
   stationId?: string;
+  /** Extra-camera id for kind==='camera' (undefined = the primary D435i, moved by its own rig). */
+  cameraId?: string;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -67,6 +69,12 @@ export class SelectionController {
   getStationPose?: (id: string) => { x: number; y: number; yaw: number } | null;
   private selectedStationId: string | undefined = undefined;
   private stationAim = false;
+  // Extra overhead cameras reuse the proxy gizmo for move (translate) + aim (rotate).
+  onCameraMove?: (id: string, x: number, y: number, z: number) => void;
+  onCameraAim?: (id: string, rx: number, ry: number, rz: number) => void;
+  getCameraPose?: (id: string) => { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number } | null;
+  private selectedCameraId: string | undefined = undefined;
+  private cameraAim = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -113,6 +121,11 @@ export class SelectionController {
         else this.onStationMove?.(this.selected.stationId!, this.proxy.position.x, this.proxy.position.y);
         return;
       }
+      if (this.selected?.kind === 'camera' && this.selected.cameraId) {
+        if (this.cameraAim) this.onCameraAim?.(this.selected.cameraId, this.proxy.rotation.x, this.proxy.rotation.y, this.proxy.rotation.z);
+        else this.onCameraMove?.(this.selected.cameraId, this.proxy.position.x, this.proxy.position.y, this.proxy.position.z);
+        return;
+      }
       if (this.selected?.kind !== 'post') return;
       this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
@@ -135,8 +148,9 @@ export class SelectionController {
     if (kind === 'arm') return this.selectArm(id);
     if (kind === 'post') return this.selectPost();
     if (kind === 'station') { if (id) this.selectStation(id); return; }
+    // camera: match the cameraId (undefined = primary rig gizmo; an id = that extra camera's glyph).
     for (const root of this.getSelectables()) {
-      if (root.userData?.selectable === 'camera') { this.selectCamera(root); return; }
+      if (root.userData?.selectable === 'camera' && (root.userData?.cameraId as string | undefined) === id) { this.selectCamera(root); return; }
     }
   }
 
@@ -232,6 +246,13 @@ export class SelectionController {
       box = this.stationBox(this.selectedStationId);
       const pose = this.getStationPose?.(this.selectedStationId!); // keep the gizmo on the station centre
       if (pose && !(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.set(pose.x, pose.y, 0.05); this.proxy.rotation.z = pose.yaw; }
+    } else if (k === 'camera' && this.selectedCameraId) {
+      if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
+      const pose = this.getCameraPose?.(this.selectedCameraId); // keep the gizmo on the camera body
+      if (pose && !(this.control as unknown as { dragging: boolean }).dragging) {
+        this.proxy.position.set(pose.x, pose.y, pose.z);
+        if (this.cameraAim) this.proxy.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
+      }
     } else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
@@ -366,18 +387,44 @@ export class SelectionController {
     this.onChange?.(this.selected);
   }
 
-  /** Select the D435i camera gizmo — outline it; transform handled by its own move/aim gizmo. */
+  /** Select a D435i camera gizmo. The PRIMARY (no cameraId) is moved by its own rig — outline only.
+   *  An EXTRA camera (cameraId) gets the shared proxy gizmo: translate to move, rotate to aim. */
   private selectCamera(gizmo: THREE.Object3D) {
+    const cameraId = gizmo.userData?.cameraId as string | undefined;
     this.selectedBody = gizmo;
-    this.control.enabled = false;
-    this.helper.visible = false;
+    this.selectedCameraId = cameraId;
+    this.cameraAim = false;
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
     this.box.setFromObject(gizmo);
     this.box.getCenter(this.vCenter);
-    this.selected = { kind: 'camera', label: 'D435i camera', x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: true };
+    if (cameraId) {
+      // Extra camera: full XYZ translate gizmo on the body (cameras float in the air, so Z matters).
+      const pose = this.getCameraPose?.(cameraId);
+      this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+      this.proxy.rotation.set(pose?.rotX ?? 0, pose?.rotY ?? 0, pose?.rotZ ?? 0);
+      if (pose) this.proxy.position.set(pose.x, pose.y, pose.z);
+      this.control.enabled = !!pose; this.helper.visible = !!pose;
+    } else {
+      this.control.enabled = false; this.helper.visible = false; // primary: rig owns the gizmo
+    }
+    this.selected = { kind: 'camera', label: cameraId ? 'Overhead D435i' : 'D435i camera', x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: true, cameraId };
     this.update();
     this.onChange?.(this.selected);
+  }
+
+  /** Switch an EXTRA camera's gizmo between Move (translate XYZ) and Aim (rotate XYZ). */
+  setCameraAim(rotate: boolean) {
+    this.cameraAim = rotate;
+    if (this.selected?.kind !== 'camera' || !this.selectedCameraId) return;
+    const pose = this.getCameraPose?.(this.selectedCameraId);
+    if (rotate) {
+      this.proxy.rotation.set(pose?.rotX ?? 0, pose?.rotY ?? 0, pose?.rotZ ?? 0);
+      this.control.setMode('rotate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+    } else {
+      this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+    }
+    this.control.enabled = true; this.helper.visible = true;
   }
 
   /**

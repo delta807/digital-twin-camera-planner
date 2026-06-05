@@ -503,12 +503,17 @@ export function App() {
   const handleAddExtraCamera = () => {
     const wc = workcellConfigRef.current;
     const n = nextExtraCamRef.current++;
-    handleWorkcellChange({ ...wc, extraCameras: [...(wc.extraCameras ?? []), { id: `cam-${n}`, x: 0, y: 0, z: 0.85 }] });
+    handleWorkcellChange({ ...wc, extraCameras: [...(wc.extraCameras ?? []), { id: `cam-${n}`, x: 0, y: 0, z: 0.85, rotX: 0, rotY: 0, rotZ: 0 }] });
     setExtraCamView(true);
   };
   const handleRemoveExtraCamera = (id: string) => {
     const wc = workcellConfigRef.current;
     handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).filter((c) => c.id !== id) });
+  };
+  // Move/aim an extra camera (from its viewport gizmo or the inspector) — live, no reload.
+  const handleExtraCameraChange = (id: string, patch: Partial<{ x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }>) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
@@ -593,7 +598,12 @@ export function App() {
     const kind = radial?.kind;
     if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
     if (poseMode) togglePoseMode(); // move/aim need jog OFF (jog disables selection gizmos)
-    if (kind === 'camera') { handleDragMode(id === 'aim' ? 'rotate' : 'translate'); return; }
+    if (kind === 'camera') {
+      // An extra camera uses the proxy gizmo (setCameraAim); the primary uses its own rig.
+      if (selection?.cameraId) simRef.current?.renderSys.selection.setCameraAim(id === 'aim');
+      else handleDragMode(id === 'aim' ? 'rotate' : 'translate');
+      return;
+    }
     if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
     if (kind === 'station') simRef.current?.renderSys.selection.setStationAim(id === 'aim');
   };
@@ -739,16 +749,21 @@ export function App() {
     sel.getStationPose = (id) => { const s = workcellConfigRef.current.stations?.find((x) => x.id === id); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; };
     sel.onStationMove = (id, x, y) => handleStationChange(id, { x, y });
     sel.onStationRotate = (id, yaw) => handleStationChange(id, { yaw });
+    // Extra overhead cameras: move (translate) + aim (rotate) via the same proxy gizmo.
+    sel.getCameraPose = (id) => { const c = workcellConfigRef.current.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ } : null; };
+    sel.onCameraMove = (id, x, y, z) => handleExtraCameraChange(id, { x, y, z });
+    sel.onCameraAim = (id, rx, ry, rz) => handleExtraCameraChange(id, { rotX: rx, rotY: ry, rotZ: rz });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }[] = [];
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
     (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
     list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
+    (workcellConfig.extraCameras ?? []).forEach((c, i) => list.push({ key: `camera:${c.id}`, kind: 'camera', label: `Overhead D435i ${i + 2}`, cameraId: c.id }));
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
     return list;
@@ -758,25 +773,27 @@ export function App() {
     : selection.kind === 'object' ? `obj:${selection.bodyId}`
     : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
     : selection.kind === 'station' ? `station:${selection.stationId}`
-    : selection.kind; // 'camera' | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
+    : selection.kind === 'camera' && selection.cameraId ? `camera:${selection.cameraId}`
+    : selection.kind; // 'camera' (primary) | 'post'
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
     if (e.kind === 'arm') { sel.selectByKind('arm', e.armId); if (e.armId) setSelectedArmId(e.armId); }
     else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
+    else if (e.kind === 'camera') sel.selectByKind('camera', e.cameraId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
   };
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
       if (willHide) next.add(e.key); else next.delete(e.key);
-      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.armId;
+      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.armId;
       simRef.current?.setEntityVisible(e.kind, id, !willHide);
       return next;
     });
@@ -1360,6 +1377,8 @@ export function App() {
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
                 station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
+                extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
+                onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
                 cameraPos={cameraPos}
                 post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}

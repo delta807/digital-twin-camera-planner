@@ -268,7 +268,10 @@ export class MujocoSim {
         }
         else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
         else if (kind === 'post') rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
-        else if (kind === 'camera') rs.cameraRig.gizmo.visible = visible;
+        else if (kind === 'camera') {
+            if (typeof id === 'string') { const c = rs.getExtraCamera(id); if (c) { c.glyph.userData.hiddenByUser = !visible; c.glyph.visible = visible; } }
+            else rs.cameraRig.gizmo.visible = visible;
+        }
     }
 
     /** Resolve every actuated arm joint (actuator → joint → body) for interactive posing. */
