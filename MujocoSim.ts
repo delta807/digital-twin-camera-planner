@@ -259,13 +259,14 @@ export class MujocoSim {
 
     /** Show/hide a scene entity from the object tree's eye toggle. The render loop only syncs body
      *  position/quaternion (not visibility), so a hidden body stays hidden. */
-    setEntityVisible(kind: 'arm' | 'camera' | 'post' | 'object', id: number | string | undefined, visible: boolean): void {
+    setEntityVisible(kind: 'arm' | 'camera' | 'post' | 'object' | 'station', id: number | string | undefined, visible: boolean): void {
         const rs = this.renderSys;
         if (kind === 'object' && typeof id === 'number') { if (rs.bodies[id]) rs.bodies[id].visible = visible; }
         else if (kind === 'arm') {
             for (const b of this.armBodyIds) if (rs.bodies[b]) rs.bodies[b].visible = visible;
             rs.planningArmsGroup.children.forEach((g) => { if (g.userData.armId === id) g.visible = visible; });
         }
+        else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
         else if (kind === 'post') rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
         else if (kind === 'camera') rs.cameraRig.gizmo.visible = visible;
     }

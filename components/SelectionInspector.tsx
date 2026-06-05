@@ -12,6 +12,8 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
+  station: { x: number; y: number; yaw: number } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number }) => void;
   cameraPos: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
@@ -58,6 +60,23 @@ export function SelectionInspector(p: InspectorProps) {
         <button onClick={p.onFrame} title="Frame (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Crosshair className="w-3.5 h-3.5" /></button>
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
+
+      {sel.kind === 'station' && p.station && (
+        <div className="space-y-1.5">
+          <Row3 unit={p.unit} subtle={subtle}
+            fields={[
+              { k: 'X', v: p.station.x, on: (v) => p.onStation({ x: v }) },
+              { k: 'Y', v: p.station.y, on: (v) => p.onStation({ y: v }) },
+            ]} />
+          <Angle subtle={subtle} label="Yaw" deg={p.station.yaw * 180 / Math.PI} on={(d) => p.onStation({ yaw: d * Math.PI / 180 })} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.station.x, min: -2, max: 2, on: (v) => p.onStation({ x: v }) },
+            { k: 'Y', v: p.station.y, min: -2, max: 2, on: (v) => p.onStation({ y: v }) },
+            { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
+          ]} />
+          <p className={`text-[9px] ${subtle}`}>Moves the worktop + its arm as a unit. Right-click → Aim to rotate.</p>
+        </div>
+      )}
 
       {sel.kind === 'arm' && p.arm && (
         <div className="space-y-1.5">

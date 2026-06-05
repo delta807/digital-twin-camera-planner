@@ -602,13 +602,17 @@ export class RenderSystem {
 
     /** Reconcile station feeds with the current stations: set each camera's overhead pose (post →
      *  worktop centre) and dispose feeds whose station is gone. */
-    syncStationCameras(stations: Array<{ id: string; x: number; y: number; postX: number; postY: number; postHeight: number }>) {
+    syncStationCameras(stations: Array<{ id: string; x: number; y: number; yaw?: number; postX: number; postY: number; postHeight: number }>) {
         const keep = new Set(stations.map((s) => s.id));
         for (const [id, cam] of this.stationCameras) {
             if (!keep.has(id)) { cam.dispose(); this.stationCameras.delete(id); }
         }
         for (const s of stations) {
-            this.ensureStationCamera(s.id).setPose(s.x + s.postX, s.y + s.postY, s.postHeight, s.x, s.y);
+            // rotate the post offset by the station yaw so the overhead cam stays over the real post.
+            const c = Math.cos(s.yaw ?? 0), sn = Math.sin(s.yaw ?? 0);
+            const px = s.x + s.postX * c - s.postY * sn;
+            const py = s.y + s.postX * sn + s.postY * c;
+            this.ensureStationCamera(s.id).setPose(px, py, s.postHeight, s.x, s.y);
         }
     }
 

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-export type SelectionKind = 'post' | 'object' | 'arm' | 'camera';
+export type SelectionKind = 'post' | 'object' | 'arm' | 'camera' | 'station';
 
 export interface SelectionInfo {
   kind: SelectionKind;
@@ -21,6 +21,8 @@ export interface SelectionInfo {
   bodyId?: number;
   /** Arm instance id for kind==='arm' (undefined = the primary physics arm). */
   armId?: string;
+  /** Workstation id for kind==='station'. */
+  stationId?: string;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -59,6 +61,12 @@ export class SelectionController {
   /** App provides the selected arm's base pose so the gizmo can sit on it + track it. */
   getArmPose?: (armId: string | undefined) => { x: number; y: number; yaw?: number } | null;
   private armAim = false; // arm gizmo in rotate (aim) mode vs translate (move)
+  // Stations reuse the exact same move/aim gizmo machinery as the arm (DRY).
+  onStationMove?: (id: string, x: number, y: number) => void;
+  onStationRotate?: (id: string, yaw: number) => void;
+  getStationPose?: (id: string) => { x: number; y: number; yaw: number } | null;
+  private selectedStationId: string | undefined = undefined;
+  private stationAim = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -100,6 +108,11 @@ export class SelectionController {
         else this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y);
         return;
       }
+      if (this.selected?.kind === 'station') {
+        if (this.stationAim) this.onStationRotate?.(this.selected.stationId!, this.proxy.rotation.z);
+        else this.onStationMove?.(this.selected.stationId!, this.proxy.position.x, this.proxy.position.y);
+        return;
+      }
       if (this.selected?.kind !== 'post') return;
       this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
@@ -118,9 +131,10 @@ export class SelectionController {
   }
 
   /** Programmatic selection (from the object tree), without a viewport raycast. */
-  selectByKind(kind: 'arm' | 'post' | 'camera', armId?: string) {
-    if (kind === 'arm') return this.selectArm(armId);
+  selectByKind(kind: 'arm' | 'post' | 'camera' | 'station', id?: string) {
+    if (kind === 'arm') return this.selectArm(id);
     if (kind === 'post') return this.selectPost();
+    if (kind === 'station') { if (id) this.selectStation(id); return; }
     for (const root of this.getSelectables()) {
       if (root.userData?.selectable === 'camera') { this.selectCamera(root); return; }
     }
@@ -159,6 +173,24 @@ export class SelectionController {
     this.helper.visible = true;
   }
 
+  /** Switch the STATION gizmo between Move (translate on XY) and Aim (rotate yaw) — same as the arm. */
+  setStationAim(rotate: boolean) {
+    this.stationAim = rotate;
+    if (this.selected?.kind !== 'station') return;
+    const pose = this.getStationPose?.(this.selectedStationId!);
+    if (rotate) {
+      this.proxy.rotation.z = pose?.yaw ?? 0;
+      this.control.setMode('rotate');
+      this.control.showX = false; this.control.showY = false; this.control.showZ = true;
+    } else {
+      this.proxy.rotation.z = pose?.yaw ?? 0; // keep the gizmo aligned with the rotated worktop
+      this.control.setMode('translate');
+      this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    }
+    this.control.enabled = true;
+    this.helper.visible = true;
+  }
+
   /** Select a task block by its MuJoCo bodyID (from the object tree). */
   selectObjectByBodyId(id: number) {
     for (const root of this.getSelectables()) {
@@ -190,12 +222,16 @@ export class SelectionController {
       this.outline.rotation.set(0, 0, 0);
       return;
     }
-    // Object / camera bbox the tracked Object3D; arm unions all its links.
+    // Object / camera bbox the tracked Object3D; arm + station union their meshes.
     let box: THREE.Box3 | null = null;
     if (k === 'arm') {
       box = this.armBox(this.selectedArmId);
       const pose = this.getArmPose?.(this.selectedArmId); // keep the drag gizmo on the arm base
       if (pose && !(this.control as unknown as { dragging: boolean }).dragging) this.proxy.position.set(pose.x, pose.y, 0.02);
+    } else if (k === 'station') {
+      box = this.stationBox(this.selectedStationId);
+      const pose = this.getStationPose?.(this.selectedStationId!); // keep the gizmo on the station centre
+      if (pose && !(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.set(pose.x, pose.y, 0.05); this.proxy.rotation.z = pose.yaw; }
     } else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
@@ -257,6 +293,7 @@ export class SelectionController {
       if (s === 'post') { this.selectPost(); return; }
       if (s === 'object') { this.selectObject(node); return; }
       if (s === 'arm') { this.selectArm(node.userData?.armId as string | undefined); return; }
+      if (s === 'station') { this.selectStation(node.userData?.stationId as string); return; }
       if (s === 'camera') {
         // Outline the whole camera gizmo, not just the lens/body child that was hit.
         let cam = node;
@@ -311,6 +348,24 @@ export class SelectionController {
     this.onChange?.(this.selected);
   }
 
+  /** Select a workstation worktop — outline it + drag/rotate gizmo at its centre (same as the arm). */
+  private selectStation(id: string) {
+    this.selectedStationId = id;
+    this.selectedBody = null;
+    this.stationAim = false; // fresh selection starts in move (translate) mode
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    const pose = this.getStationPose?.(id);
+    this.proxy.rotation.set(0, 0, pose?.yaw ?? 0);
+    if (pose) this.proxy.position.set(pose.x, pose.y, 0.05);
+    this.control.enabled = !!pose;
+    this.helper.visible = !!pose;
+    this.outline.rotation.set(0, 0, 0);
+    this.outline.visible = true;
+    this.selected = { kind: 'station', label: 'Workstation', x: pose?.x ?? 0, y: pose?.y ?? 0, z: 0, movable: true, stationId: id };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
   /** Select the D435i camera gizmo — outline it; transform handled by its own move/aim gizmo. */
   private selectCamera(gizmo: THREE.Object3D) {
     this.selectedBody = gizmo;
@@ -333,6 +388,26 @@ export class SelectionController {
   private armBox(armId?: string): THREE.Box3 | null {
     if (armId) { const ghost = this.unionArmMeshes(armId); if (ghost) return ghost; }
     return this.unionArmMeshes(undefined);
+  }
+
+  /** Union world bbox of one station's slab + rails (tagged selectable='station' with this id). */
+  private stationBox(id: string | undefined): THREE.Box3 | null {
+    if (!id) return null;
+    const box = this.box.makeEmpty();
+    for (const root of this.getSelectables()) {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.visible || !m.geometry) return;
+        let match = false;
+        for (let p: THREE.Object3D | null = o; p; p = p.parent) {
+          if (p.userData?.selectable === 'station') { match = p.userData.stationId === id; break; }
+        }
+        if (!match) return;
+        this.box2.setFromObject(m);
+        if (!this.box2.isEmpty()) box.union(this.box2);
+      });
+    }
+    return box.isEmpty() ? null : box;
   }
 
   private unionArmMeshes(armId?: string): THREE.Box3 | null {

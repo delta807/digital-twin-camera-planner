@@ -112,8 +112,8 @@ export class BaseBuilder {
 
     // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
     (config.stations ?? []).forEach((st, si) => {
-      this.buildWorktop(st.x, st.y, Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
-        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `);
+      this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
+        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id);
     });
   }
 
@@ -121,18 +121,22 @@ export class BaseBuilder {
    *  Shared by the satellite workstations; their rails carry `center` so edge-snap faces inward
    *  toward the right table. (The primary worktop is built inline above to preserve its exact
    *  post-axis / shape-N-gon behaviour.) */
-  private buildWorktop(cx: number, cy: number, halfX: number, halfY: number, barW: number, barH: number,
-                       post: { x: number; y: number; height: number }, labelPrefix: string) {
+  private buildWorktop(cx: number, cy: number, yaw: number, halfX: number, halfY: number, barW: number, barH: number,
+                       post: { x: number; y: number; height: number }, labelPrefix: string, stationId: string) {
     const center = new THREE.Vector3(cx, cy, 0);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    // station-local (lx,ly) → world, rotated by yaw about the station centre.
+    const toWorld = (lx: number, ly: number): [number, number] => [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
     const rim: Array<[number, number]> = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
 
     const shape = new THREE.Shape();
     rim.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
     shape.closePath();
     const slabGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
-    slabGeo.translate(cx, cy, -0.02);
+    slabGeo.rotateZ(yaw); slabGeo.translate(cx, cy, -0.02);
     const slab = new THREE.Mesh(slabGeo, this.slabMat);
     slab.receiveShadow = true;
+    slab.userData.selectable = 'station'; slab.userData.stationId = stationId;
     this.group.add(slab);
 
     for (let i = 0; i < rim.length; i++) {
@@ -140,21 +144,25 @@ export class BaseBuilder {
       const [x2, y2] = rim[(i + 1) % rim.length];
       const len = Math.hypot(x2 - x1, y2 - y1);
       const rod = new THREE.Mesh(new THREE.BoxGeometry(len, barW, barH), this.railMat);
-      rod.position.set(cx + (x1 + x2) / 2, cy + (y1 + y2) / 2, barH / 2);
-      rod.rotation.z = Math.atan2(y2 - y1, x2 - x1);
+      const [mwx, mwy] = toWorld((x1 + x2) / 2, (y1 + y2) / 2);
+      rod.position.set(mwx, mwy, barH / 2);
+      rod.rotation.z = Math.atan2(y2 - y1, x2 - x1) + yaw;
       rod.castShadow = true;
+      rod.userData.selectable = 'station'; rod.userData.stationId = stationId;
       this.group.add(rod);
-      this.rods.push({ a: new THREE.Vector3(cx + x1, cy + y1, barH / 2), b: new THREE.Vector3(cx + x2, cy + y2, barH / 2), label: `${labelPrefix}Rail ${i + 1}`, center });
+      const [ax, ay] = toWorld(x1, y1); const [bx, by] = toWorld(x2, y2);
+      this.rods.push({ a: new THREE.Vector3(ax, ay, barH / 2), b: new THREE.Vector3(bx, by, barH / 2), label: `${labelPrefix}Rail ${i + 1}`, center });
     }
 
     const h = Math.max(0.08, post.height);
     const m = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, h), this.railMat);
-    m.position.set(cx + post.x, cy + post.y, h / 2);
+    const [pwx, pwy] = toWorld(post.x, post.y);
+    m.position.set(pwx, pwy, h / 2);
     m.castShadow = true;
-    m.userData.selectable = 'post';
+    m.userData.selectable = 'station'; m.userData.stationId = stationId; // station post selects the station
     this.group.add(m);
     this.postMeshes.push(m);
-    this.rods.push({ a: new THREE.Vector3(cx + post.x, cy + post.y, 0), b: new THREE.Vector3(cx + post.x, cy + post.y, h), label: `${labelPrefix}Post`, center });
+    this.rods.push({ a: new THREE.Vector3(pwx, pwy, 0), b: new THREE.Vector3(pwx, pwy, h), label: `${labelPrefix}Post`, center });
   }
 
   private clear() {

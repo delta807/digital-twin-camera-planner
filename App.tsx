@@ -172,7 +172,7 @@ export function App() {
   };
   // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
   // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
-  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' } | null>(null);
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
@@ -542,9 +542,9 @@ export function App() {
   const handleContextMenu = (e: React.MouseEvent) => {
     if (sceneIsFranka || isLoading) return;
     const k = simRef.current?.renderSys.selection.selectAt(e.clientX, e.clientY);
-    if (k === 'arm' || k === 'camera') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
+    if (k === 'arm' || k === 'camera' || k === 'station') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
   };
-  const radialItems = (kind: 'arm' | 'camera'): RadialItem[] =>
+  const radialItems = (kind: 'arm' | 'camera' | 'station'): RadialItem[] =>
     kind === 'arm'
       ? [
           { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
@@ -552,8 +552,8 @@ export function App() {
           { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
         ]
       : [
-          { id: 'move', label: 'Move', icon: MoveIcon, active: dragMode === 'translate' },
-          { id: 'aim', label: 'Aim', icon: RotateCw, active: dragMode === 'rotate' },
+          { id: 'move', label: 'Move', icon: MoveIcon, active: kind === 'camera' && dragMode === 'translate' },
+          { id: 'aim', label: kind === 'station' ? 'Aim · yaw' : 'Aim', icon: RotateCw, active: kind === 'camera' && dragMode === 'rotate' },
         ];
   const handleRadialSelect = (id: string) => {
     const kind = radial?.kind;
@@ -561,6 +561,7 @@ export function App() {
     if (poseMode) togglePoseMode(); // move/aim need jog OFF (jog disables selection gizmos)
     if (kind === 'camera') { handleDragMode(id === 'aim' ? 'rotate' : 'translate'); return; }
     if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
+    if (kind === 'station') simRef.current?.renderSys.selection.setStationAim(id === 'aim');
   };
 
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
@@ -700,14 +701,19 @@ export function App() {
     sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
     sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
     sel.onArmRotate = (armId, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { yaw }); };
+    // Stations reuse the same gizmo (DRY): move/rotate the worktop from the viewport.
+    sel.getStationPose = (id) => { const s = workcellConfigRef.current.stations?.find((x) => x.id === id); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; };
+    sel.onStationMove = (id, x, y) => handleStationChange(id, { x, y });
+    sel.onStationRotate = (id, yaw) => handleStationChange(id, { yaw });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number; armId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string }[] = [];
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
+    (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
     list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
@@ -717,24 +723,27 @@ export function App() {
   const selectedKey = !selection ? null
     : selection.kind === 'object' ? `obj:${selection.bodyId}`
     : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
+    : selection.kind === 'station' ? `station:${selection.stationId}`
     : selection.kind; // 'camera' | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number; armId?: string }) => {
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
     if (e.kind === 'arm') { sel.selectByKind('arm', e.armId); if (e.armId) setSelectedArmId(e.armId); }
+    else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
   };
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number; armId?: string }) => {
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
       if (willHide) next.add(e.key); else next.delete(e.key);
-      simRef.current?.setEntityVisible(e.kind, e.kind === 'object' ? e.bodyId : e.armId, !willHide);
+      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.armId;
+      simRef.current?.setEntityVisible(e.kind, id, !willHide);
       return next;
     });
   };
@@ -866,7 +875,7 @@ export function App() {
     const wc = workcellConfigRef.current;
     // Place the new worktop one table-width + a 0.2 m aisle to the +X of the primary.
     const sx = wc.length / 2 + 0.2 + 0.83 / 2;
-    const station = { id, x: sx, y: 0, length: 0.83, width: 0.83, postX: 0.265, postY: 0, postHeight: 0.84 };
+    const station = { id, x: sx, y: 0, yaw: 0, length: 0.83, width: 0.83, postX: 0.265, postY: 0, postHeight: 0.84 };
     handleWorkcellChange({ ...wc, stations: [...(wc.stations ?? []), station] });
     // Pair an arm to the station, clamped to its near (-Y) edge facing into that worktop. Read the
     // counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
@@ -881,6 +890,23 @@ export function App() {
       return next;
     });
   };
+  // Edit a station like the arm (X/Y/Yaw) — live worktop rebuild + station-cam re-sync (via the
+  // stations effect). The paired arm moves with the worktop as a unit (rotated about the centre).
+  const handleStationChange = (id: string, patch: { x?: number; y?: number; yaw?: number }) => {
+    const wc = workcellConfigRef.current;
+    const prev = (wc.stations ?? []).find((s) => s.id === id);
+    if (!prev) return;
+    const next = { ...prev, ...patch };
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === id ? next : s)) });
+    const dx = next.x - prev.x, dy = next.y - prev.y, dyaw = next.yaw - prev.yaw;
+    const arm = armInstancesRef.current.find((a) => a.stationId === id);
+    if (arm && (dx || dy || dyaw)) {
+      const ox = arm.x - prev.x, oy = arm.y - prev.y;
+      const c = Math.cos(dyaw), s = Math.sin(dyaw);
+      handleArmChange(arm.id, { x: prev.x + (ox * c - oy * s) + dx, y: prev.y + (ox * s + oy * c) + dy, yaw: arm.yaw + dyaw });
+    }
+  };
+
   const handleRemoveStation = (id: string) => {
     const wc = workcellConfigRef.current;
     handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).filter((s) => s.id !== id) });
@@ -1298,6 +1324,8 @@ export function App() {
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
+                station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; })()}
+                onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
                 cameraPos={cameraPos}
                 post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}

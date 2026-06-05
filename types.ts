@@ -115,7 +115,7 @@ export interface WorkcellConfig {
   /** Additional workstations — each is its own worktop (slab + rails + post) at a world X/Y,
    *  with its own arm (added on creation). Lets you lay out a multi-cell lab. postX/postY are
    *  RELATIVE to the station's own centre. */
-  stations: Array<{ id: string; x: number; y: number; length: number; width: number; postX: number; postY: number; postHeight: number }>;
+  stations: Array<{ id: string; x: number; y: number; yaw: number; length: number; width: number; postX: number; postY: number; postHeight: number }>;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
