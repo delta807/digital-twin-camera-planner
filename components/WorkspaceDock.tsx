@@ -61,6 +61,8 @@ export interface DockCameraProps {
   onWristToggle: (v: boolean) => void;
   wristMount: { posX: number; posY: number; posZ: number; fov: number; tilt: number };
   onWristMount: (m: { posX: number; posY: number; posZ: number; fov: number; tilt: number }) => void;
+  onSaveWristMount: () => void;   // persist the current wrist-cam mount as the default
+  onResetWristMount: () => void;  // back to the factory mount
 }
 export interface DockMeasureProps {
   active: boolean;
@@ -291,7 +293,10 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
               <Slider label="Wrist · Z (face)" unit="m" min={-0.1} max={0.1} step={0.005} value={camera.wristMount.posZ} onChange={(v) => camera.onWristMount({ ...camera.wristMount, posZ: v })} subtle={subtle} displayUnit={u} />
               <Slider label="Wrist · tilt" unit="°" min={0} max={360} step={1} value={camera.wristMount.tilt} onChange={(v) => camera.onWristMount({ ...camera.wristMount, tilt: v })} subtle={subtle} />
               <Slider label="Wrist · FOV" unit="°" min={30} max={100} step={1} value={camera.wristMount.fov} onChange={(v) => camera.onWristMount({ ...camera.wristMount, fov: v })} subtle={subtle} />
-              <button onClick={() => camera.onWristMount({ posX: 0, posY: 0.14, posZ: 0.02, tilt: 25, fov: 58 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Pin to gripper centre</button>
+              <div className="flex gap-2">
+                <button onClick={camera.onSaveWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600 hover:text-emerald-500 py-1">Save wrist cam position</button>
+                <button onClick={camera.onResetWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Factory reset</button>
+              </div>
             </div>
           )}
           <div className={`flex gap-1.5 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>

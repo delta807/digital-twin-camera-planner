@@ -48,6 +48,7 @@ export class WristCamera {
   private readonly camPos = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
   private readonly p = new THREE.Vector3();
+  private readonly tcpPos = new THREE.Vector3(); // last gripper TCP world pos (for gizmo world↔local)
 
   constructor(private readonly scene: THREE.Scene) {
     // Live wrist feed is 16:9 wide (HBVCAM native), wide lens — ~58° vertical → ~90° horizontal,
@@ -102,8 +103,24 @@ export class WristCamera {
     this.camera.up.copy(this.camUp);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
+    this.tcpPos.copy(pos);
     this.glyph.position.copy(this.camera.position);
     this.glyph.quaternion.copy(this.camera.quaternion);
+  }
+
+  // ── Gizmo support: the wrist cam is gripper-relative, so the viewport move/aim gizmo converts a
+  // world pose back into the local mount params (offset + tilt).
+  getWorldPos(): THREE.Vector3 { return this.camera.position; }
+  getWorldQuat(): THREE.Quaternion { return this.camera.quaternion; }
+  /** Decompose a world position into the gripper-local offset (posX/posY/posZ). */
+  worldToLocalOffset(world: THREE.Vector3): { posX: number; posY: number; posZ: number } {
+    const d = this.p.copy(world).sub(this.tcpPos);
+    return { posX: d.dot(this.lx), posY: d.dot(this.ly), posZ: d.dot(this.lz) };
+  }
+  /** A world look-direction → tilt (angle in the localY/localZ plane, 0 = down the fingers). */
+  worldDirToTilt(dir: THREE.Vector3): number {
+    const down = -dir.dot(this.ly), fwd = dir.dot(this.lz);
+    return ((Math.atan2(fwd, down) * 180) / Math.PI + 360) % 360;
   }
 
   attachPip(container: HTMLElement) {

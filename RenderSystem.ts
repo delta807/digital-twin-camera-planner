@@ -131,7 +131,8 @@ export class RenderSystem {
         this.selection = new SelectionController(
             this.scene, this.camera, this.renderer.domElement, this.controls,
             () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo, this.planningArmsGroup,
-                   ...Array.from(this.extraCameras.values()).map((c) => c.glyph)],
+                   ...Array.from(this.extraCameras.values()).map((c) => c.glyph),
+                   ...Array.from(this.wristCameras.values()).map((c) => c.glyph)],
             () => this.baseBuilder.postAxis);
 
         window.addEventListener('resize', this.onResize);
@@ -595,6 +596,9 @@ export class RenderSystem {
             cam = new WristCamera(this.scene);
             cam.armId = armId;
             cam.enabled = true;
+            // tag the glyph so the SelectionController can pick this wrist cam (move/aim gizmo).
+            cam.glyph.userData.selectable = 'wristcam'; cam.glyph.userData.armId = armId;
+            cam.glyph.traverse((o) => { o.userData.selectable = 'wristcam'; o.userData.armId = armId; });
             this.applyWristMount(cam);
             this.wristCameras.set(armId, cam);
         }

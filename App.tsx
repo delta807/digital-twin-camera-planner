@@ -172,7 +172,7 @@ export function App() {
   };
   // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
   // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
-  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' } | null>(null);
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
@@ -521,12 +521,17 @@ export function App() {
     handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
 
-  // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
-  // Shared across every arm's feed.
-  const [wristMount, setWristMount] = useState({ posX: 0, posY: 0.14, posZ: 0.02, fov: 58, tilt: 25 });
+  // Wrist-cam mount (gripper-local offset + tilt). A saved tuning (localStorage) overrides the
+  // factory default, so you adjust it once and it sticks across reloads.
+  const WRIST_FACTORY = { posX: 0, posY: 0.14, posZ: 0.02, fov: 58, tilt: 25 };
+  const [wristMount, setWristMount] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem('so101-wrist-mount') || 'null'); if (s && typeof s.posY === 'number') return { ...WRIST_FACTORY, ...s }; } catch { /* factory */ }
+    return WRIST_FACTORY;
+  });
   useEffect(() => {
     simRef.current?.renderSys.setWristMount(wristMount);
   }, [wristMount, isLoading, wristView]);
+  const handleSaveWristMount = () => localStorage.setItem('so101-wrist-mount', JSON.stringify(wristMount));
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
     setCameraToggles(prev => ({ ...prev, [key]: value }));
@@ -586,9 +591,9 @@ export function App() {
   const handleContextMenu = (e: React.MouseEvent) => {
     if (sceneIsFranka || isLoading) return;
     const k = simRef.current?.renderSys.selection.selectAt(e.clientX, e.clientY);
-    if (k === 'arm' || k === 'camera' || k === 'station') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
+    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
   };
-  const radialItems = (kind: 'arm' | 'camera' | 'station'): RadialItem[] =>
+  const radialItems = (kind: 'arm' | 'camera' | 'station' | 'wristcam'): RadialItem[] =>
     kind === 'arm'
       ? [
           { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
@@ -611,6 +616,7 @@ export function App() {
     }
     if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
     if (kind === 'station') simRef.current?.renderSys.selection.setStationAim(id === 'aim');
+    if (kind === 'wristcam') simRef.current?.renderSys.selection.setWristCamAim(id === 'aim');
   };
 
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
@@ -758,6 +764,10 @@ export function App() {
     sel.getCameraPose = (id) => { const c = workcellConfigRef.current.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ } : null; };
     sel.onCameraMove = (id, x, y, z) => handleExtraCameraChange(id, { x, y, z });
     sel.onCameraAim = (id, rx, ry, rz) => handleExtraCameraChange(id, { rotX: rx, rotY: ry, rotZ: rz });
+    // Wrist camera move/aim gizmo (gripper-relative): MOVE → local offset; AIM → tilt.
+    sel.getWristPose = (armId) => { const c = simRef.current?.renderSys.getWristCamera(armId); return c ? { pos: c.getWorldPos(), quat: c.getWorldQuat() } : null; };
+    sel.onWristMove = (armId, world) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const o = c.worldToLocalOffset(world); setWristMount((m) => ({ ...m, posX: o.posX, posY: o.posY, posZ: o.posZ })); } };
+    sel.onWristAim = (armId, quat) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(quat); setWristMount((m) => ({ ...m, tilt: c.worldDirToTilt(dir) })); } };
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
@@ -1561,6 +1571,8 @@ export function App() {
                 onWristToggle: setWristView,
                 wristMount,
                 onWristMount: setWristMount,
+                onSaveWristMount: handleSaveWristMount,
+                onResetWristMount: () => setWristMount(WRIST_FACTORY),
               }}
               measure={{
                 active: measureActive,

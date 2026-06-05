@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-export type SelectionKind = 'post' | 'object' | 'arm' | 'camera' | 'station';
+export type SelectionKind = 'post' | 'object' | 'arm' | 'camera' | 'station' | 'wristcam';
 
 export interface SelectionInfo {
   kind: SelectionKind;
@@ -25,6 +25,8 @@ export interface SelectionInfo {
   stationId?: string;
   /** Extra-camera id for kind==='camera' (undefined = the primary D435i, moved by its own rig). */
   cameraId?: string;
+  /** Arm id for kind==='wristcam' (the gripper-mounted wrist camera). */
+  wristArmId?: string;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -75,6 +77,12 @@ export class SelectionController {
   getCameraPose?: (id: string) => { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number } | null;
   private selectedCameraId: string | undefined = undefined;
   private cameraAim = false;
+  // Wrist camera (gripper-mounted): move = world position → local offset; aim = world quat → tilt.
+  onWristMove?: (armId: string, world: THREE.Vector3) => void;
+  onWristAim?: (armId: string, quat: THREE.Quaternion) => void;
+  getWristPose?: (armId: string) => { pos: THREE.Vector3; quat: THREE.Quaternion } | null;
+  private selectedWristArmId: string | undefined = undefined;
+  private wristAim = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -124,6 +132,11 @@ export class SelectionController {
       if (this.selected?.kind === 'camera' && this.selected.cameraId) {
         if (this.cameraAim) this.onCameraAim?.(this.selected.cameraId, this.proxy.rotation.x, this.proxy.rotation.y, this.proxy.rotation.z);
         else this.onCameraMove?.(this.selected.cameraId, this.proxy.position.x, this.proxy.position.y, this.proxy.position.z);
+        return;
+      }
+      if (this.selected?.kind === 'wristcam') {
+        if (this.wristAim) this.onWristAim?.(this.selected.wristArmId!, this.proxy.quaternion);
+        else this.onWristMove?.(this.selected.wristArmId!, this.proxy.position);
         return;
       }
       if (this.selected?.kind !== 'post') return;
@@ -253,6 +266,13 @@ export class SelectionController {
         this.proxy.position.set(pose.x, pose.y, pose.z);
         if (this.cameraAim) this.proxy.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
       }
+    } else if (k === 'wristcam' && this.selectedWristArmId) {
+      // The wrist cam rides the gripper — keep the gizmo + outline on it (unless mid-drag).
+      const pose = this.getWristPose?.(this.selectedWristArmId);
+      if (pose) {
+        this.box.setFromCenterAndSize(pose.pos, this.vSize.set(0.06, 0.06, 0.06)); box = this.box;
+        if (!(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.copy(pose.pos); this.proxy.quaternion.copy(pose.quat); }
+      }
     } else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
@@ -315,6 +335,7 @@ export class SelectionController {
       if (s === 'object') { this.selectObject(node); return; }
       if (s === 'arm') { this.selectArm(node.userData?.armId as string | undefined); return; }
       if (s === 'station') { this.selectStation(node.userData?.stationId as string); return; }
+      if (s === 'wristcam') { this.selectWristCam(node.userData?.armId as string); return; }
       if (s === 'camera') {
         // Outline the whole camera gizmo, not just the lens/body child that was hit.
         let cam = node;
@@ -367,6 +388,31 @@ export class SelectionController {
     this.selected = { kind: 'arm', label: 'SO-101 arm', x: 0, y: 0, z: 0, movable: true, armId };
     this.update();
     this.onChange?.(this.selected);
+  }
+
+  /** Select the gripper-mounted wrist camera — move/aim gizmo on it (like the D435i, but gripper-
+   *  relative: move sets its local offset, aim sets its tilt). */
+  private selectWristCam(armId: string) {
+    this.selectedWristArmId = armId;
+    this.selectedBody = null;
+    this.wristAim = false;
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+    const pose = this.getWristPose?.(armId);
+    if (pose) { this.proxy.position.copy(pose.pos); this.proxy.quaternion.copy(pose.quat); }
+    this.control.enabled = !!pose; this.helper.visible = !!pose;
+    this.outline.rotation.set(0, 0, 0); this.outline.visible = true;
+    this.selected = { kind: 'wristcam', label: 'Wrist camera', x: pose?.pos.x ?? 0, y: pose?.pos.y ?? 0, z: pose?.pos.z ?? 0, movable: true, wristArmId: armId };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
+  /** Switch the wrist-cam gizmo between Move (translate) and Aim (rotate). */
+  setWristCamAim(rotate: boolean) {
+    this.wristAim = rotate;
+    if (this.selected?.kind !== 'wristcam') return;
+    this.control.setMode(rotate ? 'rotate' : 'translate');
+    this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+    this.control.enabled = true; this.helper.visible = true;
   }
 
   /** Select a workstation worktop — outline it + drag/rotate gizmo at its centre (same as the arm). */
