@@ -34,6 +34,12 @@ export interface InspectorProps {
   onSlideAlongRod: (t: number) => void;
   rodLabel: string | null;
   rodT: number;
+  // Wrist-camera mount (gripper-relative) — surfaced here so the selection card edits the same
+  // params as the dock: X/Y/Z offset, tilt, FOV, plus save / factory-reset.
+  wristMount?: { posX: number; posY: number; posZ: number; fov: number; tilt: number } | null;
+  onWristMount?: (m: { posX: number; posY: number; posZ: number; fov: number; tilt: number }) => void;
+  onSaveWristMount?: () => void;
+  onResetWristMount?: () => void;
   /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
   inline?: boolean;
 }
@@ -148,6 +154,22 @@ export function SelectionInspector(p: InspectorProps) {
         </div>
       )}
 
+      {sel.kind === 'wristcam' && p.wristMount && p.onWristMount && (
+        <div className="space-y-1.5">
+          <p className={`text-[9px] ${subtle}`}>Pinned on the gripper (rigid). Offset + tilt to taste.</p>
+          <WMSlider label="X (side)" min={-100} max={100} step={5} value={p.wristMount.posX * 1000} on={(v) => p.onWristMount!({ ...p.wristMount!, posX: v / 1000 })} subtle={subtle} unit="mm" />
+          <WMSlider label="Y (along)" min={-50} max={200} step={5} value={p.wristMount.posY * 1000} on={(v) => p.onWristMount!({ ...p.wristMount!, posY: v / 1000 })} subtle={subtle} unit="mm" />
+          <WMSlider label="Z (face)" min={-100} max={100} step={5} value={p.wristMount.posZ * 1000} on={(v) => p.onWristMount!({ ...p.wristMount!, posZ: v / 1000 })} subtle={subtle} unit="mm" />
+          <WMSlider label="Tilt" min={0} max={360} step={1} value={p.wristMount.tilt} on={(v) => p.onWristMount!({ ...p.wristMount!, tilt: v })} subtle={subtle} unit="°" />
+          <WMSlider label="FOV" min={30} max={100} step={1} value={p.wristMount.fov} on={(v) => p.onWristMount!({ ...p.wristMount!, fov: v })} subtle={subtle} unit="°" />
+          <div className="flex gap-2">
+            {p.onSaveWristMount && <button onClick={p.onSaveWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600 hover:text-emerald-500 py-1">Save wrist cam position</button>}
+            {p.onResetWristMount && <button onClick={p.onResetWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Factory reset</button>}
+          </div>
+          <p className={`text-[9px] ${subtle}`}>Right-click → Move / Aim to drag it in the viewport.</p>
+        </div>
+      )}
+
       {sel.kind === 'post' && (
         <Row3 unit={p.unit} subtle={subtle}
           fields={[
@@ -220,6 +242,25 @@ function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v
         </label>
       ))}
       <span className={`text-[9px] self-center ${subtle}`}>{mm ? 'mm' : 'm'}</span>
+    </div>
+  );
+}
+
+/** A labelled slider with a typeable numeric value + unit — for the wrist-cam mount controls. */
+function WMSlider({ label, min, max, step, value, on, subtle, unit }: { label: string; min: number; max: number; step: number; value: number; on: (v: number) => void; subtle: string; unit: string }) {
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  return (
+    <div className="space-y-0.5">
+      <div className="flex justify-between items-center text-[10px] font-medium gap-2">
+        <span>{label}</span>
+        <span className={`flex items-center gap-0.5 ${subtle}`}>
+          <input type="number" min={min} max={max} step={step} value={Number(value.toFixed(0))}
+            onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(clamp(d)); }}
+            className="w-11 bg-transparent text-right tabular-nums outline-none border-b border-transparent focus:border-indigo-400" />
+          <span>{unit}</span>
+        </span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => on(parseFloat(e.target.value))} className="w-full h-1 accent-indigo-600 cursor-pointer" />
     </div>
   );
 }

@@ -92,3 +92,39 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
 - Netlify deploy inventory contains only final deploy `6a21c1f93cf8b1b844dbaa12`; all earlier deploy permalinks checked are deleted/404.
 - Live headers now include CSP, Permissions-Policy, Referrer-Policy, X-Content-Type-Options, X-Frame-Options, and HSTS.
 - Playwright showed the strict CSP blocks the current MuJoCo/Emscripten runtime because it requires `unsafe-eval`; deploy of that CSP relaxation needs explicit approval, or the runtime should be replaced/packaged differently.
+
+## Netlify Alignment Check — latest master (Jun 2026)
+
+### Assumptions
+
+- Treat GitHub `origin/master` as the "latest main" branch unless the user says otherwise.
+- Do not overwrite local modified files.
+- Prefer Netlify's Git-connected deploy if the site is configured for auto deploys; use manual `--no-build` deploy only if Git deploy is not aligned or not active.
+
+### Plan
+
+- [x] Verify local `master` vs `origin/master`.
+  - Verify: `git fetch origin` and compare commit tips.
+- [x] Verify Netlify site linkage/deploy source.
+  - Verify: Netlify status/deploy info shows whether production is Git-backed and which commit is live.
+- [x] Update production only if needed.
+  - Verify: live URL returns the expected deployed asset and headers after the update.
+
+### Review
+
+- Fetched `origin`; GitHub default branch is `origin/master` at `9a35cfa` (`Merge pull request #1 from delta807/reskin-and-fixes`).
+- Local `master` is ahead of `origin/master` by 7 commits and has modified app files, so deploying from the current worktree would include local-only work.
+- Netlify site `so101-camera-planner` is linked locally by site ID, but API metadata shows no Git auto-deploy settings: `build_settings` is empty, `deploy_hook` is null, and the published deploy has `commit_ref: null`, `branch: null`, `deploy_source: "cli"`.
+- Deployed a clean temporary worktree at `origin/master` with `npm ci`, `npm run build`, `npm audit --omit=dev`, then `netlify deploy --prod --no-build --dir=dist --site=457c9dd3-1efb-46b2-9f88-3e559b078bea`.
+- Production deploy: `6a227e79b47315fc6769706f`; live URL: https://so101-camera-planner.netlify.app; live HTML references `/assets/index-PYNdHe5S.js`; the asset returns HTTP 200 JavaScript with the expected headers.
+
+## HUD refinement pass 2 (review)
+- [x] 1. Objects tree section collapsed by default (`Section defaultOpen`).
+- [x] 2. Primary worktop is now right-clickable (tagged `selectable='station'` id `primary`) → radial Move / Aim·yaw; inspector exposes Sides/Length/Width/Yaw/X·Y. New `originX/originY/yaw` in `WorkcellConfig` baked into the rim (origin stays 0,0 → reach/coords unaffected).
+- [x] 3. Removed redundant X/Y/Yaw sliders from the dock Arms section (right-click + Selection card own it).
+- [x] 4. Measure moved out of the dock into a Controls toolbar toggle (Ruler); results list renders under the toolbar when active.
+- [x] 5. Controls section now sits above Embodied Reasoning.
+- [x] 6. Jog joints is a Controls toolbar toggle (Hand icon); hint + Save-rest-pose surface under the toolbar when jogging.
+- [x] 7. Sidebar header shows the MetricBar contents (floating pill kept only as a fallback when the panel is closed).
+- [x] 8. Selection card mirrors the dock controls for the wrist camera (X/Y/Z offset, Tilt, FOV, Save, Factory reset). Wrist cameras added to the Objects tree so the tiny glyph is easy to select.
+- Verified in-browser (vite-dev :3000): section order, header readout, collapsed tree, primary right-click radial, live yaw/sides edit, wrist-cam controls — all with 0 console errors; `tsc --noEmit` clean.

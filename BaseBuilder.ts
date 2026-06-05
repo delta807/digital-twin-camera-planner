@@ -50,14 +50,23 @@ export class BaseBuilder {
     const barH = Math.max(0.012, config.barHeight);
     const postH = Math.max(0.08, config.postHeight);
 
-    // Corner points of the rim (rectangle or regular N-gon inscribed in the half-extents).
+    // Primary-worktop placement (move/rotate the main table like a station). Identity by default,
+    // so the world origin stays at 0,0 and reach/coordinate readouts are unaffected. We bake the
+    // transform into the rim/post points (not a sub-group) so the `rods` world segments used for
+    // snapping stay correct.
+    const ox = config.originX ?? 0, oy = config.originY ?? 0, yaw = config.yaw ?? 0;
+    const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
+    const tf = (x: number, y: number): [number, number] => [ox + x * cyaw - y * syaw, oy + x * syaw + y * cyaw];
+
+    // Corner points of the rim (rectangle or regular N-gon inscribed in the half-extents), in WORLD
+    // coords after applying the primary placement transform.
     const rim: Array<[number, number]> = [];
     if (sides === 4) {
-      rim.push([-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]);
+      [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]].forEach(([x, y]) => rim.push(tf(x, y)));
     } else {
       for (let i = 0; i < sides; i++) {
         const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
-        rim.push([Math.cos(a) * halfX, Math.sin(a) * halfY]);
+        rim.push(tf(Math.cos(a) * halfX, Math.sin(a) * halfY));
       }
     }
 
@@ -69,6 +78,7 @@ export class BaseBuilder {
     slabGeo.translate(0, 0, -0.02); // extrude is +Z; shift so the TOP sits at z=0
     const slab = new THREE.Mesh(slabGeo, this.slabMat);
     slab.receiveShadow = true;
+    slab.userData.selectable = 'station'; slab.userData.stationId = 'primary'; // right-click the main table
     this.group.add(slab);
 
     // --- Perimeter rods (one box per rim edge), sitting on the slab top ---
@@ -81,13 +91,13 @@ export class BaseBuilder {
       rod.position.set((x1 + x2) / 2, (y1 + y2) / 2, barH / 2);
       rod.rotation.z = Math.atan2(y2 - y1, x2 - x1);
       rod.castShadow = true;
+      rod.userData.selectable = 'station'; rod.userData.stationId = 'primary';
       this.group.add(rod);
       this.rods.push({ a: new THREE.Vector3(x1, y1, barH / 2), b: new THREE.Vector3(x2, y2, barH / 2), label: `Rail ${i + 1}` });
     }
 
-    // --- Camera post (aluminium upright) at an explicit world X/Y ---
-    const px = config.postX;
-    const py = config.postY;
+    // --- Camera post (aluminium upright) at an explicit world X/Y (also placed by the transform) ---
+    const [px, py] = tf(config.postX, config.postY);
     const post = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, postH), this.railMat);
     post.position.set(px, py, postH / 2);
     post.castShadow = true;

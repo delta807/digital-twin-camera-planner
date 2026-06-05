@@ -4,7 +4,7 @@
 */
 
 
-import { Focus, House, Moon, PanelRight, Pause, Play, RotateCcw, Sliders, Sun } from 'lucide-react';
+import { Focus, Hand, House, Moon, PanelRight, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -19,6 +19,11 @@ interface ToolbarProps {
   tweaksOpen: boolean;
   onToggleTweaks: () => void;    // appearance tweaks (theme/accent) panel
   inline?: boolean;             // render as a compact wrap-row inside the sidebar dashboard
+  // Jog joints + Measure are surfaced here as toggles (instead of their own dock sections).
+  jogActive?: boolean;
+  onToggleJog?: () => void;
+  measureActive?: boolean;
+  onToggleMeasure?: () => void;
 }
 
 /**
@@ -37,9 +42,14 @@ export function Toolbar({
   onFrameSelection,
   tweaksOpen,
   onToggleTweaks,
-  inline
+  inline,
+  jogActive = false,
+  onToggleJog,
+  measureActive = false,
+  onToggleMeasure
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
+  const activeStyle = isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white';
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
 
   // Inline: a compact wrap-row inside the sidebar (child-selector overrides shrink the w-14 buttons).
@@ -85,9 +95,31 @@ export function Toolbar({
         <Focus className="w-6 h-6" />
       </button>
 
+      {/* Jog joints — drag a link to rotate it about its joint (was its own dock section) */}
+      {onToggleJog && (
+        <button
+          onClick={onToggleJog}
+          className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${jogActive ? activeStyle : panelStyle}`}
+          title="Jog joints — click a link, drag to rotate"
+        >
+          <Hand className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Measure — pick two points for a live dimension (was its own dock section) */}
+      {onToggleMeasure && (
+        <button
+          onClick={onToggleMeasure}
+          className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${measureActive ? activeStyle : panelStyle}`}
+          title="Measure — click two points for a dimension"
+        >
+          <Ruler className="w-6 h-6" />
+        </button>
+      )}
+
       {/* Dark Mode Toggle */}
-      <button 
-        onClick={toggleDarkMode} 
+      <button
+        onClick={toggleDarkMode}
         className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panelStyle}`}
         title={isDarkMode ? "Light Mode" : "Dark Mode"}
       >

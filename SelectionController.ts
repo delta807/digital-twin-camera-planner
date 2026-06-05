@@ -157,10 +157,11 @@ export class SelectionController {
   }
 
   /** Programmatic selection (from the object tree), without a viewport raycast. */
-  selectByKind(kind: 'arm' | 'post' | 'camera' | 'station', id?: string) {
+  selectByKind(kind: 'arm' | 'post' | 'camera' | 'station' | 'wristcam', id?: string) {
     if (kind === 'arm') return this.selectArm(id);
     if (kind === 'post') return this.selectPost();
     if (kind === 'station') { if (id) this.selectStation(id); return; }
+    if (kind === 'wristcam') { if (id) this.selectWristCam(id); return; }
     // camera: match the cameraId (undefined = primary rig gizmo; an id = that extra camera's glyph).
     for (const root of this.getSelectables()) {
       if (root.userData?.selectable === 'camera' && (root.userData?.cameraId as string | undefined) === id) { this.selectCamera(root); return; }
@@ -428,7 +429,7 @@ export class SelectionController {
     this.helper.visible = !!pose;
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
-    this.selected = { kind: 'station', label: 'Workstation', x: pose?.x ?? 0, y: pose?.y ?? 0, z: 0, movable: true, stationId: id };
+    this.selected = { kind: 'station', label: id === 'primary' ? 'Workcell (table)' : 'Workstation', x: pose?.x ?? 0, y: pose?.y ?? 0, z: 0, movable: true, stationId: id };
     this.update();
     this.onChange?.(this.selected);
   }

@@ -757,7 +757,10 @@ export function App() {
     sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
     sel.onArmRotate = (armId, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { yaw }); };
     // Stations reuse the same gizmo (DRY): move/rotate the worktop from the viewport.
-    sel.getStationPose = (id) => { const s = workcellConfigRef.current.stations?.find((x) => x.id === id); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; };
+    sel.getStationPose = (id) => {
+      if (id === 'primary') { const wc = workcellConfigRef.current; return { x: wc.originX ?? 0, y: wc.originY ?? 0, yaw: wc.yaw ?? 0 }; }
+      const s = workcellConfigRef.current.stations?.find((x) => x.id === id); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null;
+    };
     sel.onStationMove = (id, x, y) => handleStationChange(id, { x, y });
     sel.onStationRotate = (id, yaw) => handleStationChange(id, { yaw });
     // Extra overhead cameras: move (translate) + aim (rotate) via the same proxy gizmo.
@@ -774,10 +777,12 @@ export function App() {
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }[] = [];
+    list.push({ key: 'station:primary', kind: 'station', label: 'Workcell (table)', stationId: 'primary' });
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
     (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
     list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
+    armInstances.forEach((a) => list.push({ key: `wristcam:${a.id}`, kind: 'wristcam', label: `Wrist camera · ${a.label}`, armId: a.id }));
     (workcellConfig.extraCameras ?? []).forEach((c, i) => list.push({ key: `camera:${c.id}`, kind: 'camera', label: `Overhead D435i ${i + 2}`, cameraId: c.id }));
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
@@ -788,14 +793,16 @@ export function App() {
     : selection.kind === 'object' ? `obj:${selection.bodyId}`
     : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
     : selection.kind === 'station' ? `station:${selection.stationId}`
+    : selection.kind === 'wristcam' ? `wristcam:${selection.wristArmId}`
     : selection.kind === 'camera' && selection.cameraId ? `camera:${selection.cameraId}`
     : selection.kind; // 'camera' (primary) | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
     if (e.kind === 'arm') { sel.selectByKind('arm', e.armId); if (e.armId) setSelectedArmId(e.armId); }
     else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
+    else if (e.kind === 'wristcam') sel.selectByKind('wristcam', e.armId);
     else if (e.kind === 'camera') sel.selectByKind('camera', e.cameraId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
@@ -803,7 +810,7 @@ export function App() {
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
@@ -963,6 +970,20 @@ export function App() {
   // paired arm moves with the worktop as a unit (rotated about the centre).
   const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number }>) => {
     const wc = workcellConfigRef.current;
+    // The primary worktop maps onto the top-level config (originX/originY/yaw + shape/size) — moving
+    // it is purely visual (the world origin stays at 0,0), so reach/coords are unaffected.
+    if (id === 'primary') {
+      handleWorkcellChange({
+        ...wc,
+        ...(patch.x !== undefined ? { originX: patch.x } : {}),
+        ...(patch.y !== undefined ? { originY: patch.y } : {}),
+        ...(patch.yaw !== undefined ? { yaw: patch.yaw } : {}),
+        ...(patch.shapeSides !== undefined ? { shapeSides: patch.shapeSides } : {}),
+        ...(patch.length !== undefined ? { length: patch.length } : {}),
+        ...(patch.width !== undefined ? { width: patch.width } : {}),
+      });
+      return;
+    }
     const prev = (wc.stations ?? []).find((s) => s.id === id);
     if (!prev) return;
     const next = { ...prev, ...patch };
@@ -1309,7 +1330,9 @@ export function App() {
                 layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
                 isDarkMode={isDarkMode}
               />
-              <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
+              {/* Status readout now lives in the sidebar header (MetricBar inline). When the panel is
+                  closed, show the floating pill as a fallback so the sim state stays visible. */}
+              {!showSidebar && <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />}
               {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
@@ -1355,9 +1378,16 @@ export function App() {
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
-                station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width } : null; })()}
+                station={(() => {
+                  if (selection?.stationId === 'primary') { const w = workcellConfig; return { x: w.originX ?? 0, y: w.originY ?? 0, yaw: w.yaw ?? 0, shapeSides: w.shapeSides, length: w.length, width: w.width }; }
+                  const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width } : null;
+                })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
-                onCloneStation={() => { if (selection?.stationId) handleCloneStation(selection.stationId); }}
+                onCloneStation={() => { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }}
+                wristMount={wristMount}
+                onWristMount={setWristMount}
+                onSaveWristMount={handleSaveWristMount}
+                onResetWristMount={() => setWristMount(WRIST_FACTORY)}
                 extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
                 onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
                 cameraPos={cameraPos}
@@ -1408,28 +1438,41 @@ export function App() {
                 ))}
               </FeedsDock>
             );
-            // Jog joints section content.
-            const jogEl = (
-              <div className="flex flex-wrap items-center gap-2">
-                <button onClick={togglePoseMode} title="Click a part of the arm and drag to rotate it about its joint"
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-colors ${poseMode ? 'bg-indigo-600 text-white border-indigo-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
-                  {poseMode ? '● Jogging joints' : 'Jog joints'}
-                </button>
+            // Controls section: the toolbar (incl. Jog + Measure toggles) plus their contextual
+            // extras — jog hint / save-rest-pose, and the live measurements list — surfaced inline.
+            const toolbarEl = (
+              <div className="space-y-2">
+                <Toolbar inline isPaused={isPaused} togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} onReset={handleReset}
+                  showSidebar={showSidebar} toggleSidebar={() => setShowSidebar(!showSidebar)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode}
+                  onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)}
+                  jogActive={poseMode} onToggleJog={togglePoseMode}
+                  measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)} />
                 {poseMode && (
-                  <span className="text-[11px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>
+                  <div className="flex flex-wrap items-center gap-2 px-0.5">
+                    <span className="text-[10px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>
+                    <button onClick={handleSaveRestPose} title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
+                      className={`ml-auto px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
+                      {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
+                    </button>
+                  </div>
                 )}
-                {poseMode && (
-                  <button onClick={handleSaveRestPose} title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
-                    {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
-                  </button>
+                {measureActive && (
+                  <div className="space-y-1 px-0.5">
+                    {measurements.length === 0
+                      ? <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Click two objects or points. Shift-click = free point.</p>
+                      : measurements.map((m) => (
+                        <div key={m.id} className={`rounded-lg px-2 py-1 text-[10px] tabular-nums flex items-center justify-between ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
+                          <div>
+                            <div className="font-bold">{m.label}: {lengthUnit === 'mm' ? Math.round(m.distance * 1000) : m.distance.toFixed(2)} {lengthUnit}</div>
+                            <div className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Δ {lengthUnit === 'mm' ? Math.round(m.dx * 1000) : m.dx.toFixed(2)}, {lengthUnit === 'mm' ? Math.round(m.dy * 1000) : m.dy.toFixed(2)}, {lengthUnit === 'mm' ? Math.round(m.dz * 1000) : m.dz.toFixed(2)} {lengthUnit}</div>
+                          </div>
+                          <button onClick={() => simRef.current?.renderSys.measureTool?.remove(m.id)} className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>✕</button>
+                        </div>
+                      ))}
+                    {measurements.length > 0 && <button onClick={() => simRef.current?.renderSys.measureTool?.clear()} className={`w-full py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300' : 'bg-black/5 text-slate-600'}`}>Clear all</button>}
+                  </div>
                 )}
               </div>
-            );
-            const toolbarEl = (
-              <Toolbar inline isPaused={isPaused} togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} onReset={handleReset}
-                showSidebar={showSidebar} toggleSidebar={() => setShowSidebar(!showSidebar)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode}
-                onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)} />
             );
             const overlaysEl = <OverlayLegend inline camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} dockOpen={dockOpen} />;
             return (
@@ -1448,8 +1491,8 @@ export function App() {
                   playbackSpeed={playbackSpeed}
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
                   inspector={selection ? inspectorEl(true) : null}
+                  headerContent={!sceneIsFranka ? <MetricBar inline armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} /> : null}
                   feeds={!sceneIsFranka ? feedsEl : null}
-                  jog={!sceneIsFranka ? jogEl : null}
                   toolbar={toolbarEl}
                   overlays={!sceneIsFranka ? overlaysEl : null}
                 />
@@ -1511,14 +1554,6 @@ export function App() {
                 onWristMount: setWristMount,
                 onSaveWristMount: handleSaveWristMount,
                 onResetWristMount: () => setWristMount(WRIST_FACTORY),
-              }}
-              measure={{
-                active: measureActive,
-                onToggleActive: handleMeasureActive,
-                unit: lengthUnit,
-                measurements,
-                onClear: () => simRef.current?.renderSys.measureTool?.clear(),
-                onRemove: (id) => simRef.current?.renderSys.measureTool?.remove(id),
               }}
             />
           )}

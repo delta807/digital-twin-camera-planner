@@ -107,6 +107,11 @@ export interface WorkcellConfig {
   barWidth: number;
   postHeight: number;
   shapeSides: number;
+  /** Primary worktop placement — lets the main table be moved/rotated like a station (visual only;
+   *  the world origin stays at 0,0 so reach/coordinate readouts are unaffected). Default 0/0/0. */
+  originX?: number;
+  originY?: number;
+  yaw?: number;
   /** Camera-post (aluminium upright) world X/Y; origin = table centre. */
   postX: number;
   postY: number;

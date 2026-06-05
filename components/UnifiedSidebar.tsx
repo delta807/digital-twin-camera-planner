@@ -23,9 +23,10 @@ interface UnifiedSidebarProps {
   geminiEnabled?: boolean;
   /** Selection inspector, docked here below the reasoning controls (null when nothing selected). */
   inspector?: ReactNode;
-  /** Stacked dashboard slots: camera feeds (top), then jog / controls (toolbar) / overlays (bottom). */
+  /** Live status row rendered in the header (the MetricBar contents) in place of the title. */
+  headerContent?: ReactNode;
+  /** Stacked dashboard slots: camera feeds (top), then controls (toolbar) / overlays (bottom). */
   feeds?: ReactNode;
-  jog?: ReactNode;
   toolbar?: ReactNode;
   overlays?: ReactNode;
 }
@@ -59,8 +60,8 @@ export function UnifiedSidebar({
   playbackSpeed = 1,
   geminiEnabled = false,
   inspector = null,
+  headerContent = null,
   feeds = null,
-  jog = null,
   toolbar = null,
   overlays = null
 }: UnifiedSidebarProps) {
@@ -86,9 +87,9 @@ export function UnifiedSidebar({
     // Changed positioning: centered on mobile (left-4 right-4), positioned right on desktop (min-[660px]:right-10 min-[660px]:w-96)
     <div className={`absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-6 min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] glass-panel rounded-3xl flex flex-col z-40 overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
 
-      {/* Slim header bar */}
-      <div className={`px-4 py-2.5 border-b flex justify-between items-center shrink-0 ${headerBorder}`}>
-        <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
+      {/* Slim header bar — shows the live status readout (MetricBar) in place of a static title. */}
+      <div className={`px-4 py-2.5 border-b flex justify-between items-center gap-2 shrink-0 ${headerBorder}`}>
+        {headerContent ?? <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>}
         <button onClick={onClose} className="p-1.5 hover:bg-slate-200/20 rounded-full transition-colors text-slate-400 shrink-0">
           <X className="w-4 h-4" />
         </button>
@@ -99,6 +100,7 @@ export function UnifiedSidebar({
 
         {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
         {inspector && <Sec title="Selection" isDarkMode={isDarkMode}>{inspector}</Sec>}
+        {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
 
         {/* ── Embodied Reasoning ── */}
         <Sec title="Embodied Reasoning" isDarkMode={isDarkMode}>
@@ -330,8 +332,6 @@ export function UnifiedSidebar({
         </div>
         </Sec>
 
-        {jog && <Sec title="Jog joints" isDarkMode={isDarkMode}>{jog}</Sec>}
-        {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
         {overlays && <Sec title="Overlays" isDarkMode={isDarkMode}>{overlays}</Sec>}
       </div>
     </div>

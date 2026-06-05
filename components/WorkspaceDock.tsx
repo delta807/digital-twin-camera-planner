@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Search, Trash2 } from 'lucide-react';
+import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Search, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
@@ -73,7 +73,7 @@ export interface DockMeasureProps {
   onClear: () => void;
   onRemove: (id: string) => void;
 }
-export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; label: string; bodyId?: number; armId?: string; stationId?: string }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;
@@ -89,7 +89,6 @@ interface WorkspaceDockProps {
   workcell: DockWorkcellProps;
   arms: DockArmsProps;
   camera: DockCameraProps;
-  measure?: DockMeasureProps;
 }
 
 const PLANNER_ROWS: Array<{ key: keyof PlannerToggles; label: string }> = [
@@ -114,7 +113,7 @@ const CAMERA_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
  * and live coordinates. Replaces the old scattered CameraControls / ReachabilityControls /
  * CoordinatesHud panels.
  */
-export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera, measure }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -151,7 +150,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
       <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
         {/* ── Objects: scene tree — click a row to select it in the 3D view ── */}
         {objects && (
-          <Section title="Objects" hidden={!matches(KW[0])} icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+          <Section title="Objects" defaultOpen={false} hidden={!matches(KW[0])} icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
             <div className="space-y-0.5">
               {objects.entities.map((e) => {
                 const active = e.key === objects.selectedKey;
@@ -262,9 +261,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
             <select value={arm.id} onChange={(e) => arms.onSelect(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold outline-none ${isDarkMode ? 'bg-slate-950/70 text-slate-100' : 'bg-white/70 text-slate-800'}`}>
               {arms.list.map((a) => <option key={a.id} value={a.id}>{a.label}{a.primary ? ' (primary)' : ''}</option>)}
             </select>
-            <Slider label="X (right +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.x} onChange={(v) => arms.onChange(arm.id, { x: v })} subtle={subtle} displayUnit={u} />
-            <Slider label="Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.01} value={arm.y} onChange={(v) => arms.onChange(arm.id, { y: v })} subtle={subtle} displayUnit={u} />
-            <Slider label="Yaw" unit="°" min={-180} max={180} step={1} value={arm.yaw * 180 / Math.PI} onChange={(v) => arms.onChange(arm.id, { yaw: v * Math.PI / 180 })} subtle={subtle} />
+            <p className={`text-[9px] ${subtle}`}>Position &amp; yaw: right-click the arm in the view (or pick it in Objects) — edit in the Selection card.</p>
             <div className="flex gap-2">
               <button onClick={arms.onApplyPose} disabled={arms.computing} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`} title="Re-sync reach overlay (the base already moves live as you drag)">Recompute reach</button>
               {!arm.primary && <button onClick={() => arms.onRemove(arm.id)} title="Remove this arm" className={`w-9 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3.5 h-3.5" /></button>}
@@ -335,23 +332,6 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           </div>
         </Section>
 
-        {/* ── Measure ── */}
-        {measure && (
-          <Section title="Measure" hidden={!matches(KW[5])} icon={<Ruler className="w-3.5 h-3.5 text-amber-500" />} isDarkMode={isDarkMode}>
-            <Row label="Measure mode (click two points)" checked={measure.active} onChange={measure.onToggleActive} accent="amber" />
-            {measure.measurements.length === 0 && <p className={`text-[10px] ${subtle}`}>Enable, then click two objects or points. Shift-click = free point.</p>}
-            {measure.measurements.map((m) => (
-              <div key={m.id} className={`rounded-lg px-2 py-1.5 text-[10px] tabular-nums flex items-center justify-between ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
-                <div>
-                  <div className="font-bold">{m.label}: {fmt(m.distance, measure.unit)} {measure.unit}</div>
-                  <div className={subtle}>Δ {fmt(m.dx, measure.unit)}, {fmt(m.dy, measure.unit)}, {fmt(m.dz, measure.unit)} {measure.unit}</div>
-                </div>
-                <button onClick={() => measure.onRemove(m.id)} className={subtle}><Trash2 className="w-3 h-3" /></button>
-              </div>
-            ))}
-            {measure.measurements.length > 0 && <button onClick={measure.onClear} className={`w-full py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300' : 'bg-black/5 text-slate-600'}`}>Clear all</button>}
-          </Section>
-        )}
         {!anyMatch && <div className={`px-4 py-6 text-center text-[11px] ${subtle}`}>No controls match “{query}”.</div>}
       </div>
     </div>
@@ -363,8 +343,8 @@ function fmt(meters: number, unit: LengthUnit) {
   return unit === 'mm' ? `${Math.round(meters * 1000)}` : meters.toFixed(2);
 }
 
-function Section({ title, icon, isDarkMode, action, children, hidden }: { title: string; icon: ReactNode; isDarkMode: boolean; action?: ReactNode; children: ReactNode; hidden?: boolean }) {
-  const [open, setOpen] = useState(true);
+function Section({ title, icon, isDarkMode, action, children, hidden, defaultOpen = true }: { title: string; icon: ReactNode; isDarkMode: boolean; action?: ReactNode; children: ReactNode; hidden?: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   if (hidden) return null;
   return (
