@@ -123,7 +123,7 @@ export function LogOverlay({ log }: LogOverlayProps) {
   );
 }
 
-type Rod = { a: THREE.Vector3; b: THREE.Vector3; label: string };
+type Rod = { a: THREE.Vector3; b: THREE.Vector3; label: string; center?: THREE.Vector3 };
 
 /** Clamped projection of a point onto a rod segment → parameter t∈[0,1] + the point on the rod. */
 function projectToRod(p: THREE.Vector3, rod: Rod): { t: number; point: THREE.Vector3 } {
@@ -584,13 +584,15 @@ export function App() {
     if (selection?.kind !== 'arm') return;
     const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (!a) return;
     const all = rods();
-    const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.startsWith('Rail'));
+    const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.includes('Rail'));
     const near = nearestRod(new THREE.Vector3(a.x, a.y, 0), edges); if (!near) return;
     const edge = edges[near.index];
-    // Inward normal of the edge segment (perpendicular, pointing toward the table centre = origin).
+    // Inward normal of the edge segment (perpendicular, pointing toward THIS worktop's centre —
+    // the primary table is at the origin; satellite stations carry their own `center`).
+    const cx = edge.center?.x ?? 0, cy = edge.center?.y ?? 0;
     const dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
     let nx = -dy, ny = dx;
-    if (nx * -near.point.x + ny * -near.point.y < 0) { nx = -nx; ny = -ny; }
+    if (nx * (cx - near.point.x) + ny * (cy - near.point.y) < 0) { nx = -nx; ny = -ny; }
     const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
     const yaw = Math.atan2(ny, nx) - fwd;
     handleArmChange(a.id, { x: near.point.x, y: near.point.y, yaw });
@@ -813,6 +815,43 @@ export function App() {
     setArmInstances(prev => {
       const next = prev.filter((arm) => arm.id !== id || arm.primary);
       if (!next.some((arm) => arm.id === selectedArmId)) setSelectedArmId(next[0]?.id ?? 'so101-1');
+      simRef.current?.setArmInstances(next);
+      return next;
+    });
+  };
+
+  // ── Workstations (#6): a station = its own worktop + an arm on it (a real "clone", not just a
+  // table). Adding one drops a worktop to the +X and an arm clamped to that worktop's near edge,
+  // facing in; its reach overlay renders automatically (the planner draws every arm). Removing a
+  // station also removes its paired arm. Live — no reload (the worktop is Three.js-only).
+  const nextStationNumberRef = useRef(2);
+  const handleAddStation = () => {
+    const n = nextStationNumberRef.current++;
+    const id = `station-${n}`;
+    const wc = workcellConfigRef.current;
+    // Place the new worktop one table-width + a 0.2 m aisle to the +X of the primary.
+    const sx = wc.length / 2 + 0.2 + 0.83 / 2;
+    const station = { id, x: sx, y: 0, length: 0.83, width: 0.83, postX: 0.265, postY: 0, postHeight: 0.84 };
+    handleWorkcellChange({ ...wc, stations: [...(wc.stations ?? []), station] });
+    // Pair an arm to the station, clamped to its near (-Y) edge facing into that worktop. Read the
+    // counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
+    const armNumber = nextArmNumberRef.current++;
+    const armId = `so101-${armNumber}`;
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
+    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: -station.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
+    setArmInstances(prev => {
+      const next = [...prev, arm];
+      setSelectedArmId(armId);
+      simRef.current?.setArmInstances(next);
+      return next;
+    });
+  };
+  const handleRemoveStation = (id: string) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).filter((s) => s.id !== id) });
+    setArmInstances(prev => {
+      const next = prev.filter((arm) => arm.stationId !== id);
+      if (!next.some((arm) => arm.id === selectedArmId)) setSelectedArmId(next.find((a) => a.primary)?.id ?? 'so101-1');
       simRef.current?.setArmInstances(next);
       return next;
     });
@@ -1268,7 +1307,7 @@ export function App() {
                 onAxesToggle: (v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); },
                 cameraPos,
               }}
-              workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
+              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation }}
               arms={{
                 list: armInstances,
                 selectedId: selectedArmId,

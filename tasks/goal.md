@@ -36,8 +36,9 @@ chosen in sim hold up in the real world.
       amber = camera footprint (not a reach).
 - [clarify] **#4** "on top of snapping…" — fragment; assumed part of #7 (snap arms to edges). Confirm.
 - [x] **#5** default to mm units (87e0325).
-- [ ] **#6** multiple bases / workstations — BIGGEST, not started.
-- [ ] **#7** snap arms to edges (on top of rod/post snapping) — IN PROGRESS.
+- [ ] **#6** multiple bases / workstations — BIGGEST, surfacing the architecture decision.
+- [x] **#7** snap arms to edges (on top of rod/post snapping) — DONE (60b56d8): "Snap to edge ·
+      face in" snaps arm base to nearest rail + faces table centre via planner.localForwardAngle().
 - [x] **#8** extra mount posts broke the main post's selection — fixed: raycast skips non-selectable
       occluders (54d0d8c).
 - [x] **#9** right-click radial menu (Jog/Move/Aim), reusing existing mode fns + arm rotate gizmo (7c695bd).

@@ -18,6 +18,8 @@ export interface DockSceneProps {
 export interface DockWorkcellProps {
   config: WorkcellConfig;
   onChange: (next: WorkcellConfig) => void;
+  onAddStation: () => void;
+  onRemoveStation: (id: string) => void;
 }
 export interface DockArmsProps {
   list: ArmInstance[];
@@ -212,6 +214,21 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           ))}
           <button onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add mount post</button>
           <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload. Add posts to mount cameras on (snappable).</p>
+
+          {/* Workstations — each is its own worktop + an arm, for laying out a multi-cell lab. */}
+          <div className={`mt-2 pt-2 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1.5`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Workstations</span>
+            {(wc.stations ?? []).map((st, i) => (
+              <div key={st.id} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase ${subtle} w-12`}>Cell {i + 2}</span>
+                <input type="number" step={0.05} value={Number(st.x.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], x: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="X" />
+                <input type="number" step={0.05} value={Number(st.y.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], y: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="Y" />
+                <button onClick={() => workcell.onRemoveStation(st.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove workstation + its arm">✕</button>
+              </div>
+            ))}
+            <button onClick={workcell.onAddStation} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add workstation</button>
+            <p className={`text-[9px] ${subtle}`}>Each adds a worktop + an arm (clamped to its edge). X/Y = its centre.</p>
+          </div>
         </Section>
 
         {/* ── Arms: placement + reachability ── */}

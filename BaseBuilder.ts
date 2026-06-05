@@ -25,8 +25,10 @@ export class BaseBuilder {
   readonly postTop = new THREE.Vector3();
   /** World X/Y of the post axis + its height + cross-section — exposed for snapping/selection. */
   postAxis = { x: 0, y: 0, height: 0, width: 0.024 };
-  /** Rods as world line segments (the upright post + the perimeter rails) — for snap/slide. */
-  rods: Array<{ a: THREE.Vector3; b: THREE.Vector3; label: string }> = [];
+  /** Rods as world line segments (the upright post + the perimeter rails) — for snap/slide.
+   *  `center` = the worktop centre that rail belongs to, so edge-snap can face an arm toward the
+   *  RIGHT table (matters once there are satellite workstations offset from the world origin). */
+  rods: Array<{ a: THREE.Vector3; b: THREE.Vector3; label: string; center?: THREE.Vector3 }> = [];
 
   private readonly slabMat = new THREE.MeshStandardMaterial({ color: 0xededf2, roughness: 0.85, metalness: 0.05 });
   private readonly railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.6 });
@@ -107,6 +109,52 @@ export class BaseBuilder {
       this.postMeshes.push(m);
       this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
     });
+
+    // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
+    (config.stations ?? []).forEach((st, si) => {
+      this.buildWorktop(st.x, st.y, Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
+        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `);
+    });
+  }
+
+  /** Build one rectangular worktop (slab + perimeter rails + a mount post) centred at (cx,cy).
+   *  Shared by the satellite workstations; their rails carry `center` so edge-snap faces inward
+   *  toward the right table. (The primary worktop is built inline above to preserve its exact
+   *  post-axis / shape-N-gon behaviour.) */
+  private buildWorktop(cx: number, cy: number, halfX: number, halfY: number, barW: number, barH: number,
+                       post: { x: number; y: number; height: number }, labelPrefix: string) {
+    const center = new THREE.Vector3(cx, cy, 0);
+    const rim: Array<[number, number]> = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
+
+    const shape = new THREE.Shape();
+    rim.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+    shape.closePath();
+    const slabGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
+    slabGeo.translate(cx, cy, -0.02);
+    const slab = new THREE.Mesh(slabGeo, this.slabMat);
+    slab.receiveShadow = true;
+    this.group.add(slab);
+
+    for (let i = 0; i < rim.length; i++) {
+      const [x1, y1] = rim[i];
+      const [x2, y2] = rim[(i + 1) % rim.length];
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const rod = new THREE.Mesh(new THREE.BoxGeometry(len, barW, barH), this.railMat);
+      rod.position.set(cx + (x1 + x2) / 2, cy + (y1 + y2) / 2, barH / 2);
+      rod.rotation.z = Math.atan2(y2 - y1, x2 - x1);
+      rod.castShadow = true;
+      this.group.add(rod);
+      this.rods.push({ a: new THREE.Vector3(cx + x1, cy + y1, barH / 2), b: new THREE.Vector3(cx + x2, cy + y2, barH / 2), label: `${labelPrefix}Rail ${i + 1}`, center });
+    }
+
+    const h = Math.max(0.08, post.height);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, h), this.railMat);
+    m.position.set(cx + post.x, cy + post.y, h / 2);
+    m.castShadow = true;
+    m.userData.selectable = 'post';
+    this.group.add(m);
+    this.postMeshes.push(m);
+    this.rods.push({ a: new THREE.Vector3(cx + post.x, cy + post.y, 0), b: new THREE.Vector3(cx + post.x, cy + post.y, h), label: `${labelPrefix}Post`, center });
   }
 
   private clear() {
