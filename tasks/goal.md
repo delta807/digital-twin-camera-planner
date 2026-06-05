@@ -56,11 +56,17 @@ chosen in sim hold up in the real world.
       fingertips at the table, matching the real HBVCAM mount.
 - [x] **#3 per-station overhead feeds** (92f8a24) — StationCamera on each station's post → live
       overhead PIP per workstation, inside the new Feeds dock. (Completes #6's deferred camera half.)
-- [x] **#4 HUD declutter** — right edge: all camera PIPs consolidated into ONE bounded, scrollable
-      Feeds dock + Reasoning toggle on a slim rail (00175a3). Top/left: LayoutProfiles → rail toggle
-      (clears the title collision), legend lifted above the jog cluster (510babe). Approved Option 2
-      (three edge docks). REMAINING (optional next): fuller LeftRail tabs (fold NavCube/CompareView
-      into a View panel), TweaksPanel into the toolbar, formal z-index scale.
+- [x] **#4 HUD declutter** (Option 2: three edge docks) — DONE:
+      · RIGHT: all camera PIPs consolidated into ONE bounded scrollable Feeds dock + Reasoning
+        toggle on a slim rail (00175a3).
+      · TOP: LayoutProfiles → ModeRail toggle (clears the title collision) (510babe).
+      · BOTTOM: legend lifted above the jog cluster (510babe); appearance Tweaks folded from the
+        floating gear into a toolbar button (a93ce5a).
+      · LEFT: NavCube/legend/jog made dock-aware — tuck against the rail when the dock is closed
+        (no dead gap, kills the duplicated magic-offset) (e54b725).
+      Intentionally kept the NavCube always-visible (a view-cube should be) rather than hiding it in
+      a View tab. Z-index now has a working hierarchy (30 content / 40 docks / 50 popovers); a formal
+      named scale is the only untaken nicety.
 
 ## BIGGER ITEMS
 - [x] **Save layout profiles** (f6dbc17) — save/restore the positional config (worktop + arm bases +
