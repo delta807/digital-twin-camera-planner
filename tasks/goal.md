@@ -36,7 +36,9 @@ chosen in sim hold up in the real world.
       amber = camera footprint (not a reach).
 - [clarify] **#4** "on top of snapping…" — fragment; assumed part of #7 (snap arms to edges). Confirm.
 - [x] **#5** default to mm units (87e0325).
-- [ ] **#6** multiple bases / workstations — BIGGEST, surfacing the architecture decision.
+- [x] **#6** multiple workstations — DONE (42613ef): "Add workstation" = satellite worktop + paired
+      arm on its edge + auto reach overlay; remove takes its arm too. User chose "full clones".
+      Deferred follow-up: dedicated LIVE camera PIP feed per station (post mount already present).
 - [x] **#7** snap arms to edges (on top of rod/post snapping) — DONE (60b56d8): "Snap to edge ·
       face in" snaps arm base to nearest rail + faces table centre via planner.localForwardAngle().
 - [x] **#8** extra mount posts broke the main post's selection — fixed: raycast skips non-selectable
