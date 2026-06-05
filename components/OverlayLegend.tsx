@@ -10,6 +10,7 @@ interface Props {
   camera: CameraViewToggles;
   planner: PlannerToggles;
   isDarkMode: boolean;
+  dockOpen: boolean;
 }
 
 type Shape = 'fill' | 'dash' | 'soft' | 'dot';
@@ -27,7 +28,7 @@ function Swatch({ color, shape }: { color: string; shape: Shape }) {
  * OverlayLegend — a lab-instrument legend keyed to the active 3D overlays, using the design's
  * categorical colors (camera=amber, reach=violet, precision=cyan, object=terracotta).
  */
-export function OverlayLegend({ camera, planner, isDarkMode }: Props) {
+export function OverlayLegend({ camera, planner, isDarkMode, dockOpen }: Props) {
   const all: Item[] = [
     { on: camera.enabled && camera.footprint, color: 'var(--c-cam)', shape: 'soft', label: 'Camera footprint' },
     { on: camera.enabled && camera.frustum, color: 'var(--c-cam)', shape: 'dash', label: 'FOV frustum' },
@@ -43,7 +44,7 @@ export function OverlayLegend({ camera, planner, isDarkMode }: Props) {
 
   return (
     <div
-      className={`absolute bottom-[5.25rem] left-[4.25rem] min-[660px]:left-[23.25rem] z-30 rounded-xl glass-panel border shadow-lg px-3 py-2.5 ${panel}`}
+      className={`absolute bottom-[5.25rem] left-[4.25rem] ${dockOpen ? 'min-[660px]:left-[23.25rem]' : 'min-[660px]:left-[4.25rem]'} z-30 rounded-xl glass-panel border shadow-lg px-3 py-2.5 ${panel}`}
       style={{ ['--c-cam' as string]: 'oklch(0.82 0.14 78)', ['--c-reach' as string]: 'oklch(0.70 0.10 292)', ['--c-precision' as string]: 'oklch(0.83 0.13 188)', ['--c-object' as string]: 'oklch(0.78 0.10 35)' }}
     >
       <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-2 opacity-70">Overlays</div>
