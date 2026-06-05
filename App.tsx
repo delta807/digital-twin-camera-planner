@@ -1482,6 +1482,19 @@ export function App() {
                 onWristMount={setWristMount}
                 onSaveWristMount={handleSaveWristMount}
                 onResetWristMount={() => setWristMount(WRIST_FACTORY)}
+                camera={{
+                  enabled: cameraToggles.enabled, onEnabled: (v) => handleCameraToggle('enabled', v),
+                  toggles: cameraToggles, onToggle: handleCameraToggle,
+                  intrinsics, onIntrinsic: handleIntrinsic, onReset: handleResetIntrinsics,
+                  streamProfiles: D435I_STREAM_PROFILES, selectedProfileId, onStreamProfile: handleStreamProfile,
+                  wristEnabled: wristView, onWristToggle: setWristView,
+                }}
+                armReach={{
+                  toggles: plannerToggles, onToggle: handlePlannerToggle,
+                  canRemove: !(armInstances.find((a) => a.id === selectedArmId)?.primary),
+                  onRemove: () => handleRemoveArm(selectedArmId),
+                }}
+                workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
                 extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
                 onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
                 cameraPos={cameraPos}
@@ -1641,29 +1654,6 @@ export function App() {
                 baseResult,
                 onSuggestLayout: handleSuggestLayout,
                 layoutResult,
-              }}
-              camera={{
-                toggles: cameraToggles,
-                onToggle: handleCameraToggle,
-                intrinsics,
-                onIntrinsic: handleIntrinsic,
-                onReset: handleResetIntrinsics,
-                streamProfiles: D435I_STREAM_PROFILES,
-                selectedProfileId,
-                onStreamProfile: handleStreamProfile,
-                dragMode,
-                onDragMode: handleDragMode,
-                onComputeCoverage: handleComputeCoverage,
-                pos: cameraPos,
-                onMove: handleCameraMove,
-                onAimDown: handleCameraAimDown,
-                onSnapToPost: handleSnapCameraToPost,
-                wristEnabled: wristView,
-                onWristToggle: setWristView,
-                wristMount,
-                onWristMount: setWristMount,
-                onSaveWristMount: handleSaveWristMount,
-                onResetWristMount: () => setWristMount(WRIST_FACTORY),
               }}
             />
           )}

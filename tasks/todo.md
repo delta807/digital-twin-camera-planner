@@ -128,3 +128,16 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
 - [x] 7. Sidebar header shows the MetricBar contents (floating pill kept only as a fallback when the panel is closed).
 - [x] 8. Selection card mirrors the dock controls for the wrist camera (X/Y/Z offset, Tilt, FOV, Save, Factory reset). Wrist cameras added to the Objects tree so the tiny glyph is easy to select.
 - Verified in-browser (vite-dev :3000): section order, header readout, collapsed tree, primary right-click radial, live yaw/sides edit, wrist-cam controls — all with 0 console errors; `tsc --noEmit` clean.
+
+## HUD refinement pass 3 (review)
+- [x] 1. Sidebar header dropped Reach + MuJoCo/60Hz; now shows title + Arms + an m/mm unit toggle.
+- [x] 2. Per-item radials reuse existing handlers (DRY): arm = Jog/Move/Aim·yaw/Duplicate(+Delete unless primary); station = Move/Aim·yaw/Duplicate(+Delete unless primary); extra camera = Move/Aim/Duplicate/Delete; box = Move/Aim/Hide; wristcam + primary cam = Move/Aim.
+- [x] 3. Right-click empty space → "create here" radial (Workcell / D435i cam / SO-101 / Mount post) placed at the clicked ground point (SelectionController.groundPointAt).
+- [x] 4. Dock header gained a prominent SAVE button (→ layout profiles).
+- [x] 5. Primary arm is bolted to the table — move/rotate the worktop carries the arm.
+- [x] 6. Migrated controls into per-item Selection cards + slimmed the dock:
+      • Camera card: Show camera, wrist feed, FOV frustum / PIP / footprint / highlight / coverage, stream profile, H-FOV, min/max range, reset optics (whole dock Camera section removed).
+      • Arm card: reach-view toggles + Remove this arm.
+      • Table card (primary): rail height/width, post height/X/Y (+ existing sides/length/width/yaw/X/Y).
+      • Dock now: Objects, Scene, Workcell(add posts/stations/overhead cams), Arms(add + compute settings), Save. Units in header.
+- Box move/aim gizmo added (setObjectAim + setTaskBodyYaw). Verified in-browser; tsc clean; 0 console errors.

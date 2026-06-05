@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Save, Search, Trash2 } from 'lucide-react';
+import { Box, Boxes, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
-import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
+import { ArmInstance, LengthUnit, WorkcellConfig } from '../types';
 
 export interface DockSceneProps {
   unit: LengthUnit;
@@ -42,37 +42,6 @@ export interface DockArmsProps {
   onSuggestLayout: () => void; // place all arms for max task coverage
   layoutResult: { covered: number; total: number } | null;
 }
-export interface DockCameraProps {
-  toggles: CameraViewToggles;
-  onToggle: (key: keyof CameraViewToggles, v: boolean) => void;
-  intrinsics: CameraIntrinsics;
-  onIntrinsic: (key: keyof CameraIntrinsics, v: number) => void;
-  onReset: () => void;
-  streamProfiles: CameraStreamProfile[];
-  selectedProfileId: string;
-  onStreamProfile: (id: string) => void;
-  dragMode: 'translate' | 'rotate';
-  onDragMode: (m: 'translate' | 'rotate') => void;
-  onComputeCoverage: () => void;
-  pos: { x: number; y: number; z: number } | null; // live camera world position
-  onMove: (x: number, y: number, z: number) => void; // type exact coordinates
-  onAimDown: () => void;
-  onSnapToPost: () => void; // mount on the aluminium post + aim down
-  wristEnabled: boolean; // gripper-mounted wrist camera feed
-  onWristToggle: (v: boolean) => void;
-  wristMount: { posX: number; posY: number; posZ: number; fov: number; tilt: number };
-  onWristMount: (m: { posX: number; posY: number; posZ: number; fov: number; tilt: number }) => void;
-  onSaveWristMount: () => void;   // persist the current wrist-cam mount as the default
-  onResetWristMount: () => void;  // back to the factory mount
-}
-export interface DockMeasureProps {
-  active: boolean;
-  onToggleActive: (v: boolean) => void;
-  unit: LengthUnit;
-  measurements: Array<{ id: string; distance: number; dx: number; dy: number; dz: number; label: string }>;
-  onClear: () => void;
-  onRemove: (id: string) => void;
-}
 export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; label: string; bodyId?: number; armId?: string; stationId?: string }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
@@ -88,25 +57,9 @@ interface WorkspaceDockProps {
   scene: DockSceneProps;
   workcell: DockWorkcellProps;
   arms: DockArmsProps;
-  camera: DockCameraProps;
   /** Open the layout-profiles panel to save/load the whole workspace. */
   onSaveWorkspace?: () => void;
 }
-
-const PLANNER_ROWS: Array<{ key: keyof PlannerToggles; label: string }> = [
-  { key: 'outline', label: 'Reach envelope (outline)' },
-  { key: 'reach', label: 'Reach heatmap (density)' },
-  { key: 'basePlacement', label: 'Best-mount heatmap' },
-  { key: 'tasks', label: 'Task-point markers' },
-  { key: 'baseDrag', label: 'Drag-to-move base' },
-];
-const CAMERA_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
-  { key: 'frustum', label: 'FOV frustum' },
-  { key: 'sensorPip', label: 'Camera view (PIP)' },
-  { key: 'footprint', label: 'Ground footprint' },
-  { key: 'objectTint', label: 'Highlight what it frames' },
-  { key: 'coverage', label: 'Occlusion coverage' },
-];
 
 /**
  * WorkspaceDock
@@ -115,7 +68,7 @@ const CAMERA_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
  * and live coordinates. Replaces the old scattered CameraControls / ReachabilityControls /
  * CoordinatesHud panels.
  */
-export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera, onSaveWorkspace }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, onSaveWorkspace }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -208,14 +161,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
 
         {/* ── Workcell: table shape + size (live) ── */}
         <Section title="Workcell (table)" hidden={!matches(KW[2])} icon={<Box className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
-          <Slider label="Sides (4 = rectangle)" unit="" min={3} max={8} step={1} value={wc.shapeSides} onChange={(v) => workcell.onChange({ ...wc, shapeSides: Math.round(v) })} subtle={subtle} />
-          <Slider label="Length" unit="m" min={0.4} max={1.4} step={0.01} value={wc.length} onChange={(v) => workcell.onChange({ ...wc, length: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Width" unit="m" min={0.4} max={1.4} step={0.01} value={wc.width} onChange={(v) => workcell.onChange({ ...wc, width: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Rail height" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barHeight} onChange={(v) => workcell.onChange({ ...wc, barHeight: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Rail width" unit="m" min={0.012} max={0.08} step={0.002} value={wc.barWidth} onChange={(v) => workcell.onChange({ ...wc, barWidth: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Camera-post height" unit="m" min={0.1} max={1.4} step={0.02} value={wc.postHeight} onChange={(v) => workcell.onChange({ ...wc, postHeight: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Post X (right +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postX} onChange={(v) => workcell.onChange({ ...wc, postX: v })} subtle={subtle} displayUnit={u} />
-          <Slider label="Post Y (forward +)" unit="m" min={-0.6} max={0.6} step={0.005} value={wc.postY} onChange={(v) => workcell.onChange({ ...wc, postY: v })} subtle={subtle} displayUnit={u} />
+          <p className={`text-[9px] ${subtle}`}>Shape, size, rails &amp; post live in the table's Selection card — right-click the table (or pick “Workcell (table)” above).</p>
 
           {/* Extra mount posts — add your own uprights to mount cameras/sensors on (snappable). */}
           {(wc.extraPosts ?? []).map((ep, i) => (
@@ -277,10 +223,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
               {!arm.primary && <button onClick={() => arms.onRemove(arm.id)} title="Remove this arm" className={`w-9 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3.5 h-3.5" /></button>}
             </div>
           </>}
-          <div className="pt-1 space-y-1.5">
-            <h5 className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Reach views</h5>
-            {PLANNER_ROWS.map((r) => <Row key={r.key} label={r.label} checked={arms.toggles[r.key]} onChange={(v) => arms.onToggle(r.key, v)} accent="emerald" />)}
-          </div>
+          <p className={`text-[9px] ${subtle}`}>Reach overlays + per-arm remove live in the arm's Selection card (click an arm).</p>
           <Slider label="Compute detail" unit="" min={5} max={13} step={1} value={arms.resolution} onChange={arms.onResolution} subtle={subtle} suffix="⁴" />
           <button onClick={arms.onRecompute} disabled={arms.computing} className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide flex items-center justify-center gap-2 ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`}>
             {arms.computing && <Loader2 className="w-3 h-3 animate-spin" />}{arms.computing ? 'Computing…' : 'Recompute reach'}
@@ -288,58 +231,6 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           {arms.toggles.basePlacement && arms.baseResult && <p className={`text-[10px] text-center ${subtle}`}>Best mount covers <span className="font-bold text-emerald-500">{arms.baseResult.covered}/{arms.baseResult.total}</span> objects</p>}
           <button onClick={arms.onSuggestLayout} className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`} title="Place all arms to maximise task coverage">Suggest optimal layout ({arms.list.length} {arms.list.length === 1 ? 'arm' : 'arms'})</button>
           {arms.layoutResult && <p className={`text-[10px] text-center ${subtle}`}>Layout reaches <span className="font-bold text-indigo-500">{arms.layoutResult.covered}/{arms.layoutResult.total}</span> objects top-down</p>}
-        </Section>
-
-        {/* ── Camera (D435i) ── */}
-        <Section title="Camera (D435i)" hidden={!matches(KW[4])} icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
-          <Row label="Show camera" checked={camera.toggles.enabled} onChange={(v) => camera.onToggle('enabled', v)} />
-          <Row label="Wrist camera feed" checked={camera.wristEnabled} onChange={camera.onWristToggle} />
-          {camera.wristEnabled && (
-            <div className="pl-2 space-y-1 border-l-2 border-indigo-500/20">
-              <p className={`text-[9px] ${subtle}`}>Pinned on the gripper (rigid). Offset + tilt to taste.</p>
-              <Slider label="Wrist · X (side)" unit="m" min={-0.1} max={0.1} step={0.005} value={camera.wristMount.posX} onChange={(v) => camera.onWristMount({ ...camera.wristMount, posX: v })} subtle={subtle} displayUnit={u} />
-              <Slider label="Wrist · Y (along)" unit="m" min={-0.05} max={0.2} step={0.005} value={camera.wristMount.posY} onChange={(v) => camera.onWristMount({ ...camera.wristMount, posY: v })} subtle={subtle} displayUnit={u} />
-              <Slider label="Wrist · Z (face)" unit="m" min={-0.1} max={0.1} step={0.005} value={camera.wristMount.posZ} onChange={(v) => camera.onWristMount({ ...camera.wristMount, posZ: v })} subtle={subtle} displayUnit={u} />
-              <Slider label="Wrist · tilt" unit="°" min={0} max={360} step={1} value={camera.wristMount.tilt} onChange={(v) => camera.onWristMount({ ...camera.wristMount, tilt: v })} subtle={subtle} />
-              <Slider label="Wrist · FOV" unit="°" min={30} max={100} step={1} value={camera.wristMount.fov} onChange={(v) => camera.onWristMount({ ...camera.wristMount, fov: v })} subtle={subtle} />
-              <div className="flex gap-2">
-                <button onClick={camera.onSaveWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600 hover:text-emerald-500 py-1">Save wrist cam position</button>
-                <button onClick={camera.onResetWristMount} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Factory reset</button>
-              </div>
-            </div>
-          )}
-          <div className={`flex gap-1.5 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
-            <ModeBtn active={camera.dragMode === 'translate'} onClick={() => camera.onDragMode('translate')} icon={<Move3d className="w-3.5 h-3.5" />} label="Move" isDarkMode={isDarkMode} />
-            <ModeBtn active={camera.dragMode === 'rotate'} onClick={() => camera.onDragMode('rotate')} icon={<Rotate3d className="w-3.5 h-3.5" />} label="Aim" isDarkMode={isDarkMode} />
-          </div>
-          {/* Exact position entry — type real coordinates (origin = table centre) to replicate the rig. */}
-          <div className={`space-y-1 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="flex items-center justify-between">
-              <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Position ({u})</span>
-              <div className="flex gap-2">
-                <button onClick={camera.onSnapToPost} className="text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Snap to post</button>
-                <button onClick={camera.onAimDown} className="text-[8px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Aim down</button>
-              </div>
-            </div>
-            <Vec3Editor pos={camera.pos} unit={u} onChange={camera.onMove} subtle={subtle} />
-          </div>
-          <div className={`space-y-1.5 ${!camera.toggles.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
-            {CAMERA_ROWS.map((r) => <Row key={r.key} label={r.label} checked={camera.toggles[r.key]} onChange={(v) => camera.onToggle(r.key, v)} />)}
-            <label className="block">
-              <span className={`block text-[9px] font-bold uppercase tracking-widest ${subtle} mb-1`}>Stream profile</span>
-              <select value={camera.selectedProfileId} onChange={(e) => camera.onStreamProfile(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[10px] font-semibold outline-none ${isDarkMode ? 'bg-slate-950/80 text-slate-200' : 'bg-white/70 text-slate-700'}`}>
-                {camera.selectedProfileId === 'custom' && <option value="custom">Custom</option>}
-                {camera.streamProfiles.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-              </select>
-            </label>
-            <Slider label="H-FOV" unit="°" min={40} max={95} step={0.1} value={camera.intrinsics.hFovDeg} onChange={(v) => camera.onIntrinsic('hFovDeg', v)} subtle={subtle} />
-            <Slider label="Min range" unit="m" min={0.05} max={1.0} step={0.01} value={camera.intrinsics.near} onChange={(v) => camera.onIntrinsic('near', v)} subtle={subtle} displayUnit={u} />
-            <Slider label="Max range" unit="m" min={1.0} max={6.0} step={0.1} value={camera.intrinsics.far} onChange={(v) => camera.onIntrinsic('far', v)} subtle={subtle} displayUnit={u} />
-            <div className="flex gap-2">
-              <button onClick={camera.onReset} className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>Reset optics</button>
-              {camera.toggles.coverage && <button onClick={camera.onComputeCoverage} className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-50 text-indigo-600'}`}>Coverage</button>}
-            </div>
-          </div>
         </Section>
 
         {!anyMatch && <div className={`px-4 py-6 text-center text-[11px] ${subtle}`}>No controls match “{query}”.</div>}
@@ -411,41 +302,3 @@ function Slider({ label, unit, min, max, step, value, onChange, subtle, suffix, 
 }
 
 // Three editable axis fields (X/Y/Z) in the active length unit. Origin = table centre.
-function Vec3Editor({ pos, unit, onChange, subtle }: { pos: { x: number; y: number; z: number } | null; unit: LengthUnit; onChange: (x: number, y: number, z: number) => void; subtle: string }) {
-  const mm = unit === 'mm';
-  const toDisplay = (v: number) => (mm ? v * 1000 : v);
-  const fromDisplay = (d: number) => (mm ? d / 1000 : d);
-  const digits = mm ? 0 : 3;
-  const axes: Array<{ k: 'x' | 'y' | 'z'; hue: string }> = [
-    { k: 'x', hue: 'text-rose-500' },
-    { k: 'y', hue: 'text-emerald-500' },
-    { k: 'z', hue: 'text-sky-500' },
-  ];
-  const cur = pos ?? { x: 0, y: 0, z: 0 };
-  return (
-    <div className="grid grid-cols-3 gap-1.5">
-      {axes.map(({ k, hue }) => (
-        <label key={k} className="flex items-center gap-1">
-          <span className={`text-[9px] font-bold uppercase ${hue}`}>{k}</span>
-          <input
-            type="number" step={mm ? 1 : 0.005} disabled={!pos}
-            value={Number(toDisplay(cur[k]).toFixed(digits))}
-            onChange={(e) => {
-              const d = parseFloat(e.target.value);
-              if (Number.isNaN(d)) return;
-              const next = { ...cur, [k]: fromDisplay(d) };
-              onChange(next.x, next.y, next.z);
-            }}
-            className={`w-full bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle} disabled:opacity-40`}
-          />
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function ModeBtn({ active, onClick, icon, label, isDarkMode }: { active: boolean; onClick: () => void; icon: ReactNode; label: string; isDarkMode: boolean }) {
-  const on = isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600 text-white';
-  const off = isDarkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-black/5 text-slate-500 hover:bg-black/10';
-  return <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide ${active ? on : off}`}>{icon}{label}</button>;
-}

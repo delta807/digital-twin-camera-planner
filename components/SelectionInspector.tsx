@@ -2,9 +2,19 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { Crosshair, X } from 'lucide-react';
+import { Crosshair, Trash2, X } from 'lucide-react';
 import type { SelectionInfo } from '../SelectionController';
-import type { LengthUnit } from '../types';
+import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
+import type { PlannerToggles } from '../WorkspacePlanner';
+
+/** Camera controls migrated from the dock into the primary-camera selection card. */
+export interface CameraCardControls {
+  enabled: boolean; onEnabled: (v: boolean) => void;
+  toggles: CameraViewToggles; onToggle: (k: keyof CameraViewToggles, v: boolean) => void;
+  intrinsics: CameraIntrinsics; onIntrinsic: (k: keyof CameraIntrinsics, v: number) => void; onReset: () => void;
+  streamProfiles: CameraStreamProfile[]; selectedProfileId: string; onStreamProfile: (id: string) => void;
+  wristEnabled: boolean; onWristToggle: (v: boolean) => void;
+}
 
 export interface InspectorProps {
   selection: SelectionInfo | null;
@@ -40,9 +50,28 @@ export interface InspectorProps {
   onWristMount?: (m: { posX: number; posY: number; posZ: number; fov: number; tilt: number }) => void;
   onSaveWristMount?: () => void;
   onResetWristMount?: () => void;
+  // Migrated dock controls (#6): each renders inside the matching item's card.
+  camera?: CameraCardControls;                                  // primary D435i optics/profile/toggles
+  armReach?: { toggles: PlannerToggles; onToggle: (k: keyof PlannerToggles, v: boolean) => void; canRemove: boolean; onRemove: () => void };
+  workcell?: { config: WorkcellConfig; onChange: (next: WorkcellConfig) => void }; // primary table rail/post
   /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
   inline?: boolean;
 }
+
+const CAMERA_TOGGLE_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
+  { key: 'frustum', label: 'FOV frustum' },
+  { key: 'sensorPip', label: 'Camera view (PIP)' },
+  { key: 'footprint', label: 'Ground footprint' },
+  { key: 'objectTint', label: 'Highlight what it frames' },
+  { key: 'coverage', label: 'Occlusion coverage' },
+];
+const PLANNER_TOGGLE_ROWS: Array<{ key: keyof PlannerToggles; label: string }> = [
+  { key: 'outline', label: 'Reach envelope (outline)' },
+  { key: 'reach', label: 'Reach heatmap (density)' },
+  { key: 'basePlacement', label: 'Best-mount heatmap' },
+  { key: 'tasks', label: 'Task-point markers' },
+  { key: 'baseDrag', label: 'Drag-to-move base' },
+];
 
 /**
  * SelectionInspector — OrcaSlicer-style: when an object is selected in the viewport (or tree),
@@ -91,8 +120,18 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, on: (v) => p.onStation({ width: v / 1000 }) },
             ]} />
           </div>
-          <button onClick={p.onCloneStation} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Clone this workstation</button>
-          <p className={`text-[9px] ${subtle}`}>Moves the worktop + its arm as a unit. Right-click → Aim to rotate.</p>
+          {sel.stationId === 'primary' && p.workcell && (
+            <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
+              <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails &amp; post</span>
+              <WMSlider label="Rail height" min={12} max={80} step={2} value={p.workcell.config.barHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barHeight: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Rail width" min={12} max={80} step={2} value={p.workcell.config.barWidth * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barWidth: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post height" min={100} max={1400} step={20} value={p.workcell.config.postHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postHeight: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post X" min={-600} max={600} step={5} value={p.workcell.config.postX * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postX: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post Y" min={-600} max={600} step={5} value={p.workcell.config.postY * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postY: v / 1000 })} subtle={subtle} unit="mm" />
+            </div>
+          )}
+          {sel.stationId !== 'primary' && <button onClick={p.onCloneStation} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Clone this workstation</button>}
+          <p className={`text-[9px] ${subtle}`}>{sel.stationId === 'primary' ? 'Right-click → Duplicate to clone into a workstation, or Aim to rotate.' : 'Moves the worktop + its arm as a unit. Right-click → Aim to rotate.'}</p>
         </div>
       )}
 
@@ -113,6 +152,15 @@ export function SelectionInspector(p: InspectorProps) {
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
             <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
           </div>
+          {p.armReach && (
+            <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
+              <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Reach views</span>
+              {PLANNER_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.armReach!.toggles[r.key]} onChange={(v) => p.armReach!.onToggle(r.key, v)} accent="emerald" />)}
+              {p.armReach.canRemove && (
+                <button onClick={p.armReach.onRemove} className={`w-full mt-1 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 ${p.isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3 h-3" /> Remove this arm</button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -151,6 +199,24 @@ export function SelectionInspector(p: InspectorProps) {
             <button onClick={p.onSnapToPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to post</button>
             <button onClick={p.onAimDown} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim down</button>
           </div>
+          {p.camera && (
+            <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
+              <Check label="Show camera" checked={p.camera.enabled} onChange={p.camera.onEnabled} />
+              <Check label="Wrist camera feed" checked={p.camera.wristEnabled} onChange={p.camera.onWristToggle} />
+              {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
+              <label className="block">
+                <span className={`block text-[9px] font-bold uppercase tracking-widest ${subtle} mb-1`}>Stream profile</span>
+                <select value={p.camera.selectedProfileId} onChange={(e) => p.camera!.onStreamProfile(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[10px] font-semibold outline-none ${p.isDarkMode ? 'bg-slate-950/80 text-slate-200' : 'bg-white/70 text-slate-700'}`}>
+                  {p.camera.selectedProfileId === 'custom' && <option value="custom">Custom</option>}
+                  {p.camera.streamProfiles.map((sp) => <option key={sp.id} value={sp.id}>{sp.label}</option>)}
+                </select>
+              </label>
+              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.camera.intrinsics.hFovDeg} on={(v) => p.camera!.onIntrinsic('hFovDeg', v)} subtle={subtle} unit="°" />
+              <WMSlider label="Min range" min={50} max={1000} step={10} value={p.camera.intrinsics.near * 1000} on={(v) => p.camera!.onIntrinsic('near', v / 1000)} subtle={subtle} unit="mm" />
+              <WMSlider label="Max range" min={1000} max={6000} step={50} value={p.camera.intrinsics.far * 1000} on={(v) => p.camera!.onIntrinsic('far', v / 1000)} subtle={subtle} unit="mm" />
+              <button onClick={p.camera.onReset} className={`w-full py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide ${p.isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>Reset optics</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -243,6 +309,17 @@ function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v
       ))}
       <span className={`text-[9px] self-center ${subtle}`}>{mm ? 'mm' : 'm'}</span>
     </div>
+  );
+}
+
+/** A compact checkbox row — for the migrated camera/reach toggles. */
+function Check({ label, checked, onChange, accent = 'indigo' }: { label: string; checked: boolean; onChange: (v: boolean) => void; accent?: 'indigo' | 'emerald' }) {
+  const a = accent === 'emerald' ? 'accent-emerald-600' : 'accent-indigo-600';
+  return (
+    <label className="flex items-center justify-between gap-2 cursor-pointer text-[11px] font-medium">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className={`${a} w-3.5 h-3.5`} />
+    </label>
   );
 }
 
