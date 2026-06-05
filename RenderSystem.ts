@@ -13,6 +13,7 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WorkspaceCameraRig } from './WorkspaceCameraRig';
 import { BaseBuilder } from './BaseBuilder';
 import { WristCamera } from './WristCamera';
+import { StationCamera } from './StationCamera';
 import { MeasureTool } from './MeasureTool';
 import { SelectionController } from './SelectionController';
 import { getName } from './utils/StringUtils';
@@ -30,6 +31,9 @@ export class RenderSystem {
     /** One wrist feed per arm (primary + planning ghosts), keyed by armId. Lazily created. */
     wristCameras = new Map<string, WristCamera>();
     wristEnabled = false; // master toggle for all wrist feeds
+    /** One overhead feed per satellite workstation (#6), keyed by station id. */
+    stationCameras = new Map<string, StationCamera>();
+    stationEnabled = false; // master toggle for all station feeds
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
     private wristMount = { back: 0.035, up: 0.055, reach: 0.05, fov: 58, aspect: 16 / 9 };
     private readonly tmpVec = new THREE.Vector3();
@@ -262,6 +266,14 @@ export class RenderSystem {
                 const hide = ownGhost ? [...wristBase, ...ghosts.filter((g) => g !== ownGhost)] : [...wristBase, ...ghosts];
                 cam.renderPip(hide);
             });
+        }
+
+        // Per-station overhead feeds (#6): a fixed downward camera on each station's post. Hide the
+        // same decorations the overhead D435i hides — but keep the arms (incl. ghosts) visible.
+        if (this.stationEnabled && this.stationCameras.size > 0) {
+            const sHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+            this.stationCameras.forEach((cam) => cam.renderPip(sHide));
         }
 
         // Measurement labels (DOM overlay).
@@ -578,6 +590,28 @@ export class RenderSystem {
         return this.wristCameras.get(armId);
     }
 
+    /** Get-or-create a station's overhead feed. */
+    ensureStationCamera(id: string): StationCamera {
+        let cam = this.stationCameras.get(id);
+        if (!cam) { cam = new StationCamera(this.scene); this.stationCameras.set(id, cam); }
+        return cam;
+    }
+    getStationCamera(id: string): StationCamera | undefined {
+        return this.stationCameras.get(id);
+    }
+
+    /** Reconcile station feeds with the current stations: set each camera's overhead pose (post →
+     *  worktop centre) and dispose feeds whose station is gone. */
+    syncStationCameras(stations: Array<{ id: string; x: number; y: number; postX: number; postY: number; postHeight: number }>) {
+        const keep = new Set(stations.map((s) => s.id));
+        for (const [id, cam] of this.stationCameras) {
+            if (!keep.has(id)) { cam.dispose(); this.stationCameras.delete(id); }
+        }
+        for (const s of stations) {
+            this.ensureStationCamera(s.id).setPose(s.x + s.postX, s.y + s.postY, s.postHeight, s.x, s.y);
+        }
+    }
+
     /** Dispose wrist feeds whose arm no longer exists (called when arms are added/removed). */
     syncWristArms(armIds: string[]) {
         const keep = new Set(armIds);
@@ -603,6 +637,8 @@ export class RenderSystem {
         this.cameraRig.dispose();
         this.wristCameras.forEach((c) => c.dispose());
         this.wristCameras.clear();
+        this.stationCameras.forEach((c) => c.dispose());
+        this.stationCameras.clear();
         this.baseBuilder.dispose();
         this.measureTool.dispose();
         this.selection.dispose();

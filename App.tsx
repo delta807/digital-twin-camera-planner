@@ -445,6 +445,30 @@ export function App() {
     return cb;
   };
 
+  // Station overhead feeds (#6): one fixed downward camera per satellite workstation. Same stable-
+  // callback-ref + master-toggle pattern as the wrist cams.
+  const [stationView, setStationView] = useState(false);
+  useEffect(() => {
+    if (!isLoading && simRef.current) simRef.current.renderSys.stationEnabled = stationView;
+  }, [isLoading, stationView]);
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncStationCameras(workcellConfig.stations ?? []);
+  }, [workcellConfig.stations, isLoading]);
+  const stationRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const stationRefCb = (id: string) => {
+    let cb = stationRefCbs.current.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureStationCamera(id).attachPip(el);
+        else rs.getStationCamera(id)?.detachPip();
+      };
+      stationRefCbs.current.set(id, cb);
+    }
+    return cb;
+  };
+
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
   // Shared across every arm's feed.
   const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.055, reach: 0.05, fov: 58 });
@@ -1269,8 +1293,9 @@ export function App() {
             toggles={{
               overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
               wrist: wristView, onWrist: setWristView,
+              station: (workcellConfig.stations ?? []).length > 0 ? { on: stationView, onToggle: setStationView } : undefined,
             }}
-            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0)}
+            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0)}
           >
             {cameraToggles.sensorPip && (
               <SensorView
@@ -1306,6 +1331,18 @@ export function App() {
                   opacity: overlayOpacity, onOpacity: setOverlayOpacity,
                   blend: overlayBlend, onBlend: setOverlayBlend,
                 } : undefined}
+              />
+            ))}
+            {stationView && (workcellConfig.stations ?? []).map((st, i) => (
+              <SensorView
+                inline
+                key={st.id}
+                canvasHostRef={stationRefCb(st.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={4 / 3}
+                title={`Station ${i + 2} · overhead`}
+                onClose={() => setStationView(false)}
               />
             ))}
           </FeedsDock>

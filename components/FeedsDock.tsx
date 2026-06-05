@@ -16,7 +16,11 @@ interface Props {
   /** Shift the feeds panel left of the full-height reasoning sidebar when it's open. */
   sidebarOpen: boolean;
   /** Per-feed enables surfaced at the top of the panel. */
-  toggles: { overhead: boolean; onOverhead: (v: boolean) => void; wrist: boolean; onWrist: (v: boolean) => void };
+  toggles: {
+    overhead: boolean; onOverhead: (v: boolean) => void;
+    wrist: boolean; onWrist: (v: boolean) => void;
+    station?: { on: boolean; onToggle: (v: boolean) => void }; // only when satellite stations exist
+  };
   /** How many feed cards are currently shown (for the rail badge + empty state). */
   feedCount: number;
   children: ReactNode;
@@ -64,6 +68,7 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
           <div className="px-2 py-1.5 border-b border-black/5 shrink-0">
             <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
             <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
+            {toggles.station && <Check label="Station cams" v={toggles.station.on} on={toggles.station.onToggle} />}
           </div>
           <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
             {children}
