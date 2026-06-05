@@ -29,6 +29,8 @@ export interface InspectorProps {
   onSlideAlongRod: (t: number) => void;
   rodLabel: string | null;
   rodT: number;
+  /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
+  inline?: boolean;
 }
 
 /**
@@ -44,8 +46,12 @@ export function SelectionInspector(p: InspectorProps) {
   const panel = p.isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
   const subtle = p.isDarkMode ? 'text-slate-400' : 'text-slate-500';
 
+  const rootClass = p.inline
+    ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
+    : `absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[300px] rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+
   return (
-    <div className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[300px] rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`}>
+    <div className={rootClass}>
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>

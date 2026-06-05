@@ -1252,43 +1252,54 @@ export function App() {
             </div>
           )}
 
-          <UnifiedSidebar 
-            isOpen={showSidebar}
-            onClose={() => setShowSidebar(false)}
-            onSend={handleErSend}
-            onPickup={handlePickup}
-            isLoading={erLoading}
-            hasDetectedItems={detectedCount > 0}
-            logs={logs}
-            onOpenLog={(log) => setExpandedLogId(log.id)}
-            isDarkMode={isDarkMode}
-            isPickingUp={isPickingUp}
-            playbackSpeed={playbackSpeed}
-            geminiEnabled={Boolean(GEMINI_API_KEY)}
-          />
-
-          {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object). */}
-          <SelectionInspector
-            selection={selection}
-            unit={lengthUnit}
-            isDarkMode={isDarkMode}
-            arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
-            cameraPos={cameraPos}
-            post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
-            onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
-            onCamera={handleCameraMove}
-            onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
-            onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
-            onAimDown={handleCameraAimDown}
-            onSnapToPost={handleSnapCameraToPost}
-            onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
-            onFrame={handleFrameSelection}
-            onSnapToRod={handleSnapToRod}
-            onSnapToEdge={handleSnapArmToEdge}
-            onSlideAlongRod={handleSlideAlongRod}
-            rodLabel={rodSnap?.label ?? null}
-            rodT={rodT}
-          />
+          {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object).
+              Docks into the reasoning sidebar when it's open; floats bottom-centre when it's closed. */}
+          {(() => {
+            const inspectorEl = (inline: boolean) => (
+              <SelectionInspector
+                inline={inline}
+                selection={selection}
+                unit={lengthUnit}
+                isDarkMode={isDarkMode}
+                arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
+                cameraPos={cameraPos}
+                post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
+                onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
+                onCamera={handleCameraMove}
+                onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
+                onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
+                onAimDown={handleCameraAimDown}
+                onSnapToPost={handleSnapCameraToPost}
+                onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
+                onFrame={handleFrameSelection}
+                onSnapToRod={handleSnapToRod}
+                onSnapToEdge={handleSnapArmToEdge}
+                onSlideAlongRod={handleSlideAlongRod}
+                rodLabel={rodSnap?.label ?? null}
+                rodT={rodT}
+              />
+            );
+            return (
+              <>
+                <UnifiedSidebar
+                  isOpen={showSidebar}
+                  onClose={() => setShowSidebar(false)}
+                  onSend={handleErSend}
+                  onPickup={handlePickup}
+                  isLoading={erLoading}
+                  hasDetectedItems={detectedCount > 0}
+                  logs={logs}
+                  onOpenLog={(log) => setExpandedLogId(log.id)}
+                  isDarkMode={isDarkMode}
+                  isPickingUp={isPickingUp}
+                  playbackSpeed={playbackSpeed}
+                  geminiEnabled={Boolean(GEMINI_API_KEY)}
+                  inspector={selection ? inspectorEl(true) : null}
+                />
+                {selection && !showSidebar && inspectorEl(false)}
+              </>
+            );
+          })()}
 
           {/* Consolidated camera feeds + reasoning toggle (replaces the old floating PIP pile). */}
           <FeedsDock
