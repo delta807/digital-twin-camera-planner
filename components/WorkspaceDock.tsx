@@ -286,7 +286,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           {camera.wristEnabled && (
             <div className="pl-2 space-y-1 border-l-2 border-indigo-500/20">
               <Slider label="Wrist · back" unit="m" min={0} max={0.15} step={0.005} value={camera.wristMount.back} onChange={(v) => camera.onWristMount({ ...camera.wristMount, back: v })} subtle={subtle} displayUnit={u} />
-              <Slider label="Wrist · up" unit="m" min={0} max={0.15} step={0.005} value={camera.wristMount.up} onChange={(v) => camera.onWristMount({ ...camera.wristMount, up: v })} subtle={subtle} displayUnit={u} />
+              <Slider label="Wrist · up" unit="m" min={0} max={0.30} step={0.005} value={camera.wristMount.up} onChange={(v) => camera.onWristMount({ ...camera.wristMount, up: v })} subtle={subtle} displayUnit={u} />
               <Slider label="Wrist · reach" unit="m" min={0.02} max={0.3} step={0.01} value={camera.wristMount.reach} onChange={(v) => camera.onWristMount({ ...camera.wristMount, reach: v })} subtle={subtle} displayUnit={u} />
               <Slider label="Wrist · tilt" unit="°" min={0} max={80} step={1} value={camera.wristMount.tilt} onChange={(v) => camera.onWristMount({ ...camera.wristMount, tilt: v })} subtle={subtle} />
               <Slider label="Wrist · FOV" unit="°" min={30} max={100} step={1} value={camera.wristMount.fov} onChange={(v) => camera.onWristMount({ ...camera.wristMount, fov: v })} subtle={subtle} />

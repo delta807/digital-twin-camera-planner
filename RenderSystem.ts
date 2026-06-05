@@ -38,7 +38,7 @@ export class RenderSystem {
     extraCameras = new Map<string, StationCamera>();
     extraCamerasEnabled = false;
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
-    private wristMount = { back: 0.035, up: 0.06, reach: 0.10, fov: 58, tilt: 38, aspect: 16 / 9 };
+    private wristMount = { back: 0.035, up: 0.16, reach: 0.10, fov: 58, tilt: 38, aspect: 16 / 9 };
     private readonly tmpVec = new THREE.Vector3();
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
@@ -243,6 +243,11 @@ export class RenderSystem {
         // never contains the post — the sim PIP should match that to represent reality faithfully.
         const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers];
         this.cameraRig.update(this.simGroup, pipHide);
+
+        // Visible camera-body glyphs follow each feed's enable toggle.
+        this.wristCameras.forEach((c) => c.setGlyphVisible(this.wristEnabled));
+        this.stationCameras.forEach((c) => c.setGlyphVisible(this.stationEnabled));
+        this.extraCameras.forEach((c) => c.setGlyphVisible(this.extraCamerasEnabled));
 
         // Wrist-cam footage: one feed per arm. Each tracks its own end-effector + renders its PIP.
         if (this.wristEnabled && this.gripperSiteId >= 0 && this.wristCameras.size > 0) {

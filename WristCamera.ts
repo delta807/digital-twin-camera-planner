@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import * as THREE from 'three';
+import { makeCameraGlyph, disposeGlyph } from './cameraGlyph';
 
 /**
  * WristCamera — a gripper-mounted camera that tracks the arm's end-effector and renders a second
@@ -27,10 +28,13 @@ export class WristCamera {
   // The real bracket sits above the wrist and tilts the lens forward at the table, so the gripper
   // fingers sit at the BOTTOM of the frame and the workspace fills the top — matching real FPV.
   back = 0.035;  // shift the mount back toward the wrist (along -localZ)
-  up = 0.06;     // raise the mount above the wrist (along +localY) — the bracket height
+  up = 0.16;     // raise the mount ABOVE the gripper body (Fixed_Jaw origin is +0.10 along localY
+                 // above the fingertips; +~0.06 bracket standoff) so it perches on top, not in the claws
   reach = 0.10;  // how far ahead along the optical axis the camera aims
   tiltDeg = 38;  // forward tilt of the optical axis from straight-down (0 = straight down past fingers)
 
+  /** Visible camera-body glyph perched on the gripper (so you can see the wrist cam in the scene). */
+  readonly glyph = makeCameraGlyph(0.6);
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
   private readonly ly = new THREE.Vector3();
@@ -46,7 +50,11 @@ export class WristCamera {
     // matching the fish-eyed real FPV (gripper at the bottom, workspace filling the width).
     this.camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.01, 5);
     this.camera.up.set(0, 0, 1);
+    this.glyph.visible = false;
+    this.scene.add(this.glyph);
   }
+
+  setGlyphVisible(v: boolean) { this.glyph.visible = v; }
 
   /** vertical FOV in degrees + aspect (e.g. 1280×720 → 16/9). */
   setIntrinsics(fovV: number, aspect: number) {
@@ -89,6 +97,9 @@ export class WristCamera {
     this.camera.up.copy(this.camUp);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
+    // Pose the visible glyph to coincide with the camera (its -Z lens = the look axis).
+    this.glyph.position.copy(this.camera.position);
+    this.glyph.quaternion.copy(this.camera.quaternion);
   }
 
   attachPip(container: HTMLElement) {
@@ -117,15 +128,16 @@ export class WristCamera {
     this.pipRenderer.setSize(w, h, false);
   }
 
-  /** Render the wrist feed (clean — hide the same overlays the main PIP hides). */
+  /** Render the wrist feed (clean — hide the same overlays the main PIP hides + its OWN glyph). */
   renderPip(hideHelpers: THREE.Object3D[]) {
     if (!this.enabled || !this.pipRenderer || !this.pipContainer) return;
     this.resizePip(this.pipContainer);
-    const prev = hideHelpers.map((o) => o.visible);
-    hideHelpers.forEach((o) => (o.visible = false));
+    const hide = [...hideHelpers, this.glyph];
+    const prev = hide.map((o) => o.visible);
+    hide.forEach((o) => (o.visible = false));
     this.pipRenderer.render(this.scene, this.camera);
-    hideHelpers.forEach((o, i) => (o.visible = prev[i]));
+    hide.forEach((o, i) => (o.visible = prev[i]));
   }
 
-  dispose() { this.detachPip(); }
+  dispose() { this.detachPip(); this.scene.remove(this.glyph); disposeGlyph(this.glyph); }
 }
