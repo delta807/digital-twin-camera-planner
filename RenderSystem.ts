@@ -410,6 +410,21 @@ export class RenderSystem {
         return { position: this.camera.position.clone(), target: this.controls.target.clone() };
     }
 
+    /** Snap the orbit camera to a named view (NavCube). Reuses the moveCameraTo animation; the
+     *  worktop is at the origin so every preset looks at (0,0,0). */
+    snapToView(preset: 'top' | 'front' | 'back' | 'left' | 'right' | 'iso') {
+        const D = 2.4, Z = 0.4;
+        const P: Record<string, THREE.Vector3> = {
+            top: new THREE.Vector3(0.001, -0.001, D + 0.5), // tiny offset avoids Z-up gimbal at nadir
+            front: new THREE.Vector3(0, -D, Z),
+            back: new THREE.Vector3(0, D, Z),
+            left: new THREE.Vector3(-D, 0, Z),
+            right: new THREE.Vector3(D, 0, Z),
+            iso: new THREE.Vector3(1.8, -1.4, 2.0),
+        };
+        this.moveCameraTo(P[preset] ?? P.iso, new THREE.Vector3(0, 0, 0), 360);
+    }
+
     /**
      * Frame an object (or the whole workcell) in view — OrcaSlicer "reset view" / FreeCAD
      * fit-all. Computes the bounding sphere and places the camera so it fills ~70% of the

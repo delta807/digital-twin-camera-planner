@@ -28,6 +28,7 @@ import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
+import { NavCube } from './components/NavCube';
 import { Hand, Move as MoveIcon, RotateCw } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
@@ -1095,6 +1096,7 @@ export function App() {
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
               {/* Legend shows in both modes — the camera footprint/frustum overlays persist into Compare. */}
               <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />
+              <NavCube onView={(p) => simRef.current?.renderSys.snapToView(p)} isDarkMode={isDarkMode} />
               {mode === 'compare' && (
                 <CompareView cameraPos={cameraPos} intrinsics={intrinsics} baseResult={baseResult} taskCount={objectEntities.filter((e) => e.kind === 'object').length} isDarkMode={isDarkMode} onExit={() => setMode('edit')} />
               )}
