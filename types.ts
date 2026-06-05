@@ -112,6 +112,13 @@ export interface WorkcellConfig {
   postY: number;
   /** Extra user-added upright posts (mount points) — each snappable like the main post. */
   extraPosts: Array<{ x: number; y: number; height: number }>;
+  /** Additional workstations — each is its own worktop (slab + rails + post) at a world X/Y,
+   *  with its own arm (added on creation). Lets you lay out a multi-cell lab. postX/postY are
+   *  RELATIVE to the station's own centre. */
+  stations: Array<{ id: string; x: number; y: number; yaw: number; length: number; width: number; postX: number; postY: number; postHeight: number }>;
+  /** Extra placeable overhead D435i cameras (beyond the primary) — each looks straight down from
+   *  (x,y,z) and renders its own live PIP in the Feeds dock. */
+  extraCameras: Array<{ id: string; x: number; y: number; z: number }>;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
@@ -125,6 +132,8 @@ export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
   postX: 0.265,
   postY: 0.0,
   extraPosts: [],
+  stations: [],
+  extraCameras: [],
 };
 
 export interface ArmInstance {
@@ -134,6 +143,9 @@ export interface ArmInstance {
   y: number;
   yaw: number;
   primary?: boolean;
+  /** Which workstation this arm belongs to (undefined = the primary worktop). Lets removing a
+   *  station also remove its arm, so a station is a real "workstation clone" not just a table. */
+  stationId?: string;
 }
 
 /** Length display unit. The sim is metre-native (MuJoCo); mm is offered for CAD familiarity. */

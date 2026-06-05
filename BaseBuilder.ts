@@ -18,12 +18,17 @@ import { WorkcellConfig } from './types';
 export class BaseBuilder {
   readonly group = new THREE.Group();
 
+  /** The camera-post mesh(es). Hidden during PIP renders so the sim "footage" matches the real
+   *  D435i, which is mounted ON the post and therefore never sees it. */
+  postMeshes: THREE.Object3D[] = [];
   /** World position of the camera post (top centre), for snapping the camera onto the rod. */
   readonly postTop = new THREE.Vector3();
   /** World X/Y of the post axis + its height + cross-section — exposed for snapping/selection. */
   postAxis = { x: 0, y: 0, height: 0, width: 0.024 };
-  /** Rods as world line segments (the upright post + the perimeter rails) — for snap/slide. */
-  rods: Array<{ a: THREE.Vector3; b: THREE.Vector3; label: string }> = [];
+  /** Rods as world line segments (the upright post + the perimeter rails) — for snap/slide.
+   *  `center` = the worktop centre that rail belongs to, so edge-snap can face an arm toward the
+   *  RIGHT table (matters once there are satellite workstations offset from the world origin). */
+  rods: Array<{ a: THREE.Vector3; b: THREE.Vector3; label: string; center?: THREE.Vector3 }> = [];
 
   private readonly slabMat = new THREE.MeshStandardMaterial({ color: 0xededf2, roughness: 0.85, metalness: 0.05 });
   private readonly railMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.6 });
@@ -36,6 +41,7 @@ export class BaseBuilder {
   /** Rebuild the worktop from config. Cheap — call on every slider change. */
   rebuild(config: WorkcellConfig) {
     this.clear();
+    this.postMeshes = [];
 
     const sides = Math.max(3, Math.min(8, Math.round(config.shapeSides)));
     const halfX = Math.max(0.175, config.length / 2);
@@ -87,6 +93,7 @@ export class BaseBuilder {
     post.castShadow = true;
     post.userData.selectable = 'post'; // pickable by the SelectionController
     this.group.add(post);
+    this.postMeshes.push(post);
     this.postAxis = { x: px, y: py, height: postH, width: barW };
     this.postTop.set(px, py, postH);
     // The upright post first — it's the rod users mount the camera on / slide along.
@@ -99,8 +106,63 @@ export class BaseBuilder {
       m.position.set(ep.x, ep.y, h / 2);
       m.castShadow = true;
       this.group.add(m);
+      this.postMeshes.push(m);
       this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
     });
+
+    // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
+    (config.stations ?? []).forEach((st, si) => {
+      this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
+        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id);
+    });
+  }
+
+  /** Build one rectangular worktop (slab + perimeter rails + a mount post) centred at (cx,cy).
+   *  Shared by the satellite workstations; their rails carry `center` so edge-snap faces inward
+   *  toward the right table. (The primary worktop is built inline above to preserve its exact
+   *  post-axis / shape-N-gon behaviour.) */
+  private buildWorktop(cx: number, cy: number, yaw: number, halfX: number, halfY: number, barW: number, barH: number,
+                       post: { x: number; y: number; height: number }, labelPrefix: string, stationId: string) {
+    const center = new THREE.Vector3(cx, cy, 0);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    // station-local (lx,ly) → world, rotated by yaw about the station centre.
+    const toWorld = (lx: number, ly: number): [number, number] => [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
+    const rim: Array<[number, number]> = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
+
+    const shape = new THREE.Shape();
+    rim.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+    shape.closePath();
+    const slabGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
+    slabGeo.rotateZ(yaw); slabGeo.translate(cx, cy, -0.02);
+    const slab = new THREE.Mesh(slabGeo, this.slabMat);
+    slab.receiveShadow = true;
+    slab.userData.selectable = 'station'; slab.userData.stationId = stationId;
+    this.group.add(slab);
+
+    for (let i = 0; i < rim.length; i++) {
+      const [x1, y1] = rim[i];
+      const [x2, y2] = rim[(i + 1) % rim.length];
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const rod = new THREE.Mesh(new THREE.BoxGeometry(len, barW, barH), this.railMat);
+      const [mwx, mwy] = toWorld((x1 + x2) / 2, (y1 + y2) / 2);
+      rod.position.set(mwx, mwy, barH / 2);
+      rod.rotation.z = Math.atan2(y2 - y1, x2 - x1) + yaw;
+      rod.castShadow = true;
+      rod.userData.selectable = 'station'; rod.userData.stationId = stationId;
+      this.group.add(rod);
+      const [ax, ay] = toWorld(x1, y1); const [bx, by] = toWorld(x2, y2);
+      this.rods.push({ a: new THREE.Vector3(ax, ay, barH / 2), b: new THREE.Vector3(bx, by, barH / 2), label: `${labelPrefix}Rail ${i + 1}`, center });
+    }
+
+    const h = Math.max(0.08, post.height);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, h), this.railMat);
+    const [pwx, pwy] = toWorld(post.x, post.y);
+    m.position.set(pwx, pwy, h / 2);
+    m.castShadow = true;
+    m.userData.selectable = 'station'; m.userData.stationId = stationId; // station post selects the station
+    this.group.add(m);
+    this.postMeshes.push(m);
+    this.rods.push({ a: new THREE.Vector3(pwx, pwy, 0), b: new THREE.Vector3(pwx, pwy, h), label: `${labelPrefix}Post`, center });
   }
 
   private clear() {

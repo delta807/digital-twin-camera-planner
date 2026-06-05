@@ -15,6 +15,7 @@ import { ArmInstance, DEFAULT_WORKCELL_CONFIG, MujocoData, MujocoModel, MujocoMo
 import { getName } from './utils/StringUtils';
 import { SweptJoint, WorkspacePlanner } from './WorkspacePlanner';
 import { NumericIk } from './NumericIk';
+import { ArmJointDesc, MujocoJointDrag, tagArmJoints, untagArmJoints } from './MujocoJointDrag';
 
 /**
  * MujocoSim: The Central Orchestrator.
@@ -43,6 +44,10 @@ export class MujocoSim {
     planner: WorkspacePlanner | null = null;
     /** Position-only numeric IK for the SO-101 (null for Franka, which uses analytical IK). */
     private numericIk: NumericIk | null = null;
+    /** Interactive joint posing (leLab-style click-drag), adapted from urdf-loader's drag engine. */
+    private jointDrag: MujocoJointDrag | null = null;
+    private armJointDescs: ArmJointDesc[] = [];
+    poseMode = false;
     private armJointQadr: number[] = [];
     /** Fired after a (re)load creates a new planner, so React can re-apply its state. */
     onSceneReload: (() => void) | null = null;
@@ -115,6 +120,7 @@ export class MujocoSim {
         if (this.frameId) { cancelAnimationFrame(this.frameId); this.frameId = null; }
         this.so101Pickup = null; // a mid-flight grasp holds addresses into the OLD model — drop it
         if (this.planner) { this.planner.dispose(); this.planner = null; this.renderSys.extraPipHelpers = []; }
+        if (this.jointDrag) { this.jointDrag.dispose(); this.jointDrag = null; this.poseMode = false; } // stale body refs on reload
         if (this.numericIk) { this.numericIk.dispose(); this.numericIk = null; }
         if (this.mjData) { try { this.mjData.delete(); } catch (e) { /* ignore */ } this.mjData = null; }
         if (this.mjModel) { try { this.mjModel.delete(); } catch (e) { /* ignore */ } this.mjModel = null; }
@@ -202,6 +208,7 @@ export class MujocoSim {
         }
         this.baseBodyId = baseBodyId;
         this.armBodyIds = this.descendantBodyIds(baseBodyId);
+        this.armJointDescs = this.buildArmJointDescs(m);
 
         if (this.ikSys.gripperSiteId < 0 || sweptJoints.length < 4) {
             console.warn('Planner: missing TCP site or swept joints — reachability disabled.');
@@ -216,16 +223,7 @@ export class MujocoSim {
             baseSearchHalfY: Math.max(0.1, this.workcellConfig.width / 2 - 0.05),
         });
         this.renderSys.extraPipHelpers = [this.planner.group, this.planner.gizmoHelper];
-        // Home TCP world transform (from the gripper site) so each ghost arm carries a TCP marker
-        // its own wrist camera can track.
-        const s = this.ikSys.gripperSiteId, xm = this.mjData!.site_xmat, xp = this.mjData!.site_xpos;
-        const tcpWorld = s >= 0 ? new THREE.Matrix4().set(
-            xm[s * 9 + 0], xm[s * 9 + 1], xm[s * 9 + 2], xp[s * 3 + 0],
-            xm[s * 9 + 3], xm[s * 9 + 4], xm[s * 9 + 5], xp[s * 3 + 1],
-            xm[s * 9 + 6], xm[s * 9 + 7], xm[s * 9 + 8], xp[s * 3 + 2],
-            0, 0, 0, 1,
-        ) : undefined;
-        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, tcpWorld);
+        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
         this.renderSys.setPlanningArmInstances(this.armInstances);
         this.planner.setArms(this.armInstances, this.basePose?.yaw ?? 0);
         this.planner.computeReachability();
@@ -236,6 +234,95 @@ export class MujocoSim {
             this.mujoco, m, this.ikSys.gripperSiteId,
             this.armJointQadr, sweptJoints.map((j) => j.lo), sweptJoints.map((j) => j.hi),
         );
+    }
+
+    /** Current gripper-site world transform (orientation + position) for the ghost TCP marker. */
+    private currentTcpWorld(): THREE.Matrix4 | undefined {
+        const s = this.ikSys.gripperSiteId;
+        if (s < 0 || !this.mjData) return undefined;
+        const xm = this.mjData.site_xmat, xp = this.mjData.site_xpos;
+        return new THREE.Matrix4().set(
+            xm[s * 9 + 0], xm[s * 9 + 1], xm[s * 9 + 2], xp[s * 3 + 0],
+            xm[s * 9 + 3], xm[s * 9 + 4], xm[s * 9 + 5], xp[s * 3 + 1],
+            xm[s * 9 + 6], xm[s * 9 + 7], xm[s * 9 + 8], xp[s * 3 + 2],
+            0, 0, 0, 1,
+        );
+    }
+
+    /** Re-snapshot the planning-arm template from the primary's CURRENT pose + re-place the ghosts,
+     *  so every ghost arm mirrors however the primary is posed (and its wrist cam frames to match). */
+    refreshGhostArms(): void {
+        if (this.isFranka || !this.mjModel) return;
+        this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
+        this.renderSys.setPlanningArmInstances(this.armInstances);
+    }
+
+    /** Show/hide a scene entity from the object tree's eye toggle. The render loop only syncs body
+     *  position/quaternion (not visibility), so a hidden body stays hidden. */
+    setEntityVisible(kind: 'arm' | 'camera' | 'post' | 'object' | 'station', id: number | string | undefined, visible: boolean): void {
+        const rs = this.renderSys;
+        if (kind === 'object' && typeof id === 'number') { if (rs.bodies[id]) rs.bodies[id].visible = visible; }
+        else if (kind === 'arm') {
+            for (const b of this.armBodyIds) if (rs.bodies[b]) rs.bodies[b].visible = visible;
+            rs.planningArmsGroup.children.forEach((g) => { if (g.userData.armId === id) g.visible = visible; });
+        }
+        else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
+        else if (kind === 'post') rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
+        else if (kind === 'camera') rs.cameraRig.gizmo.visible = visible;
+    }
+
+    /** Resolve every actuated arm joint (actuator → joint → body) for interactive posing. */
+    private buildArmJointDescs(m: MujocoModel): ArmJointDesc[] {
+        const M = m as unknown as {
+            jnt_type: Int32Array; jnt_range: Float64Array; jnt_axis: Float64Array;
+            jnt_bodyid: Int32Array; jnt_dofadr: Int32Array;
+        };
+        const names = ['Rotation', 'Pitch', 'Elbow', 'Wrist_Pitch', 'Wrist_Roll', 'Jaw'];
+        const descs: ArmJointDesc[] = [];
+        for (let i = 0; i < m.nu; i++) {
+            const jid = m.actuator_trnid[2 * i];
+            if (jid < 0 || jid >= m.njnt) continue;
+            const jt = M.jnt_type[jid];
+            if (jt !== 3 && jt !== 2) continue; // 3 = hinge (revolute), 2 = slide (prismatic)
+            let lo = M.jnt_range[2 * jid], hi = M.jnt_range[2 * jid + 1];
+            if (!(hi > lo)) { lo = -Math.PI; hi = Math.PI; } // unlimited joint → sane drag range
+            descs.push({
+                name: names[i] ?? `Joint ${i}`,
+                qadr: m.jnt_qposadr[jid], dofadr: M.jnt_dofadr[jid], actId: i,
+                bodyId: M.jnt_bodyid[jid],
+                axis: [M.jnt_axis[3 * jid], M.jnt_axis[3 * jid + 1], M.jnt_axis[3 * jid + 2]],
+                lo, hi, prismatic: jt === 2,
+            });
+        }
+        return descs;
+    }
+
+    /**
+     * Enter/leave interactive joint posing: click any link of the SO-101 and drag to rotate that
+     * joint (leLab-style). Tags the arm body-groups as draggable joints + spins up the adapted
+     * urdf-loader drag engine; disables click-to-select so clicks go to joints, not the inspector.
+     */
+    setPoseMode(on: boolean, onJointLabel?: (name: string | null) => void): void {
+        if (this.isFranka || !this.mjModel || !this.mjData) return;
+        this.poseMode = on;
+        const rs = this.renderSys;
+        if (on) {
+            tagArmJoints(rs.bodies, this.mjData, this.armJointDescs);
+            this.jointDrag = MujocoJointDrag.create(
+                rs.simGroup, rs.camera, rs.renderer.domElement,
+                this.mujoco, this.mjModel, this.mjData, rs.controls, onJointLabel,
+            );
+            // When the primary is re-posed, ghost arms re-mirror it (so their wrist cams frame the
+            // same way the primary does, instead of staring at the horizon from the home pose).
+            this.jointDrag.onPosed = () => this.refreshGhostArms();
+            rs.selection.setEnabled(false); // clicks drive joints, not selection
+        } else {
+            this.jointDrag?.dispose();
+            this.jointDrag = null;
+            untagArmJoints(rs.bodies, this.armJointDescs);
+            rs.selection.setEnabled(true);
+            onJointLabel?.(null);
+        }
     }
 
     /** Reload the model with the arm base moved/rotated — the "drag the mount" path. */

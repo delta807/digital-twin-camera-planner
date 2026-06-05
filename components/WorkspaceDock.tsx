@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, Camera, ChevronDown, Crosshair, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Trash2 } from 'lucide-react';
-import { ReactNode, useState } from 'react';
+import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Search, Trash2 } from 'lucide-react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 
@@ -18,6 +18,10 @@ export interface DockSceneProps {
 export interface DockWorkcellProps {
   config: WorkcellConfig;
   onChange: (next: WorkcellConfig) => void;
+  onAddStation: () => void;
+  onRemoveStation: (id: string) => void;
+  onAddExtraCamera: () => void;
+  onRemoveExtraCamera: (id: string) => void;
 }
 export interface DockArmsProps {
   list: ArmInstance[];
@@ -55,8 +59,8 @@ export interface DockCameraProps {
   onSnapToPost: () => void; // mount on the aluminium post + aim down
   wristEnabled: boolean; // gripper-mounted wrist camera feed
   onWristToggle: (v: boolean) => void;
-  wristMount: { back: number; up: number; reach: number; fov: number };
-  onWristMount: (m: { back: number; up: number; reach: number; fov: number }) => void;
+  wristMount: { back: number; up: number; reach: number; fov: number; tilt: number };
+  onWristMount: (m: { back: number; up: number; reach: number; fov: number; tilt: number }) => void;
 }
 export interface DockMeasureProps {
   active: boolean;
@@ -66,11 +70,13 @@ export interface DockMeasureProps {
   onClear: () => void;
   onRemove: (id: string) => void;
 }
-export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number; armId?: string }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;
   onSelect: (e: DockObjectEntity) => void;
+  hidden: Set<string>;
+  onToggleVisible: (e: DockObjectEntity) => void;
 }
 
 interface WorkspaceDockProps {
@@ -111,28 +117,56 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
   const wc = workcell.config;
   const u = scene.unit; // active length unit (m / mm) for the length sliders
 
+  // Search/filter the dock: type (or press '/') to keep only sections matching the query.
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = (e.target as HTMLElement)?.tagName;
+      if (e.key === '/' && t !== 'INPUT' && t !== 'TEXTAREA') { e.preventDefault(); searchRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const q = query.trim().toLowerCase();
+  const matches = (kw: string) => !q || kw.toLowerCase().includes(q);
+  const KW = ['objects tree entities task block arm camera post', 'scene units mm axes coordinates origin readout', 'workcell table shape length width rail post mount height', 'arms so-101 reach jog layout base envelope heatmap recompute', 'camera d435i fov frustum footprint pip stream profile wrist depth coverage move aim', 'measure distance dimension ruler'];
+  const anyMatch = KW.some(matches);
+
   return (
-    <div className={`absolute left-4 top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
+    <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
         <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
         <span className={`block text-[9px] ${subtle}`}>origin = table center · X→ Y↑ Z out</span>
+        <div className={`mt-2 flex items-center gap-1.5 px-2 py-1 rounded-md border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+          <Search className={`w-3 h-3 ${subtle}`} />
+          <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search controls…  ( / )" className={`flex-1 min-w-0 bg-transparent text-[11px] outline-none ${isDarkMode ? 'placeholder:text-slate-500' : 'placeholder:text-slate-400'}`} />
+          {query && <button onClick={() => setQuery('')} className={`text-[10px] ${subtle}`}>✕</button>}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
         {/* ── Objects: scene tree — click a row to select it in the 3D view ── */}
         {objects && (
-          <Section title="Objects" icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+          <Section title="Objects" hidden={!matches(KW[0])} icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
             <div className="space-y-0.5">
               {objects.entities.map((e) => {
                 const active = e.key === objects.selectedKey;
+                const isHidden = objects.hidden.has(e.key);
                 const on = isDarkMode ? 'bg-indigo-500/25 text-indigo-200' : 'bg-indigo-600/10 text-indigo-700';
                 const off = isDarkMode ? 'hover:bg-white/5 text-slate-300' : 'hover:bg-black/5 text-slate-700';
                 return (
-                  <button key={e.key} onClick={() => objects.onSelect(e)}
-                    className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-left ${active ? on : off}`}>
-                    <span className={`w-1.5 h-1.5 rounded-sm ${active ? 'bg-yellow-400' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                    <span className="truncate">{e.label}</span>
-                  </button>
+                  <div key={e.key} className={`group w-full flex items-center gap-2 pr-1 rounded-md ${active ? on : off}`}>
+                    <button onClick={() => objects.onSelect(e)}
+                      className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-1 text-[11px] text-left ${isHidden ? 'opacity-40' : ''}`}>
+                      <span className={`w-1.5 h-1.5 rounded-sm shrink-0 ${active ? 'bg-yellow-400' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                      <span className="truncate">{e.label}</span>
+                    </button>
+                    <button onClick={() => objects.onToggleVisible(e)} title={isHidden ? 'Show' : 'Hide'}
+                      className={`shrink-0 p-1 rounded ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'} ${isHidden ? subtle : (isDarkMode ? 'text-slate-400' : 'text-slate-500')} ${isHidden ? '' : 'opacity-0 group-hover:opacity-100'}`}>
+                      {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -140,7 +174,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
         )}
 
         {/* ── Scene: units + axes + live coordinates ── */}
-        <Section title="Scene" icon={<Grid3x3 className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+        <Section title="Scene" hidden={!matches(KW[1])} icon={<Grid3x3 className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium">Units</span>
             <div className="flex items-center gap-1">
@@ -161,7 +195,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
         </Section>
 
         {/* ── Workcell: table shape + size (live) ── */}
-        <Section title="Workcell (table)" icon={<Box className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+        <Section title="Workcell (table)" hidden={!matches(KW[2])} icon={<Box className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <Slider label="Sides (4 = rectangle)" unit="" min={3} max={8} step={1} value={wc.shapeSides} onChange={(v) => workcell.onChange({ ...wc, shapeSides: Math.round(v) })} subtle={subtle} />
           <Slider label="Length" unit="m" min={0.4} max={1.4} step={0.01} value={wc.length} onChange={(v) => workcell.onChange({ ...wc, length: v })} subtle={subtle} displayUnit={u} />
           <Slider label="Width" unit="m" min={0.4} max={1.4} step={0.01} value={wc.width} onChange={(v) => workcell.onChange({ ...wc, width: v })} subtle={subtle} displayUnit={u} />
@@ -182,10 +216,43 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
           ))}
           <button onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add mount post</button>
           <p className={`text-[9px] ${subtle}`}>Edits apply live — no reload. Add posts to mount cameras on (snappable).</p>
+
+          {/* Workstations — each is its own worktop + an arm, for laying out a multi-cell lab. */}
+          <div className={`mt-2 pt-2 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1.5`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Workstations</span>
+            {(wc.stations ?? []).map((st, i) => (
+              <div key={st.id} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase ${subtle} w-12`}>Cell {i + 2}</span>
+                <input type="number" step={0.05} value={Number(st.x.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], x: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="X" />
+                <input type="number" step={0.05} value={Number(st.y.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], y: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="Y" />
+                <button onClick={() => workcell.onRemoveStation(st.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove workstation + its arm">✕</button>
+              </div>
+            ))}
+            <button onClick={workcell.onAddStation} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add workstation</button>
+            <p className={`text-[9px] ${subtle}`}>Each adds a worktop + an arm (clamped to its edge). X/Y = its centre.</p>
+          </div>
+
+          {/* Extra overhead D435i cameras — each looks straight down + gets a Feeds PIP. */}
+          <div className={`mt-2 pt-2 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1.5`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Overhead D435i cameras</span>
+            {(wc.extraCameras ?? []).map((cam, i) => (
+              <div key={cam.id} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase ${subtle} w-12`}>Cam {i + 2}</span>
+                {(['x', 'y', 'z'] as const).map((ax) => (
+                  <input key={ax} type="number" step={0.05} value={Number(cam[ax].toFixed(2))} title={ax.toUpperCase()}
+                    onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.extraCameras]; next[i] = { ...next[i], [ax]: v }; workcell.onChange({ ...wc, extraCameras: next }); } }}
+                    className={`w-11 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
+                ))}
+                <button onClick={() => workcell.onRemoveExtraCamera(cam.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove camera">✕</button>
+              </div>
+            ))}
+            <button onClick={workcell.onAddExtraCamera} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add overhead camera</button>
+            <p className={`text-[9px] ${subtle}`}>Each looks straight down from X/Y/Z; see its feed in the Feeds dock.</p>
+          </div>
         </Section>
 
         {/* ── Arms: placement + reachability ── */}
-        <Section title="Arms (SO-101)" icon={<Crosshair className="w-3.5 h-3.5 text-emerald-500" />} isDarkMode={isDarkMode}
+        <Section title="Arms (SO-101)" hidden={!matches(KW[3])} icon={<Crosshair className="w-3.5 h-3.5 text-emerald-500" />} isDarkMode={isDarkMode}
           action={<button onClick={arms.onAdd} title="Add an SO-101" className={`w-6 h-6 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-white/10 hover:bg-white/15' : 'bg-black/5 hover:bg-black/10'}`}><Plus className="w-3.5 h-3.5" /></button>}>
           {arm && <>
             <select value={arm.id} onChange={(e) => arms.onSelect(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold outline-none ${isDarkMode ? 'bg-slate-950/70 text-slate-100' : 'bg-white/70 text-slate-800'}`}>
@@ -213,7 +280,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
         </Section>
 
         {/* ── Camera (D435i) ── */}
-        <Section title="Camera (D435i)" icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+        <Section title="Camera (D435i)" hidden={!matches(KW[4])} icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <Row label="Show camera" checked={camera.toggles.enabled} onChange={(v) => camera.onToggle('enabled', v)} />
           <Row label="Wrist camera feed" checked={camera.wristEnabled} onChange={camera.onWristToggle} />
           {camera.wristEnabled && (
@@ -221,6 +288,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
               <Slider label="Wrist · back" unit="m" min={0} max={0.15} step={0.005} value={camera.wristMount.back} onChange={(v) => camera.onWristMount({ ...camera.wristMount, back: v })} subtle={subtle} displayUnit={u} />
               <Slider label="Wrist · up" unit="m" min={0} max={0.15} step={0.005} value={camera.wristMount.up} onChange={(v) => camera.onWristMount({ ...camera.wristMount, up: v })} subtle={subtle} displayUnit={u} />
               <Slider label="Wrist · reach" unit="m" min={0.02} max={0.3} step={0.01} value={camera.wristMount.reach} onChange={(v) => camera.onWristMount({ ...camera.wristMount, reach: v })} subtle={subtle} displayUnit={u} />
+              <Slider label="Wrist · tilt" unit="°" min={0} max={80} step={1} value={camera.wristMount.tilt} onChange={(v) => camera.onWristMount({ ...camera.wristMount, tilt: v })} subtle={subtle} />
               <Slider label="Wrist · FOV" unit="°" min={30} max={100} step={1} value={camera.wristMount.fov} onChange={(v) => camera.onWristMount({ ...camera.wristMount, fov: v })} subtle={subtle} />
             </div>
           )}
@@ -260,7 +328,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
 
         {/* ── Measure ── */}
         {measure && (
-          <Section title="Measure" icon={<Ruler className="w-3.5 h-3.5 text-amber-500" />} isDarkMode={isDarkMode}>
+          <Section title="Measure" hidden={!matches(KW[5])} icon={<Ruler className="w-3.5 h-3.5 text-amber-500" />} isDarkMode={isDarkMode}>
             <Row label="Measure mode (click two points)" checked={measure.active} onChange={measure.onToggleActive} accent="amber" />
             {measure.measurements.length === 0 && <p className={`text-[10px] ${subtle}`}>Enable, then click two objects or points. Shift-click = free point.</p>}
             {measure.measurements.map((m) => (
@@ -275,6 +343,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
             {measure.measurements.length > 0 && <button onClick={measure.onClear} className={`w-full py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300' : 'bg-black/5 text-slate-600'}`}>Clear all</button>}
           </Section>
         )}
+        {!anyMatch && <div className={`px-4 py-6 text-center text-[11px] ${subtle}`}>No controls match “{query}”.</div>}
       </div>
     </div>
   );
@@ -285,9 +354,10 @@ function fmt(meters: number, unit: LengthUnit) {
   return unit === 'mm' ? `${Math.round(meters * 1000)}` : meters.toFixed(2);
 }
 
-function Section({ title, icon, isDarkMode, action, children }: { title: string; icon: ReactNode; isDarkMode: boolean; action?: ReactNode; children: ReactNode }) {
+function Section({ title, icon, isDarkMode, action, children, hidden }: { title: string; icon: ReactNode; isDarkMode: boolean; action?: ReactNode; children: ReactNode; hidden?: boolean }) {
   const [open, setOpen] = useState(true);
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  if (hidden) return null;
   return (
     <div className="px-3 py-2.5">
       <div className="flex items-center gap-2">

@@ -4,7 +4,7 @@
 */
 
 import { BoxSelect, ChevronDown, FastForward, Grab, History, Info, Loader2, MousePointer2, RotateCcw, Send, Settings2, Thermometer, X } from 'lucide-react';
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { LogOverlay } from '../App';
 import { DetectedItem, DetectType, LogEntry } from '../types';
 
@@ -20,6 +20,9 @@ interface UnifiedSidebarProps {
   isDarkMode: boolean;
   isPickingUp?: boolean;
   playbackSpeed?: number;
+  geminiEnabled?: boolean;
+  /** Selection inspector, docked here below the reasoning controls (null when nothing selected). */
+  inspector?: ReactNode;
 }
 
 /**
@@ -37,7 +40,9 @@ export function UnifiedSidebar({
   onOpenLog, 
   isDarkMode,
   isPickingUp = false,
-  playbackSpeed = 1
+  playbackSpeed = 1,
+  geminiEnabled = false,
+  inspector = null
 }: UnifiedSidebarProps) {
   // Default scene is the SO-101 twin, whose pickable task props are orange blocks.
   const [prompt, setPrompt] = useState('orange blocks');
@@ -55,16 +60,17 @@ export function UnifiedSidebar({
   const selectorBg = isDarkMode ? "bg-slate-800/40 border-white/5" : "bg-slate-100/50 border-slate-200/50";
   const selectorActive = isDarkMode ? "bg-slate-700 text-indigo-400" : "bg-white text-indigo-600 shadow-sm";
   const logCardBg = isDarkMode ? "bg-white/5 border-white/5 hover:bg-white/10" : "bg-white/40 border-slate-100 hover:bg-white hover:shadow-md";
+  const detectDisabled = isLoading || !prompt.trim() || !geminiEnabled;
 
   return (
     // Changed positioning: centered on mobile (left-4 right-4), positioned right on desktop (min-[660px]:right-10 min-[660px]:w-96)
-    <div className={`absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-10 min-[660px]:right-10 min-[660px]:bottom-10 min-[660px]:w-96 glass-panel rounded-[2.5rem] flex flex-col z-40 overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
-      
+    <div className={`absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-6 min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] glass-panel rounded-3xl flex flex-col z-40 overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
+
       {/* Header */}
-      <div className={`p-8 border-b flex justify-between items-center ${headerBorder}`}>
-        <div className="flex items-center gap-4 w-full">
-          <div className="w-full pr-4">
-            <h2 className="text-lg font-bold leading-none mb-3">Embodied Reasoning</h2>
+      <div className={`px-5 py-4 border-b flex justify-between items-center gap-2 ${headerBorder}`}>
+        <div className="flex items-center gap-4 w-full min-w-0">
+          <div className="w-full min-w-0">
+            <h2 className="text-base font-bold leading-none mb-2">Embodied Reasoning</h2>
             <div className="relative">
               <select 
                 value={modelId}
@@ -78,17 +84,17 @@ export function UnifiedSidebar({
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-slate-200/20 rounded-full transition-colors text-slate-400 shrink-0">
-          <X className="w-5 h-5" />
+        <button onClick={onClose} className="p-1.5 hover:bg-slate-200/20 rounded-full transition-colors text-slate-400 shrink-0">
+          <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pt-1.5 pb-6 space-y-2">
-        
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-2 pb-4 space-y-2">
+
         {/* Detection Type Selector */}
         <section className="space-y-1.5">
-          <div className={`p-1.5 rounded-2xl flex border ${selectorBg}`}>
+          <div className={`p-1 rounded-xl flex border ${selectorBg}`}>
               {(['2D bounding boxes', 'Points'] as DetectType[]).map((t) => {
                 const isActive = type === t;
                 
@@ -100,8 +106,8 @@ export function UnifiedSidebar({
                       t === '2D bounding boxes' ? 'Boxes: Identify all objects within rectangular regions' : 
                       'Points: Pinpoint the exact interaction coordinates'
                     }
-                    className={`flex-1 py-3 rounded-xl flex flex-col items-center gap-1 transition-all ${
-                      isActive 
+                    className={`flex-1 py-2 rounded-lg flex flex-col items-center gap-1 transition-all ${
+                      isActive
                         ? selectorActive
                         : 'text-slate-500 hover:text-slate-400'
                     }`}
@@ -120,10 +126,10 @@ export function UnifiedSidebar({
         {/* Prompt Input & Action Row */}
         <section className="space-y-2">
           <div className="relative group">
-            <textarea 
+            <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className={`w-full rounded-2xl px-4 py-3 pr-10 text-sm focus:outline-none transition-all resize-none h-12 border ${inputBg}`}
+                className={`w-full rounded-xl px-3 py-2.5 pr-10 text-sm focus:outline-none transition-all resize-none h-11 border ${inputBg}`}
                 placeholder="Describe targets..."
             />
             <button
@@ -172,13 +178,13 @@ export function UnifiedSidebar({
             </div>
           )}
           
-          <div className="flex gap-3">
-            <button 
+          <div className="flex gap-2">
+            <button
                 onClick={() => onSend(prompt, type, temperature, enableThinking, modelId)}
-                disabled={isLoading || !prompt.trim()}
-                title="Detect: Trigger Gemini analysis of current workspace"
-                className={`flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  isLoading 
+                disabled={detectDisabled}
+                title={geminiEnabled ? "Detect: Trigger Gemini analysis of current workspace" : "Gemini API key is not configured"}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  detectDisabled 
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600' 
                     : 'bg-slate-900 text-white hover:bg-black shadow-lg active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
                 }`}
@@ -197,7 +203,7 @@ export function UnifiedSidebar({
                 }}
                 disabled={(!hasDetectedItems && !isPickingUp) || isLoading}
                 title={isPickingUp ? `Click to increase simulation speed (Current: ${playbackSpeed}x)` : "Start pickup sequence for detected items"}
-                className={`flex-1 py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] ${
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] ${
                   (!hasDetectedItems && !isPickingUp) || isLoading 
                     ? (isDarkMode ? 'bg-slate-800 text-slate-600 cursor-not-allowed shadow-none' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none')
                     : (isPickingUp 
@@ -221,6 +227,14 @@ export function UnifiedSidebar({
           </div>
         </section>
 
+        {/* Selection inspector — docked here so you edit the selected entity in the right panel. */}
+        {inspector && (
+          <section className="pt-1">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5">Selection</h3>
+            {inspector}
+          </section>
+        )}
+
         {/* History / Logs Section */}
         <section className="space-y-2 pt-2">
           <div className="flex items-center gap-2 px-1">
@@ -230,7 +244,7 @@ export function UnifiedSidebar({
           
           <div className="space-y-3">
             {logs.length === 0 ? (
-              <div className={`text-center py-10 border-2 border-dashed rounded-[2rem] text-xs italic ${isDarkMode ? 'border-white/5 text-slate-600' : 'border-slate-100 text-slate-400'}`}>
+              <div className={`text-center py-6 border-2 border-dashed rounded-2xl text-xs italic ${isDarkMode ? 'border-white/5 text-slate-600' : 'border-slate-100 text-slate-400'}`}>
                 No history found
               </div>
             ) : (

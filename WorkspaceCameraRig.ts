@@ -52,6 +52,10 @@ export class WorkspaceCameraRig {
   // PIP render target (lazy: only renders once a DOM container is attached).
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
+  // Simulated DEPTH stream: render the PIP through a depth-colormap material clamped to the
+  // D435i's usable range, so we can preview what the depth camera would see (vs the RGB footage).
+  depthMode = false;
+  private depthMaterial: THREE.ShaderMaterial | null = null;
 
   // Reused scratch objects (avoid per-frame allocation).
   private readonly raycaster = new THREE.Raycaster();
@@ -80,7 +84,7 @@ export class WorkspaceCameraRig {
     );
     const lens = new THREE.Mesh(
       new THREE.ConeGeometry(0.025, 0.05, 20),
-      new THREE.MeshStandardMaterial({ color: 0x4f46e5, emissive: 0x312e81, roughness: 0.4 }),
+      new THREE.MeshStandardMaterial({ color: 0xe0a530, emissive: 0x3d2a00, roughness: 0.4 }),
     );
     lens.geometry.rotateX(-Math.PI / 2); // cone apex -> -Z (the camera look direction)
     lens.position.set(0, 0, -0.04);
@@ -91,9 +95,12 @@ export class WorkspaceCameraRig {
     this.scene.add(this.gizmo);
     this.loadCameraMesh(body, lens); // swap the placeholder for the real D435i mesh once loaded
 
-    // Sensible starting pose: mounted above the worktop, looking straight DOWN (top-down view,
-    // like the real rig's overhead D435i). User can reposition / re-aim from here.
-    this.setPose(new THREE.Vector3(0.15, -0.15, 0.7), new THREE.Vector3(0.15, -0.15, 0));
+    // Starting pose = the REAL rig's overhead D435i: mounted at (41.5, 26.5, 85) cm from table
+    // centre → (0.415, 0.265, 0.85) m, looking ACROSS at the arm/table centre (a cross-table,
+    // front-elevated view — NOT top-down, matching the real D435i). Anchor for superimposing the
+    // live Jetson overhead feed against the sim PIP to tune them to match.
+    // Rolled +45° so the table reads square-on (like the real feed), not corner-first (diamond).
+    this.setPose(new THREE.Vector3(0.415, 0.265, 0.85), new THREE.Vector3(0, 0, 0), Math.PI / 4);
 
     // --- Drag handle (reuses the project's TransformControls pattern; getHelper() is the
     //     correct API in three 0.181 where TransformControls no longer extends Object3D) ---
@@ -113,7 +120,7 @@ export class WorkspaceCameraRig {
     frustumGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3));
     this.frustumLines = new THREE.LineSegments(
       frustumGeo,
-      new THREE.LineBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.9 }),
+      new THREE.LineBasicMaterial({ color: 0xe0a530, transparent: true, opacity: 0.9 }),
     );
     this.frustumLines.frustumCulled = false;
     this.scene.add(this.frustumLines);
@@ -125,7 +132,7 @@ export class WorkspaceCameraRig {
     this.footprint = new THREE.Mesh(
       fpGeo,
       new THREE.MeshBasicMaterial({
-        color: 0x4f46e5,
+        color: 0xe0a530,
         transparent: true,
         opacity: 0.18,
         side: THREE.DoubleSide,
@@ -170,15 +177,34 @@ export class WorkspaceCameraRig {
   }
 
   /** Place the camera at `pos` looking at `target` (world space, z-up). */
-  setPose(pos: THREE.Vector3, target: THREE.Vector3) {
+  /** `roll` (radians) spins the camera about its optical axis — used to match a real camera that
+   *  is mounted rotated (e.g. the overhead D435i sees the table square-on, not corner-first). */
+  setPose(pos: THREE.Vector3, target: THREE.Vector3, roll = 0) {
     this.gizmo.position.copy(pos);
     const m = new THREE.Matrix4().lookAt(pos, target, new THREE.Vector3(0, 0, 1));
     this.gizmo.quaternion.setFromRotationMatrix(m);
+    if (roll) this.gizmo.rotateZ(roll);
   }
 
   /** Move the camera to an exact world position, keeping its current aim. */
   setPosition(x: number, y: number, z: number) {
     this.gizmo.position.set(x, y, z);
+  }
+
+  /** Capture the full camera pose (position + aim/roll + FOV) for saving a layout profile. */
+  getPose(): { position: [number, number, number]; quaternion: [number, number, number, number]; hFovDeg: number } {
+    return {
+      position: this.gizmo.position.toArray() as [number, number, number],
+      quaternion: this.gizmo.quaternion.toArray() as [number, number, number, number],
+      hFovDeg: this.intrinsics.hFovDeg,
+    };
+  }
+
+  /** Restore a saved camera pose. */
+  applyPose(p: { position: [number, number, number]; quaternion: [number, number, number, number]; hFovDeg: number }) {
+    this.gizmo.position.fromArray(p.position);
+    this.gizmo.quaternion.fromArray(p.quaternion);
+    this.setIntrinsics({ hFovDeg: p.hFovDeg });
   }
 
   /** Aim the camera straight down (optical axis = world -Z) from its current position. */
@@ -306,6 +332,7 @@ export class WorkspaceCameraRig {
     this.clearTint();
     this.control.detach();
     this.control.dispose();
+    this.depthMaterial?.dispose();
     this.scene.remove(this.gizmo, this.controlHelper, this.frustumLines, this.footprint);
     if (this.coveragePoints) this.scene.remove(this.coveragePoints);
   }
@@ -429,10 +456,58 @@ export class WorkspaceCameraRig {
     const prev = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
 
-    this.pipRenderer.render(this.scene, this.sensorCamera);
+    if (this.depthMode) {
+      // Depth pass: override every surface with the depth-colormap shader + black background
+      // (no geometry / out-of-range = "no depth data", like a real depth sensor).
+      const mat = this.ensureDepthMaterial();
+      mat.uniforms.uNear.value = this.intrinsics.near;
+      mat.uniforms.uFar.value = this.intrinsics.far;
+      const bg = this.scene.background;
+      this.scene.background = null;
+      this.scene.overrideMaterial = mat;
+      this.pipRenderer.setClearColor(0x000000, 1);
+      this.pipRenderer.render(this.scene, this.sensorCamera);
+      this.scene.overrideMaterial = null;
+      this.scene.background = bg;
+    } else {
+      this.pipRenderer.render(this.scene, this.sensorCamera);
+    }
 
     hidden.forEach((o, i) => (o.visible = prev[i]));
   }
+
+  /** Depth-colormap material: view-space distance → jet colormap, clamped to [near, far].
+   *  Near = red, far = blue (RealSense-style); outside the range renders black (no data). */
+  private ensureDepthMaterial(): THREE.ShaderMaterial {
+    if (this.depthMaterial) return this.depthMaterial;
+    this.depthMaterial = new THREE.ShaderMaterial({
+      uniforms: { uNear: { value: 0.3 }, uFar: { value: 3.0 } },
+      vertexShader: `
+        varying float vDist;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vDist = -mv.z;              // view-space distance to the surface (meters)
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform float uNear; uniform float uFar;
+        varying float vDist;
+        vec3 jet(float t) {
+          return vec3(
+            clamp(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0),
+            clamp(1.5 - abs(4.0 * t - 2.0), 0.0, 1.0),
+            clamp(1.5 - abs(4.0 * t - 1.0), 0.0, 1.0));
+        }
+        void main() {
+          if (vDist < uNear || vDist > uFar) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+          float t = (vDist - uNear) / (uFar - uNear);
+          gl_FragColor = vec4(jet(1.0 - t), 1.0); // near surfaces warm, far surfaces cool
+        }`,
+    });
+    return this.depthMaterial;
+  }
+
+  setDepthMode(on: boolean) { this.depthMode = on; }
 
   private applyToggleVisibility() {
     const on = this.toggles.enabled;

@@ -4,7 +4,7 @@
 */
 
 
-import { Focus, House, Moon, PanelRight, Pause, Play, RotateCcw, Sun } from 'lucide-react';
+import { Focus, House, Moon, PanelRight, Pause, Play, RotateCcw, Sliders, Sun } from 'lucide-react';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -16,6 +16,8 @@ interface ToolbarProps {
   toggleDarkMode: () => void;
   onResetView: () => void;       // recenter to default iso view (Home)
   onFrameSelection: () => void;  // zoom to the selected object (F)
+  tweaksOpen: boolean;
+  onToggleTweaks: () => void;    // appearance tweaks (theme/accent) panel
 }
 
 /**
@@ -31,7 +33,9 @@ export function Toolbar({
   isDarkMode,
   toggleDarkMode,
   onResetView,
-  onFrameSelection
+  onFrameSelection,
+  tweaksOpen,
+  onToggleTweaks
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
@@ -85,9 +89,18 @@ export function Toolbar({
         {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
       </button>
 
+      {/* Appearance tweaks (theme + accent) — folded in from the old floating gear. */}
+      <button
+        onClick={onToggleTweaks}
+        className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${tweaksOpen ? (isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white') : panelStyle}`}
+        title="Appearance tweaks"
+      >
+        <Sliders className="w-6 h-6" />
+      </button>
+
       {/* Sidebar Toggle */}
-      <button 
-        onClick={toggleSidebar} 
+      <button
+        onClick={toggleSidebar}
         className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${showSidebar ? (isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white') : panelStyle}`}
         title="Toggle Analysis Panel"
       >

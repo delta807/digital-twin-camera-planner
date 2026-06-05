@@ -14,12 +14,33 @@ import { WorkspaceDock } from './components/WorkspaceDock';
 import { Measurement } from './MeasureTool';
 import { RobotSelector } from './components/RobotSelector';
 import { SensorView } from './components/SensorView';
+import { FeedsDock } from './components/FeedsDock';
 import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_RGB_640X480_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
+import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
+import { LayoutProfiles } from './components/LayoutProfiles';
+import { OverlayLegend } from './components/OverlayLegend';
+import { TweaksPanel } from './components/TweaksPanel';
+import { MetricBar } from './components/MetricBar';
+import { ModeRail, WorkMode } from './components/ModeRail';
+import { CompareView } from './components/CompareView';
+import type { CompareSetup } from './components/SceneMap';
+import { RadialMenu, RadialItem } from './components/RadialMenu';
+import { NavCube } from './components/NavCube';
+import { Hand, Move as MoveIcon, RotateCw } from 'lucide-react';
+
+const GEMINI_API_KEY = process.env.API_KEY || '';
+
+/** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
+ *  :8088. We superimpose each REAL feed over its matching sim PIP to tune the sim to reality:
+ *    • scene = the OVERHEAD D435i (post-mounted, looks down across the worktop) → the D435i PIP.
+ *    • wrist = the gripper-mounted HBVCAM (the follower's wrist) → the primary arm's wrist PIP. */
+const JETSON_SCENE_STREAM = 'http://100.68.215.10:8088/scene.mjpg';
+const JETSON_WRIST_STREAM = 'http://100.68.215.10:8088/wrist.mjpg';
 
 /**
  * Default prompt parts for different detection types.
@@ -36,6 +57,30 @@ export const defaultPromptParts = {
     ' in the scene and mark them with points. DO NOT mark items that only match the description partially. Follow the JSON format: [{"point": [y, x], "label": "label"}, ...]. The points are in [y, x] format normalized to 0-1000.',
   ],
 };
+
+function normalizeGeminiDetections(value: unknown): Array<{ box_2d?: number[]; point?: number[]; label: string }> {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const normalized = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as { box_2d?: unknown; point?: unknown; label?: unknown };
+    const label = typeof record.label === 'string' ? record.label.slice(0, 120) : 'detected';
+    const box = Array.isArray(record.box_2d) ? record.box_2d.map(Number) : null;
+    const point = Array.isArray(record.point) ? record.point.map(Number) : null;
+    const coords = box?.length === 4 ? box : point?.length === 2 ? point : null;
+    if (!coords || !coords.every((coord) => Number.isFinite(coord) && coord >= 0 && coord <= 1000)) continue;
+    const detection = box?.length === 4 ? { box_2d: coords, label } : { point: coords, label };
+    const serialized = JSON.stringify(detection);
+    if (seen.has(serialized)) continue;
+    seen.add(serialized);
+    normalized.push(detection);
+    if (normalized.length >= 25) break;
+  }
+
+  return normalized;
+}
 
 interface LogOverlayProps {
   log: LogEntry;
@@ -80,7 +125,7 @@ export function LogOverlay({ log }: LogOverlayProps) {
   );
 }
 
-type Rod = { a: THREE.Vector3; b: THREE.Vector3; label: string };
+type Rod = { a: THREE.Vector3; b: THREE.Vector3; label: string; center?: THREE.Vector3 };
 
 /** Clamped projection of a point onto a rod segment → parameter t∈[0,1] + the point on the rod. */
 function projectToRod(p: THREE.Vector3, rod: Rod): { t: number; point: THREE.Vector3 } {
@@ -116,9 +161,37 @@ export function App() {
   const [mujocoReady, setMujocoReady] = useState(false); 
   
   const [isPaused, setIsPaused] = useState(false);
+  // Interactive joint posing (leLab-style): click a link of the arm + drag to rotate its joint.
+  const [poseMode, setPoseMode] = useState(false);
+  const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
+  const togglePoseMode = () => {
+    const next = !poseMode;
+    setPoseMode(next);
+    if (!next) setHoveredJoint(null);
+    simRef.current?.setPoseMode(next, setHoveredJoint);
+  };
+  // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
+  // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
-  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660); 
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
+  // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
+  const [feedsOpen, setFeedsOpen] = useState(() => window.innerWidth >= 660);
+  // Layout-profiles panel is a toggle (off the always-on top bar that collided with the title).
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
+  // Appearance tweaks panel — now opened from the toolbar (was a floating bottom-right gear).
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
+  const [mode, setMode] = useState<WorkMode>('edit');
+  // Compare mode holds two captured WORKSTATION SETUPS (full layouts), shown side-by-side.
+  const [compareA, setCompareA] = useState<CompareSetup | null>(null);
+  const [compareB, setCompareB] = useState<CompareSetup | null>(null);
+  const [dockOpen, setDockOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
+  });
+  // Apply the persisted theme to the 3D scene once the sim is ready.
+  useEffect(() => { if (!isLoading) simRef.current?.renderSys.setDarkMode(isDarkMode); }, [isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
   
   const [erLoading, setErLoading] = useState(false);
   const [logs, setLogs] = useState<Array<LogEntry>>([]);
@@ -133,7 +206,7 @@ export function App() {
   const [gizmoStats, setGizmoStats] = useState<{pos: string, rot: string} | null>(null);
 
   // --- Coordinate readout (Phase 3) ---
-  const [lengthUnit, setLengthUnit] = useState<LengthUnit>('m');
+  const [lengthUnit, setLengthUnit] = useState<LengthUnit>('mm');
   const [axesVisible, setAxesVisible] = useState(true);
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
@@ -147,6 +220,44 @@ export function App() {
   const [selectedProfileId, setSelectedProfileId] = useState(D435I_DEFAULT_PROFILE_ID);
   const [dragMode, setDragMode] = useState<'translate' | 'rotate'>('translate');
   const sensorViewRef = useRef<HTMLDivElement>(null);
+  // Superimpose the live real feeds (Jetson MJPEG) over their matching sim PIPs to tune the sim
+  // until they match. Both app + Jetson are http (no mixed-content); <img> needs no CORS.
+  // Independent enable per feed (overhead scene + primary wrist); shared opacity + blend mode.
+  const [sceneOverlayOn, setSceneOverlayOn] = useState(false);
+  const [wristOverlayOn, setWristOverlayOn] = useState(false);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5);
+  const [overlayBlend, setOverlayBlend] = useState<'normal' | 'difference'>('normal');
+  // Simulated D435i DEPTH stream toggle for the overhead PIP (depth colormap, 0.3–3 m range).
+  const [depthView, setDepthView] = useState(false);
+  useEffect(() => { simRef.current?.renderSys.cameraRig.setDepthMode(depthView); }, [depthView, isLoading]);
+
+  // Saved layout profiles: the positional config (worktop + arm bases + overhead camera) the user
+  // mapped to the real rig, persisted so they can save/switch named bench layouts.
+  const [profiles, setProfiles] = useState<LayoutProfile[]>(() => listProfiles());
+  const handleSaveProfile = (name: string) => {
+    const rig = simRef.current?.renderSys.cameraRig;
+    setProfiles(saveProfile({
+      name, savedAt: Date.now(),
+      workcell: workcellConfigRef.current,
+      arms: armInstancesRef.current.map((a) => ({ ...a })),
+      camera: rig ? rig.getPose() : null,
+    }));
+  };
+  const handleDeleteProfile = (name: string) => setProfiles(deleteProfile(name));
+  const handleLoadProfile = (p: LayoutProfile) => {
+    const sim = simRef.current;
+    // Worktop (live rebuild).
+    setWorkcellConfig(p.workcell);
+    sim?.setWorkcell(p.workcell);
+    // Arms: restore all instances + relocate the primary base, then re-place ghosts.
+    setArmInstances(p.arms.map((a) => ({ ...a })));
+    sim?.setArmInstances(p.arms);
+    const primary = p.arms.find((a) => a.primary);
+    if (primary && sim) sim.relocateBase(primary.x, primary.y, primary.yaw);
+    setSelectedArmId(primary?.id ?? p.arms[0]?.id ?? 'so101-1');
+    // Overhead camera pose (position + aim/roll + FOV).
+    if (p.camera) simRef.current?.renderSys.cameraRig.applyPose(p.camera);
+  };
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
   cameraTogglesRef.current = cameraToggles;
 
@@ -308,33 +419,103 @@ export function App() {
   useEffect(() => {
     const r = rig();
     if (isLoading || !r) return;
-    if (cameraToggles.sensorPip && sensorViewRef.current) {
+    if (cameraToggles.sensorPip && feedsOpen && sensorViewRef.current) {
       r.attachPip(sensorViewRef.current);
     }
     return () => { rig()?.detachPip(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, cameraToggles.sensorPip]);
+  }, [isLoading, cameraToggles.sensorPip, feedsOpen]);
 
-  // Wrist camera: a gripper-mounted feed (tracks the arm). Toggle attaches its own PIP.
+  // Wrist cameras: one gripper-mounted feed PER arm (primary = live; ghost arms = static mount
+  // preview). The master toggle enables them all; each arm's PIP attaches via a stable callback ref.
   const [wristView, setWristView] = useState(false);
-  const wristViewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const wc = simRef.current?.renderSys.wristCamera;
-    if (isLoading || !wc) return;
-    wc.enabled = wristView;
-    if (wristView && wristViewRef.current) wc.attachPip(wristViewRef.current);
-    return () => { simRef.current?.renderSys.wristCamera?.detachPip(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isLoading && simRef.current) simRef.current.renderSys.wristEnabled = wristView;
   }, [isLoading, wristView]);
-  // The wrist feed follows the selected arm (primary = live; a ghost arm = static mount preview).
-  useEffect(() => { if (simRef.current) simRef.current.renderSys.wristSelectedArmId = selectedArmId; }, [selectedArmId, isLoading]);
+  // Dispose feeds for arms that were removed (created lazily on attach).
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncWristArms(armInstances.map((a) => a.id));
+  }, [armInstances, isLoading]);
+  // Stable per-arm ref callbacks — created once per armId so React doesn't detach/reattach
+  // (and tear down the canvas) on every render.
+  const wristRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const wristRefCb = (armId: string) => {
+    let cb = wristRefCbs.current.get(armId);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureWristCamera(armId).attachPip(el);
+        else rs.getWristCamera(armId)?.detachPip();
+      };
+      wristRefCbs.current.set(armId, cb);
+    }
+    return cb;
+  };
+
+  // Station overhead feeds (#6): one fixed downward camera per satellite workstation. Same stable-
+  // callback-ref + master-toggle pattern as the wrist cams.
+  const [stationView, setStationView] = useState(false);
+  useEffect(() => {
+    if (!isLoading && simRef.current) simRef.current.renderSys.stationEnabled = stationView;
+  }, [isLoading, stationView]);
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncStationCameras(workcellConfig.stations ?? []);
+  }, [workcellConfig.stations, isLoading]);
+  const stationRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const stationRefCb = (id: string) => {
+    let cb = stationRefCbs.current.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureStationCamera(id).attachPip(el);
+        else rs.getStationCamera(id)?.detachPip();
+      };
+      stationRefCbs.current.set(id, cb);
+    }
+    return cb;
+  };
+
+  // Extra placeable overhead D435i cameras (#3) — same Map/toggle/callback-ref pattern again.
+  const [extraCamView, setExtraCamView] = useState(false);
+  useEffect(() => {
+    if (!isLoading && simRef.current) simRef.current.renderSys.extraCamerasEnabled = extraCamView;
+  }, [isLoading, extraCamView]);
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncExtraCameras(workcellConfig.extraCameras ?? []);
+  }, [workcellConfig.extraCameras, isLoading]);
+  const extraCamRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const extraCamRefCb = (id: string) => {
+    let cb = extraCamRefCbs.current.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureExtraCamera(id).attachPip(el);
+        else rs.getExtraCamera(id)?.detachPip();
+      };
+      extraCamRefCbs.current.set(id, cb);
+    }
+    return cb;
+  };
+  const nextExtraCamRef = useRef(2);
+  const handleAddExtraCamera = () => {
+    const wc = workcellConfigRef.current;
+    const n = nextExtraCamRef.current++;
+    handleWorkcellChange({ ...wc, extraCameras: [...(wc.extraCameras ?? []), { id: `cam-${n}`, x: 0, y: 0, z: 0.85 }] });
+    setExtraCamView(true);
+  };
+  const handleRemoveExtraCamera = (id: string) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).filter((c) => c.id !== id) });
+  };
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
-  const [wristMount, setWristMount] = useState({ back: 0.05, up: 0.09, reach: 0.06, fov: 58 });
+  // Shared across every arm's feed.
+  const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.06, reach: 0.10, fov: 58, tilt: 38 });
   useEffect(() => {
-    const wc = simRef.current?.renderSys.wristCamera; if (!wc) return;
-    wc.back = wristMount.back; wc.up = wristMount.up; wc.reach = wristMount.reach;
-    wc.setIntrinsics(wristMount.fov, 16 / 9); // live wrist feed is 16:9 wide
+    simRef.current?.renderSys.setWristMount(wristMount);
   }, [wristMount, isLoading, wristView]);
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
@@ -391,6 +572,32 @@ export function App() {
     rig()?.setDragMode(mode);
   };
 
+  // Right-click an arm/camera → open the radial mode menu at the cursor.
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (sceneIsFranka || isLoading) return;
+    const k = simRef.current?.renderSys.selection.selectAt(e.clientX, e.clientY);
+    if (k === 'arm' || k === 'camera' || k === 'station') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
+  };
+  const radialItems = (kind: 'arm' | 'camera' | 'station'): RadialItem[] =>
+    kind === 'arm'
+      ? [
+          { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
+          { id: 'move', label: 'Move', icon: MoveIcon },
+          { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
+        ]
+      : [
+          { id: 'move', label: 'Move', icon: MoveIcon, active: kind === 'camera' && dragMode === 'translate' },
+          { id: 'aim', label: kind === 'station' ? 'Aim · yaw' : 'Aim', icon: RotateCw, active: kind === 'camera' && dragMode === 'rotate' },
+        ];
+  const handleRadialSelect = (id: string) => {
+    const kind = radial?.kind;
+    if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
+    if (poseMode) togglePoseMode(); // move/aim need jog OFF (jog disables selection gizmos)
+    if (kind === 'camera') { handleDragMode(id === 'aim' ? 'rotate' : 'translate'); return; }
+    if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
+    if (kind === 'station') simRef.current?.renderSys.selection.setStationAim(id === 'aim');
+  };
+
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
   const handleCameraMove = (x: number, y: number, z: number) => {
     rig()?.setPosition(x, y, z);
@@ -438,6 +645,29 @@ export function App() {
     const rod = rods()[rodSnap.rodIndex]; const pos = getSelectedPos();
     return rod && pos ? projectToRod(pos, rod).t : 0;
   })();
+
+  // Snap an ARM base onto the nearest table EDGE (perimeter rail) AND rotate it to face INTO the
+  // table — mirrors the real rig, where the SO-101 is clamped to an edge pointing at the worktop.
+  // Reuses nearestRod (rail = rim edge) + the planner's reach-derived forward so we never hardcode
+  // the model's facing convention. After snapping it still slides along the edge via the Along slider.
+  const handleSnapArmToEdge = () => {
+    if (selection?.kind !== 'arm') return;
+    const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (!a) return;
+    const all = rods();
+    const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.includes('Rail'));
+    const near = nearestRod(new THREE.Vector3(a.x, a.y, 0), edges); if (!near) return;
+    const edge = edges[near.index];
+    // Inward normal of the edge segment (perpendicular, pointing toward THIS worktop's centre —
+    // the primary table is at the origin; satellite stations carry their own `center`).
+    const cx = edge.center?.x ?? 0, cy = edge.center?.y ?? 0;
+    const dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
+    let nx = -dy, ny = dx;
+    if (nx * (cx - near.point.x) + ny * (cy - near.point.y) < 0) { nx = -nx; ny = -ny; }
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
+    const yaw = Math.atan2(ny, nx) - fwd;
+    handleArmChange(a.id, { x: near.point.x, y: near.point.y, yaw });
+    setRodSnap({ rodIndex: all.indexOf(edge), label: edge.label });
+  };
 
   // Snap the camera onto the top of the aluminium post and aim it straight down —
   // one click to replicate "camera mounted N cm up the rod, looking at the worktop".
@@ -496,18 +726,28 @@ export function App() {
     if (isLoading || !sel) return;
     sel.onChange = (s) => {
       setSelection(s);
-      // Clicking the (physics) arm in the viewport targets the primary arm in the inspector.
-      if (s?.kind === 'arm') setSelectedArmId(armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
+      // Target the arm carried by the selection (a ghost's id, or the primary). Using s.armId — not
+      // always the primary — keeps the editor on the SAME arm across per-frame re-emits (no glitch).
+      if (s?.kind === 'arm') setSelectedArmId(s.armId ?? armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
     };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
+    // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
+    sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
+    sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
+    sel.onArmRotate = (armId, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { yaw }); };
+    // Stations reuse the same gizmo (DRY): move/rotate the worktop from the viewport.
+    sel.getStationPose = (id) => { const s = workcellConfigRef.current.stations?.find((x) => x.id === id); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; };
+    sel.onStationMove = (id, x, y) => handleStationChange(id, { x, y });
+    sel.onStationRotate = (id, yaw) => handleStationChange(id, { yaw });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; label: string; bodyId?: number; armId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; label: string; bodyId?: number; armId?: string; stationId?: string }[] = [];
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
+    (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
     list.push({ key: 'camera', kind: 'camera', label: 'D435i camera' });
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
@@ -517,14 +757,29 @@ export function App() {
   const selectedKey = !selection ? null
     : selection.kind === 'object' ? `obj:${selection.bodyId}`
     : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
+    : selection.kind === 'station' ? `station:${selection.stationId}`
     : selection.kind; // 'camera' | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number; armId?: string }) => {
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
     if (e.kind === 'arm') { sel.selectByKind('arm', e.armId); if (e.armId) setSelectedArmId(e.armId); }
+    else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
+  };
+
+  // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station'; bodyId?: number; armId?: string; stationId?: string }) => {
+    setHiddenKeys((prev) => {
+      const next = new Set(prev);
+      const willHide = !next.has(e.key);
+      if (willHide) next.add(e.key); else next.delete(e.key);
+      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.armId;
+      simRef.current?.setEntityVisible(e.kind, id, !willHide);
+      return next;
+    });
   };
 
   const handleMeasureActive = (v: boolean) => {
@@ -595,9 +850,15 @@ export function App() {
     sim?.setArmInstances(next); // live ghost + reach outline
     const changed = next.find((a) => a.id === id);
     if (changed?.primary && sim) {
-      sim.relocateBase(changed.x, changed.y, changed.yaw).then(() => applyPlannerState()); // live, instant
+      // Just move the base — relocateBase already redraws the reach overlay (setArms). Do NOT
+      // recompute reachability here: the reachable set is BASE-RELATIVE (invariant under the base's
+      // x/y/yaw), so a re-sweep is wasted work — and the heavier radial sweep made that re-sweep,
+      // running on every slider tick, freeze/crash the page. Re-sweep only happens on the explicit
+      // "Recompute reach" button or a model reload.
+      sim.relocateBase(changed.x, changed.y, changed.yaw); // live, instant — no recompute
     }
   };
+
 
   // Suggest + apply a max-coverage arrangement for all current arms (greedy set-cover).
   const [layoutResult, setLayoutResult] = useState<{ covered: number; total: number } | null>(null);
@@ -637,6 +898,85 @@ export function App() {
     });
   };
 
+  // ── Workstations (#6): a station = its own worktop + an arm on it (a real "clone", not just a
+  // table). Adding one drops a worktop to the +X and an arm clamped to that worktop's near edge,
+  // facing in; its reach overlay renders automatically (the planner draws every arm). Removing a
+  // station also removes its paired arm. Live — no reload (the worktop is Three.js-only).
+  const nextStationNumberRef = useRef(2);
+  const handleAddStation = () => {
+    const n = nextStationNumberRef.current++;
+    const id = `station-${n}`;
+    const wc = workcellConfigRef.current;
+    // Place the new worktop one table-width + a 0.2 m aisle to the +X of the primary.
+    const sx = wc.length / 2 + 0.2 + 0.83 / 2;
+    const station = { id, x: sx, y: 0, yaw: 0, length: 0.83, width: 0.83, postX: 0.265, postY: 0, postHeight: 0.84 };
+    handleWorkcellChange({ ...wc, stations: [...(wc.stations ?? []), station] });
+    // Pair an arm to the station, clamped to its near (-Y) edge facing into that worktop. Read the
+    // counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
+    const armNumber = nextArmNumberRef.current++;
+    const armId = `so101-${armNumber}`;
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
+    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: -station.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
+    setArmInstances(prev => {
+      const next = [...prev, arm];
+      setSelectedArmId(armId);
+      simRef.current?.setArmInstances(next);
+      return next;
+    });
+  };
+  // Edit a station like the arm (X/Y/Yaw) — live worktop rebuild + station-cam re-sync (via the
+  // stations effect). The paired arm moves with the worktop as a unit (rotated about the centre).
+  const handleStationChange = (id: string, patch: { x?: number; y?: number; yaw?: number }) => {
+    const wc = workcellConfigRef.current;
+    const prev = (wc.stations ?? []).find((s) => s.id === id);
+    if (!prev) return;
+    const next = { ...prev, ...patch };
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === id ? next : s)) });
+    const dx = next.x - prev.x, dy = next.y - prev.y, dyaw = next.yaw - prev.yaw;
+    const arm = armInstancesRef.current.find((a) => a.stationId === id);
+    if (arm && (dx || dy || dyaw)) {
+      const ox = arm.x - prev.x, oy = arm.y - prev.y;
+      const c = Math.cos(dyaw), s = Math.sin(dyaw);
+      handleArmChange(arm.id, { x: prev.x + (ox * c - oy * s) + dx, y: prev.y + (ox * s + oy * c) + dy, yaw: arm.yaw + dyaw });
+    }
+  };
+
+  const handleRemoveStation = (id: string) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).filter((s) => s.id !== id) });
+    setArmInstances(prev => {
+      const next = prev.filter((arm) => arm.stationId !== id);
+      if (!next.some((arm) => arm.id === selectedArmId)) setSelectedArmId(next.find((a) => a.primary)?.id ?? 'so101-1');
+      simRef.current?.setArmInstances(next);
+      return next;
+    });
+  };
+
+  // ── Compare A/B: capture the current LIVE layout as a full workstation setup, and snapshot it
+  // into slot A or B. Compare mode then renders the two captured setups side-by-side (SceneMap).
+  const captureSetup = (): CompareSetup => {
+    const wc = workcellConfigRef.current;
+    const arm = armInstancesRef.current.find((a) => a.primary) ?? armInstancesRef.current[0];
+    const cam = cameraPos ?? { x: wc.postX, y: wc.postY, z: wc.postHeight };
+    const pts = simRef.current?.planner?.taskWorldPoints() ?? [];
+    return {
+      table: { length: wc.length, width: wc.width, railH: wc.barHeight },
+      post: { x: wc.postX, y: wc.postY, h: wc.postHeight },
+      camera: { x: cam.x, y: cam.y, z: cam.z, fovH: intrinsics.hFovDeg },
+      arm: arm ? { x: arm.x, y: arm.y, yawDeg: (arm.yaw * 180) / Math.PI } : { x: 0, y: 0, yawDeg: 0 },
+      blocks: pts.map((p, i) => ({ id: `task${i}`, x: p.x, y: p.y, color: 'orange' as const })),
+    };
+  };
+  const handleSnapshot = (slot: 'A' | 'B') => {
+    const s = captureSetup();
+    if (slot === 'A') setCompareA(s); else setCompareB(s);
+  };
+  const enterCompare = () => {
+    // Seed A with the current layout on first entry so there's always something to compare against.
+    setCompareA((a) => a ?? captureSetup());
+    setMode('compare');
+  };
+
   const handleApplyArmPose = () => {
     const selected = armInstances.find((arm) => arm.id === selectedArmId);
     const sim = simRef.current;
@@ -657,6 +997,7 @@ export function App() {
   const toggleDarkMode = () => {
     const next = !isDarkMode;
     setIsDarkMode(next);
+    try { localStorage.setItem('theme', next ? 'dark' : 'light'); } catch { /* ignore */ }
     simRef.current?.renderSys.setDarkMode(next);
   };
 
@@ -679,6 +1020,7 @@ export function App() {
 
   const handleErSend = async (prompt: string, type: DetectType, temperature: number, enableThinking: boolean, modelId: string) => {
       if (!simRef.current || erLoading) return;
+      if (!GEMINI_API_KEY) return;
       setErLoading(true);
       simRef.current.renderSys.clearErMarkers();
       detectedTargets.current = []; 
@@ -749,7 +1091,7 @@ export function App() {
       await simRef.current.renderSys.moveCameraTo(savedState.position, savedState.target, 1500);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
           const response = await ai.models.generateContent({
               model: modelId,
               contents: {
@@ -772,19 +1114,8 @@ export function App() {
               jsonText = jsonText.substring(firstBracket, lastBracket + 1);
           }
 
-          let result;
-          try { result = JSON.parse(jsonText); } catch (e) { result = []; }
-
-          // Remove absolute duplicates
-          if (Array.isArray(result)) {
-              const seen = new Set();
-              result = result.filter((item: unknown) => {
-                  const serialized = JSON.stringify(item);
-                  if (seen.has(serialized)) return false;
-                  seen.add(serialized);
-                  return true;
-              });
-          }
+          let result: Array<{ box_2d?: number[]; point?: number[]; label: string }>;
+          try { result = normalizeGeminiDetections(JSON.parse(jsonText)); } catch (e) { result = []; }
 
           setLogs(prev => prev.map(l => l.id === logId ? { ...l, result } : l));
 
@@ -867,7 +1198,7 @@ export function App() {
   return (
     <div className={`w-full h-full relative overflow-hidden font-sans transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* 3D Container */}
-      <div ref={containerRef} className="w-full h-full absolute inset-0 bg-slate-200" />
+      <div ref={containerRef} onContextMenu={handleContextMenu} className="w-full h-full absolute inset-0 bg-slate-200" />
       
       {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
@@ -934,82 +1265,223 @@ export function App() {
             toggleDarkMode={toggleDarkMode}
             onResetView={handleResetView}
             onFrameSelection={handleFrameSelection}
-          />
-          
-          <UnifiedSidebar 
-            isOpen={showSidebar}
-            onClose={() => setShowSidebar(false)}
-            onSend={handleErSend}
-            onPickup={handlePickup}
-            isLoading={erLoading}
-            hasDetectedItems={detectedCount > 0}
-            logs={logs}
-            onOpenLog={(log) => setExpandedLogId(log.id)}
-            isDarkMode={isDarkMode}
-            isPickingUp={isPickingUp}
-            playbackSpeed={playbackSpeed}
+            tweaksOpen={tweaksOpen}
+            onToggleTweaks={() => setTweaksOpen((v) => !v)}
           />
 
-          {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object). */}
-          <SelectionInspector
-            selection={selection}
-            unit={lengthUnit}
-            isDarkMode={isDarkMode}
-            arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
-            cameraPos={cameraPos}
-            post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
-            onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
-            onCamera={handleCameraMove}
-            onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
-            onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
-            onAimDown={handleCameraAimDown}
-            onSnapToPost={handleSnapCameraToPost}
-            onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
-            onFrame={handleFrameSelection}
-            onSnapToRod={handleSnapToRod}
-            onSlideAlongRod={handleSlideAlongRod}
-            rodLabel={rodSnap?.label ?? null}
-            rodT={rodT}
-          />
-
-          {/* Explicit launcher to REOPEN the Embodied Reasoning panel once it's closed. */}
-          {!showSidebar && (
-            <button
-              onClick={() => setShowSidebar(true)}
-              title="Open Embodied Reasoning"
-              className={`absolute top-6 right-0 z-30 flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-l-2xl glass-panel shadow-xl text-[11px] font-bold uppercase tracking-widest transition-transform hover:-translate-x-0.5 ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/80 border-white/80 text-slate-800'}`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Reasoning
-            </button>
-          )}
-
-          {cameraToggles.sensorPip && (
-            <SensorView
-              canvasHostRef={sensorViewRef}
+          {!sceneIsFranka && layoutsOpen && (
+            <LayoutProfiles
+              profiles={profiles}
+              onSave={handleSaveProfile}
+              onLoad={handleLoadProfile}
+              onDelete={handleDeleteProfile}
               isDarkMode={isDarkMode}
-              sidebarOpen={showSidebar}
-              aspect={intrinsics.aspect}
-              onClose={() => handleCameraToggle('sensorPip', false)}
             />
           )}
 
-          {wristView && (
-            <SensorView
-              canvasHostRef={wristViewRef}
+          {!sceneIsFranka && (
+            <>
+              <ModeRail
+                mode={mode} onMode={(m) => (m === 'compare' ? enterCompare() : setMode(m))}
+                dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => !v)}
+                perceiveOpen={showSidebar} onTogglePerceive={() => setShowSidebar((v) => !v)}
+                layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
+                isDarkMode={isDarkMode}
+              />
+              <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
+              {/* Legend shows in both modes — the camera footprint/frustum overlays persist into Compare. */}
+              <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} dockOpen={dockOpen} />
+              <NavCube
+                onView={(p) => simRef.current?.renderSys.snapToView(p)}
+                isDarkMode={isDarkMode}
+                dockOpen={dockOpen}
+                getOrbit={() => {
+                  const rs = simRef.current?.renderSys;
+                  if (!rs) return null;
+                  const p = rs.camera.position, t = rs.controls.target;
+                  return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
+                }}
+              />
+              {mode === 'compare' && (
+                <CompareView
+                  setupA={compareA}
+                  setupB={compareB}
+                  isDarkMode={isDarkMode}
+                  sidebarOpen={showSidebar}
+                  onSnapshot={handleSnapshot}
+                  onExit={() => setMode('edit')}
+                />
+              )}
+            </>
+          )}
+          <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} open={tweaksOpen} onClose={() => setTweaksOpen(false)} sidebarOpen={showSidebar} />
+          {radial && (
+            <RadialMenu
+              x={radial.x} y={radial.y}
+              items={radialItems(radial.kind)}
+              onSelect={handleRadialSelect}
+              onClose={() => setRadial(null)}
               isDarkMode={isDarkMode}
-              sidebarOpen={showSidebar}
-              aspect={16 / 9}
-              title={`Wrist Cam · ${armInstances.find((a) => a.id === selectedArmId)?.label ?? 'SO101 1'}`}
-              secondary={cameraToggles.sensorPip}
-              onClose={() => setWristView(false)}
             />
           )}
+
+          {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
+              Offset (22.5rem) to clear the right edge of the rail-shifted dock. */}
+          {!sceneIsFranka && (
+            <div className={`absolute bottom-6 left-4 ${dockOpen ? 'min-[660px]:left-[22.5rem]' : 'min-[660px]:left-[4.25rem]'} z-30 flex items-center gap-3`}>
+              <button
+                onClick={togglePoseMode}
+                title="Click a part of the arm and drag to rotate it about its joint"
+                className={`px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide shadow-lg glass-panel border transition-colors ${
+                  poseMode
+                    ? 'bg-indigo-600 text-white border-indigo-500'
+                    : isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white'
+                }`}
+              >
+                {poseMode ? '● Jogging joints' : 'Jog joints'}
+              </button>
+              {poseMode && (
+                <div className="px-3 py-2 rounded-xl glass-panel border border-white/10 bg-slate-900/85 text-slate-100 text-[12px] font-mono shadow-lg pointer-events-none whitespace-nowrap">
+                  {hoveredJoint ? <>Joint: <span className="text-indigo-300 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object).
+              Docks into the reasoning sidebar when it's open; floats bottom-centre when it's closed. */}
+          {(() => {
+            const inspectorEl = (inline: boolean) => (
+              <SelectionInspector
+                inline={inline}
+                selection={selection}
+                unit={lengthUnit}
+                isDarkMode={isDarkMode}
+                arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
+                station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; })()}
+                onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
+                cameraPos={cameraPos}
+                post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
+                onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
+                onCamera={handleCameraMove}
+                onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
+                onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
+                onAimDown={handleCameraAimDown}
+                onSnapToPost={handleSnapCameraToPost}
+                onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
+                onFrame={handleFrameSelection}
+                onSnapToRod={handleSnapToRod}
+                onSnapToEdge={handleSnapArmToEdge}
+                onSlideAlongRod={handleSlideAlongRod}
+                rodLabel={rodSnap?.label ?? null}
+                rodT={rodT}
+              />
+            );
+            return (
+              <>
+                <UnifiedSidebar
+                  isOpen={showSidebar}
+                  onClose={() => setShowSidebar(false)}
+                  onSend={handleErSend}
+                  onPickup={handlePickup}
+                  isLoading={erLoading}
+                  hasDetectedItems={detectedCount > 0}
+                  logs={logs}
+                  onOpenLog={(log) => setExpandedLogId(log.id)}
+                  isDarkMode={isDarkMode}
+                  isPickingUp={isPickingUp}
+                  playbackSpeed={playbackSpeed}
+                  geminiEnabled={Boolean(GEMINI_API_KEY)}
+                  inspector={selection ? inspectorEl(true) : null}
+                />
+                {selection && !showSidebar && inspectorEl(false)}
+              </>
+            );
+          })()}
+
+          {/* Consolidated camera feeds + reasoning toggle (replaces the old floating PIP pile). */}
+          <FeedsDock
+            isDarkMode={isDarkMode}
+            open={feedsOpen && mode !== 'compare'}
+            onToggle={() => setFeedsOpen((v) => !v)}
+            reasoningOpen={showSidebar}
+            onReasoning={() => setShowSidebar((v) => !v)}
+            sidebarOpen={showSidebar}
+            toggles={{
+              overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
+              wrist: wristView, onWrist: setWristView,
+              station: (workcellConfig.stations ?? []).length > 0 ? { on: stationView, onToggle: setStationView } : undefined,
+              extraCam: (workcellConfig.extraCameras ?? []).length > 0 ? { on: extraCamView, onToggle: setExtraCamView } : undefined,
+            }}
+            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0) + (extraCamView ? (workcellConfig.extraCameras ?? []).length : 0)}
+          >
+            {cameraToggles.sensorPip && (
+              <SensorView
+                inline
+                canvasHostRef={sensorViewRef}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={intrinsics.aspect}
+                onClose={() => handleCameraToggle('sensorPip', false)}
+                compare={{
+                  src: JETSON_SCENE_STREAM,
+                  on: sceneOverlayOn, onToggle: setSceneOverlayOn,
+                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                  blend: overlayBlend, onBlend: setOverlayBlend,
+                }}
+                depth={{ on: depthView, onToggle: setDepthView }}
+              />
+            )}
+            {wristView && armInstances.map((arm) => (
+              <SensorView
+                inline
+                key={arm.id}
+                canvasHostRef={wristRefCb(arm.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={16 / 9}
+                title={`Wrist Cam · ${arm.label}`}
+                onClose={() => setWristView(false)}
+                // Only the PRIMARY arm has a real wrist cam to compare against (the follower's HBVCAM).
+                compare={arm.primary ? {
+                  src: JETSON_WRIST_STREAM,
+                  on: wristOverlayOn, onToggle: setWristOverlayOn,
+                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                  blend: overlayBlend, onBlend: setOverlayBlend,
+                } : undefined}
+              />
+            ))}
+            {stationView && (workcellConfig.stations ?? []).map((st, i) => (
+              <SensorView
+                inline
+                key={st.id}
+                canvasHostRef={stationRefCb(st.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={4 / 3}
+                title={`Station ${i + 2} · overhead`}
+                onClose={() => setStationView(false)}
+              />
+            ))}
+            {extraCamView && (workcellConfig.extraCameras ?? []).map((c, i) => (
+              <SensorView
+                inline
+                key={c.id}
+                canvasHostRef={extraCamRefCb(c.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={4 / 3}
+                title={`Overhead D435i ${i + 2}`}
+                onClose={() => setExtraCamView(false)}
+              />
+            ))}
+          </FeedsDock>
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
-          {!sceneIsFranka && (
+          {!sceneIsFranka && dockOpen && mode === 'edit' && (
             <WorkspaceDock
               isDarkMode={isDarkMode}
-              objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect }}
+              objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,
                 onUnit: setLengthUnit,
@@ -1017,7 +1489,7 @@ export function App() {
                 onAxesToggle: (v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); },
                 cameraPos,
               }}
-              workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
+              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation, onAddExtraCamera: handleAddExtraCamera, onRemoveExtraCamera: handleRemoveExtraCamera }}
               arms={{
                 list: armInstances,
                 selectedId: selectedArmId,

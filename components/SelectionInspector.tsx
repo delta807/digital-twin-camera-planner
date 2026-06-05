@@ -12,6 +12,8 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
+  station: { x: number; y: number; yaw: number } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number }) => void;
   cameraPos: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
@@ -25,9 +27,12 @@ export interface InspectorProps {
   onFrame: () => void;
   // Rod snapping: mount the selection on a rod, then slide it along (0..1).
   onSnapToRod: () => void;
+  onSnapToEdge: () => void;
   onSlideAlongRod: (t: number) => void;
   rodLabel: string | null;
   rodT: number;
+  /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
+  inline?: boolean;
 }
 
 /**
@@ -43,14 +48,35 @@ export function SelectionInspector(p: InspectorProps) {
   const panel = p.isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
   const subtle = p.isDarkMode ? 'text-slate-400' : 'text-slate-500';
 
+  const rootClass = p.inline
+    ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
+    : `absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[300px] rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+
   return (
-    <div className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-[300px] rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`}>
+    <div className={rootClass}>
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
         <button onClick={p.onFrame} title="Frame (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Crosshair className="w-3.5 h-3.5" /></button>
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
+
+      {sel.kind === 'station' && p.station && (
+        <div className="space-y-1.5">
+          <Row3 unit={p.unit} subtle={subtle}
+            fields={[
+              { k: 'X', v: p.station.x, on: (v) => p.onStation({ x: v }) },
+              { k: 'Y', v: p.station.y, on: (v) => p.onStation({ y: v }) },
+            ]} />
+          <Angle subtle={subtle} label="Yaw" deg={p.station.yaw * 180 / Math.PI} on={(d) => p.onStation({ yaw: d * Math.PI / 180 })} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.station.x, min: -2, max: 2, on: (v) => p.onStation({ x: v }) },
+            { k: 'Y', v: p.station.y, min: -2, max: 2, on: (v) => p.onStation({ y: v }) },
+            { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
+          ]} />
+          <p className={`text-[9px] ${subtle}`}>Moves the worktop + its arm as a unit. Right-click → Aim to rotate.</p>
+        </div>
+      )}
 
       {sel.kind === 'arm' && p.arm && (
         <div className="space-y-1.5">
@@ -60,7 +86,15 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.arm.y, on: (v) => p.onArm({ y: v }) },
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} />
-          <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre base on origin</button>
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.arm.x, min: -0.6, max: 0.6, on: (v) => p.onArm({ x: v }) },
+            { k: 'Y', v: p.arm.y, min: -0.6, max: 0.6, on: (v) => p.onArm({ y: v }) },
+            { k: 'Yaw', v: p.arm.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onArm({ yaw: v * Math.PI / 180 }) },
+          ]} />
+          <div className="flex gap-2">
+            <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
+            <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
+          </div>
         </div>
       )}
 
@@ -72,6 +106,11 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.cameraPos.y, on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
               { k: 'Z', v: p.cameraPos.z, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
             ]} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.cameraPos.x, min: -0.6, max: 0.6, on: (v) => p.onCamera(v, p.cameraPos!.y, p.cameraPos!.z) },
+            { k: 'Y', v: p.cameraPos.y, min: -0.6, max: 0.6, on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
+            { k: 'Z', v: p.cameraPos.z, min: 0, max: 1.4, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
+          ]} />
           <div className="flex gap-2">
             <button onClick={p.onSnapToPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to post</button>
             <button onClick={p.onAimDown} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim down</button>
@@ -117,7 +156,23 @@ export function SelectionInspector(p: InspectorProps) {
   );
 }
 
-const AXIS_HUE: Record<string, string> = { X: 'text-rose-500', Y: 'text-emerald-500', Z: 'text-sky-500' };
+const AXIS_HUE: Record<string, string> = { X: 'text-rose-500', Y: 'text-emerald-500', Z: 'text-sky-500', Yaw: 'text-amber-500' };
+
+/** Drag sliders per axis (in addition to the typeable numbers above). */
+function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; on: (v: number) => void }[]; subtle: string }) {
+  return (
+    <div className="space-y-0.5">
+      {fields.map(({ k, v, min, max, on }) => (
+        <div key={k} className="flex items-center gap-2">
+          <span className={`text-[9px] font-bold uppercase w-7 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+          <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
+            onChange={(e) => on(parseFloat(e.target.value))}
+            className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void }[]; unit: LengthUnit; subtle: string }) {
   const mm = unit === 'mm';
