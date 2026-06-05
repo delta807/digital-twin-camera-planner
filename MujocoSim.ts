@@ -547,12 +547,42 @@ export class MujocoSim {
         return ids;
     }
 
+    /** SO-101 default rest pose: a user-recorded pose (localStorage) overrides the factory keyframe.
+     *  Order matches the actuators: Rotation,Pitch,Elbow,Wrist_Pitch,Wrist_Roll,Jaw (radians). */
+    static readonly SO101_FACTORY_REST = [0, -1.57, 1.57, 1.57, -1.57, 0];
+    private so101RestPose(): number[] {
+        try {
+            const saved = JSON.parse(localStorage.getItem('so101-rest-qpos') || 'null');
+            if (Array.isArray(saved) && saved.length === MujocoSim.SO101_FACTORY_REST.length && saved.every((v) => typeof v === 'number')) return saved;
+        } catch { /* fall through to factory */ }
+        return MujocoSim.SO101_FACTORY_REST;
+    }
+
+    /** Read the arm's current joint angles (one per actuator) — for recording a custom rest pose. */
+    getArmJointPositions(): number[] {
+        if (!this.mjModel || !this.mjData || this.isFranka) return [];
+        const vals: number[] = [];
+        for (let i = 0; i < this.mjModel.nu; i++) {
+            const jointId = this.mjModel.actuator_trnid[2 * i];
+            vals.push(jointId >= 0 ? this.mjData.qpos[this.mjModel.jnt_qposadr[jointId]] : 0);
+        }
+        return vals;
+    }
+
+    /** Persist the CURRENT jogged pose as the new default rest pose (consumed on next reset/load). */
+    saveRestPose(): number[] {
+        const vals = this.getArmJointPositions();
+        if (vals.length) localStorage.setItem('so101-rest-qpos', JSON.stringify(vals));
+        return vals;
+    }
+    clearRestPose() { localStorage.removeItem('so101-rest-qpos'); }
+
     private setInitialPose() {
         if (!this.mjModel || !this.mjData) return;
-        // Franka home pose, or the SO-ARM100 'home' keyframe (Rotation,Pitch,Elbow,Wrist_Pitch,Wrist_Roll,Jaw).
+        // Franka home pose, or the SO-ARM100 rest pose (recorded override or factory keyframe).
         const initVals = this.isFranka
             ? [1.707, -1.754, 0.003, -2.702, 0.003, 0.951, 2.490, 0.000]
-            : [0, -1.57, 1.57, 1.57, -1.57, 0];
+            : this.so101RestPose();
 
         for (let i = 0; i < Math.min(initVals.length, this.mjModel.nu); i++) {
             this.mjData.ctrl[i] = initVals[i];

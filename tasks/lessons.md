@@ -34,3 +34,22 @@ overhead PIP's hide-list, which hides ALL ghost arms, so a ghost's own wrist cam
 hidden. RULE: when a test "passes," ask what ELSE could produce that result. Test at the REAL
 configuration (here: arms at DIFFERENT positions), not a degenerate one. And when the USER insists a
 bug is real after you've "ruled it out," re-investigate from scratch — they were right.
+
+## Wrist camera mount — regressed 5× (Jun 2026). SETTLED.
+Symptom (kept coming back): the wrist cam pointed inward / sat among the claws / mounted on the
+side — different each time a pose changed.
+ROOT CAUSE: I kept DERIVING the mount from the TCP **site**. The TCP site is authored at
+`pos="0 -0.1 0"` inside the `Fixed_Jaw` body (RobotLoader.ts) — i.e. 0.10 m DOWN at the FINGERTIPS,
+not at the gripper body. Every "fix" stacked fudge offsets (back/up/reach, up=0.16) on top of that
+wrong origin AND guessed which world-projected local axis was "up"/"forward". Those guesses only hold
+in one pose; Wrist_Roll/Pitch rotate the axes, so any motion re-broke it.
+RULES:
+- The wrist cam is a RIGID mount. Define it as a CONSTANT local offset (posX/posY/posZ) + a tilt in
+  the gripper's own frame, then carry it by the gripper orientation. NEVER re-derive from
+  `site_xpos` + two `site_xmat` columns with sign/axis guesses.
+- The `Wrist_Roll` joint lives INSIDE `Fixed_Jaw` (so_arm100.xml) — `Fixed_Jaw` IS the wrist-roll
+  gripper body and is stable (only `Moving_Jaw` articulates). The TCP site shares its orientation but
+  is offset to the fingertips; the gripper *body* origin is ~+0.10 along localY.
+- The literal gripper CENTRE (posY≈0.05) is INSIDE the servo/jaws → a dark feed. Default posY≈0.14
+  (clear of the mechanism) and expose pos+tilt so it's tunable, not hardcoded-perfect.
+- If a mount "works," verify it in MULTIPLE poses (home + a Wrist_Roll-jogged pose), not just home.

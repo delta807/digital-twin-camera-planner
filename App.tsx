@@ -181,6 +181,11 @@ export function App() {
   const [layoutsOpen, setLayoutsOpen] = useState(false);
   // Appearance tweaks panel — now opened from the toolbar (was a floating bottom-right gear).
   const [tweaksOpen, setTweaksOpen] = useState(false);
+  // Brief "saved" confirmation after recording the current jogged pose as the default rest pose.
+  const [restSaved, setRestSaved] = useState(false);
+  const handleSaveRestPose = () => {
+    if (simRef.current?.saveRestPose().length) { setRestSaved(true); setTimeout(() => setRestSaved(false), 1800); }
+  };
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
   // Compare mode holds two captured WORKSTATION SETUPS (full layouts), shown side-by-side.
@@ -1361,6 +1366,15 @@ export function App() {
                 <div className="px-3 py-2 rounded-xl glass-panel border border-white/10 bg-slate-900/85 text-slate-100 text-[12px] font-mono shadow-lg pointer-events-none whitespace-nowrap">
                   {hoveredJoint ? <>Joint: <span className="text-indigo-300 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}
                 </div>
+              )}
+              {poseMode && (
+                <button
+                  onClick={handleSaveRestPose}
+                  title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
+                  className={`px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide shadow-lg glass-panel border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white'}`}
+                >
+                  {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
+                </button>
               )}
             </div>
           )}
