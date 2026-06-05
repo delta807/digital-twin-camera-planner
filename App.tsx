@@ -424,12 +424,12 @@ export function App() {
   useEffect(() => {
     const r = rig();
     if (isLoading || !r) return;
-    if (cameraToggles.sensorPip && feedsOpen && sensorViewRef.current) {
+    if (cameraToggles.sensorPip && showSidebar && sensorViewRef.current) {
       r.attachPip(sensorViewRef.current);
     }
     return () => { rig()?.detachPip(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, cameraToggles.sensorPip, feedsOpen]);
+  }, [isLoading, cameraToggles.sensorPip, showSidebar]);
 
   // Wrist cameras: one gripper-mounted feed PER arm (primary = live; ghost arms = static mount
   // preview). The master toggle enables them all; each arm's PIP attaches via a stable callback ref.
@@ -1290,20 +1290,6 @@ export function App() {
       {/* Main UI Controls */}
       {!isLoading && !loadError && (
         <>
-          <Toolbar 
-            isPaused={isPaused} 
-            togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} 
-            onReset={handleReset} 
-            showSidebar={showSidebar}
-            toggleSidebar={() => setShowSidebar(!showSidebar)}
-            isDarkMode={isDarkMode}
-            toggleDarkMode={toggleDarkMode}
-            onResetView={handleResetView}
-            onFrameSelection={handleFrameSelection}
-            tweaksOpen={tweaksOpen}
-            onToggleTweaks={() => setTweaksOpen((v) => !v)}
-          />
-
           {!sceneIsFranka && layoutsOpen && (
             <LayoutProfiles
               profiles={profiles}
@@ -1324,8 +1310,7 @@ export function App() {
                 isDarkMode={isDarkMode}
               />
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
-              {/* Legend shows in both modes — the camera footprint/frustum overlays persist into Compare. */}
-              <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} dockOpen={dockOpen} />
+              {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
                 isDarkMode={isDarkMode}
@@ -1360,38 +1345,6 @@ export function App() {
             />
           )}
 
-          {/* Interactive joint posing (SO-101 only): toggle + hovered-joint label, like leLab.
-              Offset (22.5rem) to clear the right edge of the rail-shifted dock. */}
-          {!sceneIsFranka && (
-            <div className={`absolute bottom-6 left-4 ${dockOpen ? 'min-[660px]:left-[22.5rem]' : 'min-[660px]:left-[4.25rem]'} z-30 flex items-center gap-3`}>
-              <button
-                onClick={togglePoseMode}
-                title="Click a part of the arm and drag to rotate it about its joint"
-                className={`px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide shadow-lg glass-panel border transition-colors ${
-                  poseMode
-                    ? 'bg-indigo-600 text-white border-indigo-500'
-                    : isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white'
-                }`}
-              >
-                {poseMode ? '● Jogging joints' : 'Jog joints'}
-              </button>
-              {poseMode && (
-                <div className="px-3 py-2 rounded-xl glass-panel border border-white/10 bg-slate-900/85 text-slate-100 text-[12px] font-mono shadow-lg pointer-events-none whitespace-nowrap">
-                  {hoveredJoint ? <>Joint: <span className="text-indigo-300 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}
-                </div>
-              )}
-              {poseMode && (
-                <button
-                  onClick={handleSaveRestPose}
-                  title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
-                  className={`px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide shadow-lg glass-panel border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white'}`}
-                >
-                  {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
-                </button>
-              )}
-            </div>
-          )}
-
           {/* Click-to-select transform inspector (OrcaSlicer-style: act on the selected object).
               Docks into the reasoning sidebar when it's open; floats bottom-centre when it's closed. */}
           {(() => {
@@ -1424,6 +1377,61 @@ export function App() {
                 rodT={rodT}
               />
             );
+            // Camera Feeds section content (toggles + the live PIP cards), shown at the top of the sidebar.
+            const feedsEl = (
+              <FeedsDock
+                inline
+                isDarkMode={isDarkMode}
+                open onToggle={() => {}} reasoningOpen={showSidebar} onReasoning={() => {}} sidebarOpen={showSidebar}
+                toggles={{
+                  overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
+                  wrist: wristView, onWrist: setWristView,
+                  station: (workcellConfig.stations ?? []).length > 0 ? { on: stationView, onToggle: setStationView } : undefined,
+                  extraCam: (workcellConfig.extraCameras ?? []).length > 0 ? { on: extraCamView, onToggle: setExtraCamView } : undefined,
+                }}
+                feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0) + (extraCamView ? (workcellConfig.extraCameras ?? []).length : 0)}
+              >
+                {cameraToggles.sensorPip && (
+                  <SensorView inline canvasHostRef={sensorViewRef} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={intrinsics.aspect} onClose={() => handleCameraToggle('sensorPip', false)}
+                    compare={{ src: JETSON_SCENE_STREAM, on: sceneOverlayOn, onToggle: setSceneOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend }}
+                    depth={{ on: depthView, onToggle: setDepthView }} />
+                )}
+                {wristView && armInstances.map((arm) => (
+                  <SensorView inline key={arm.id} canvasHostRef={wristRefCb(arm.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={16 / 9} title={`Wrist Cam · ${arm.label}`} onClose={() => setWristView(false)}
+                    compare={arm.primary ? { src: JETSON_WRIST_STREAM, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
+                ))}
+                {stationView && (workcellConfig.stations ?? []).map((st, i) => (
+                  <SensorView inline key={st.id} canvasHostRef={stationRefCb(st.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Station ${i + 2} · overhead`} onClose={() => setStationView(false)} />
+                ))}
+                {extraCamView && (workcellConfig.extraCameras ?? []).map((c, i) => (
+                  <SensorView inline key={c.id} canvasHostRef={extraCamRefCb(c.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Overhead D435i ${i + 2}`} onClose={() => setExtraCamView(false)} />
+                ))}
+              </FeedsDock>
+            );
+            // Jog joints section content.
+            const jogEl = (
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={togglePoseMode} title="Click a part of the arm and drag to rotate it about its joint"
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-colors ${poseMode ? 'bg-indigo-600 text-white border-indigo-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
+                  {poseMode ? '● Jogging joints' : 'Jog joints'}
+                </button>
+                {poseMode && (
+                  <span className="text-[11px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>
+                )}
+                {poseMode && (
+                  <button onClick={handleSaveRestPose} title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
+                    {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
+                  </button>
+                )}
+              </div>
+            );
+            const toolbarEl = (
+              <Toolbar inline isPaused={isPaused} togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} onReset={handleReset}
+                showSidebar={showSidebar} toggleSidebar={() => setShowSidebar(!showSidebar)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode}
+                onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)} />
+            );
+            const overlaysEl = <OverlayLegend inline camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} dockOpen={dockOpen} />;
             return (
               <>
                 <UnifiedSidebar
@@ -1440,89 +1448,15 @@ export function App() {
                   playbackSpeed={playbackSpeed}
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
                   inspector={selection ? inspectorEl(true) : null}
+                  feeds={!sceneIsFranka ? feedsEl : null}
+                  jog={!sceneIsFranka ? jogEl : null}
+                  toolbar={toolbarEl}
+                  overlays={!sceneIsFranka ? overlaysEl : null}
                 />
                 {selection && !showSidebar && inspectorEl(false)}
               </>
             );
           })()}
-
-          {/* Consolidated camera feeds + reasoning toggle (replaces the old floating PIP pile). */}
-          <FeedsDock
-            isDarkMode={isDarkMode}
-            open={feedsOpen && mode !== 'compare'}
-            onToggle={() => setFeedsOpen((v) => !v)}
-            reasoningOpen={showSidebar}
-            onReasoning={() => setShowSidebar((v) => !v)}
-            sidebarOpen={showSidebar}
-            toggles={{
-              overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
-              wrist: wristView, onWrist: setWristView,
-              station: (workcellConfig.stations ?? []).length > 0 ? { on: stationView, onToggle: setStationView } : undefined,
-              extraCam: (workcellConfig.extraCameras ?? []).length > 0 ? { on: extraCamView, onToggle: setExtraCamView } : undefined,
-            }}
-            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0) + (extraCamView ? (workcellConfig.extraCameras ?? []).length : 0)}
-          >
-            {cameraToggles.sensorPip && (
-              <SensorView
-                inline
-                canvasHostRef={sensorViewRef}
-                isDarkMode={isDarkMode}
-                sidebarOpen={showSidebar}
-                aspect={intrinsics.aspect}
-                onClose={() => handleCameraToggle('sensorPip', false)}
-                compare={{
-                  src: JETSON_SCENE_STREAM,
-                  on: sceneOverlayOn, onToggle: setSceneOverlayOn,
-                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
-                  blend: overlayBlend, onBlend: setOverlayBlend,
-                }}
-                depth={{ on: depthView, onToggle: setDepthView }}
-              />
-            )}
-            {wristView && armInstances.map((arm) => (
-              <SensorView
-                inline
-                key={arm.id}
-                canvasHostRef={wristRefCb(arm.id)}
-                isDarkMode={isDarkMode}
-                sidebarOpen={showSidebar}
-                aspect={16 / 9}
-                title={`Wrist Cam · ${arm.label}`}
-                onClose={() => setWristView(false)}
-                // Only the PRIMARY arm has a real wrist cam to compare against (the follower's HBVCAM).
-                compare={arm.primary ? {
-                  src: JETSON_WRIST_STREAM,
-                  on: wristOverlayOn, onToggle: setWristOverlayOn,
-                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
-                  blend: overlayBlend, onBlend: setOverlayBlend,
-                } : undefined}
-              />
-            ))}
-            {stationView && (workcellConfig.stations ?? []).map((st, i) => (
-              <SensorView
-                inline
-                key={st.id}
-                canvasHostRef={stationRefCb(st.id)}
-                isDarkMode={isDarkMode}
-                sidebarOpen={showSidebar}
-                aspect={4 / 3}
-                title={`Station ${i + 2} · overhead`}
-                onClose={() => setStationView(false)}
-              />
-            ))}
-            {extraCamView && (workcellConfig.extraCameras ?? []).map((c, i) => (
-              <SensorView
-                inline
-                key={c.id}
-                canvasHostRef={extraCamRefCb(c.id)}
-                isDarkMode={isDarkMode}
-                sidebarOpen={showSidebar}
-                aspect={4 / 3}
-                title={`Overhead D435i ${i + 2}`}
-                onClose={() => setExtraCamView(false)}
-              />
-            ))}
-          </FeedsDock>
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
           {!sceneIsFranka && dockOpen && mode === 'edit' && (

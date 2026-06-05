@@ -25,6 +25,8 @@ interface Props {
   /** How many feed cards are currently shown (for the rail badge + empty state). */
   feedCount: number;
   children: ReactNode;
+  /** Render the toggles + feed cards inline (inside the sidebar dashboard) — no rail/floating panel. */
+  inline?: boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ interface Props {
  * free-floating PIP cards that overflowed the viewport. A slim always-visible rail carries the two
  * toggles; selecting one slides its panel out.
  */
-export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoning, sidebarOpen, toggles, feedCount, children }: Props) {
+export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoning, sidebarOpen, toggles, feedCount, children, inline }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/85 border-white/80 text-slate-800';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const railBtn = (on: boolean) =>
@@ -45,6 +47,24 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
       <input type="checkbox" checked={v} onChange={(e) => on(e.target.checked)} className="accent-indigo-600 w-3.5 h-3.5" />
     </label>
   );
+
+  // Inline (inside the sidebar dashboard): just the per-feed toggles + the stacked feed cards.
+  if (inline) {
+    return (
+      <div className="space-y-2">
+        <div className="space-y-0.5">
+          <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
+          <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
+          {toggles.station && <Check label="Station cams" v={toggles.station.on} on={toggles.station.onToggle} />}
+          {toggles.extraCam && <Check label="Extra overhead cams" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
+        </div>
+        <div className="space-y-2">
+          {children}
+          {feedCount === 0 && <p className={`text-[10px] text-center py-3 ${subtle}`}>No feeds enabled. Tick one above.</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

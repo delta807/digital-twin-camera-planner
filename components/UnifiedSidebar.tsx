@@ -23,13 +23,29 @@ interface UnifiedSidebarProps {
   geminiEnabled?: boolean;
   /** Selection inspector, docked here below the reasoning controls (null when nothing selected). */
   inspector?: ReactNode;
+  /** Stacked dashboard slots: camera feeds (top), then jog / controls (toolbar) / overlays (bottom). */
+  feeds?: ReactNode;
+  jog?: ReactNode;
+  toolbar?: ReactNode;
+  overlays?: ReactNode;
+}
+
+/** A labelled section in the stacked sidebar dashboard. */
+function Sec({ title, isDarkMode, children }: { title: string; isDarkMode: boolean; children: ReactNode }) {
+  return (
+    <section className={`rounded-2xl border p-2.5 ${isDarkMode ? 'bg-white/[0.03] border-white/10' : 'bg-black/[0.015] border-black/5'}`}>
+      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">{title}</h3>
+      {children}
+    </section>
+  );
 }
 
 /**
  * UnifiedSidebar
- * The main control panel for the application.
+ * The main control panel — a stacked dashboard: Camera Feeds, Selection, Embodied Reasoning, then
+ * Jog / Controls / Overlays.
  */
-export function UnifiedSidebar({ 
+export function UnifiedSidebar({
   isOpen, 
   onClose, 
   onSend, 
@@ -42,7 +58,11 @@ export function UnifiedSidebar({
   isPickingUp = false,
   playbackSpeed = 1,
   geminiEnabled = false,
-  inspector = null
+  inspector = null,
+  feeds = null,
+  jog = null,
+  toolbar = null,
+  overlays = null
 }: UnifiedSidebarProps) {
   // Default scene is the SO-101 twin, whose pickable task props are orange blocks.
   const [prompt, setPrompt] = useState('orange blocks');
@@ -66,31 +86,34 @@ export function UnifiedSidebar({
     // Changed positioning: centered on mobile (left-4 right-4), positioned right on desktop (min-[660px]:right-10 min-[660px]:w-96)
     <div className={`absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-6 min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] glass-panel rounded-3xl flex flex-col z-40 overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
 
-      {/* Header */}
-      <div className={`px-5 py-4 border-b flex justify-between items-center gap-2 ${headerBorder}`}>
-        <div className="flex items-center gap-4 w-full min-w-0">
-          <div className="w-full min-w-0">
-            <h2 className="text-base font-bold leading-none mb-2">Embodied Reasoning</h2>
-            <div className="relative">
-              <select 
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                className={`appearance-none w-full rounded-xl border px-3 py-2 pr-8 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer ${inputBg} ${isDarkMode ? 'border-white/10' : 'border-slate-200/80'}`}
-              >
-                <option value="gemini-robotics-er-1.6-preview">gemini-robotics-er-1.6-preview</option>
-                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-              </select>
-              <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-            </div>
-          </div>
-        </div>
+      {/* Slim header bar */}
+      <div className={`px-4 py-2.5 border-b flex justify-between items-center shrink-0 ${headerBorder}`}>
+        <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
         <button onClick={onClose} className="p-1.5 hover:bg-slate-200/20 rounded-full transition-colors text-slate-400 shrink-0">
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-2 pb-4 space-y-2">
+      {/* Stacked dashboard */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-2 pb-4 space-y-2.5">
+
+        {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
+        {inspector && <Sec title="Selection" isDarkMode={isDarkMode}>{inspector}</Sec>}
+
+        {/* ── Embodied Reasoning ── */}
+        <Sec title="Embodied Reasoning" isDarkMode={isDarkMode}>
+        <div className="space-y-2">
+        <div className="relative">
+          <select
+            value={modelId}
+            onChange={(e) => setModelId(e.target.value)}
+            className={`appearance-none w-full rounded-xl border px-3 py-2 pr-8 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer ${inputBg} ${isDarkMode ? 'border-white/10' : 'border-slate-200/80'}`}
+          >
+            <option value="gemini-robotics-er-1.6-preview">gemini-robotics-er-1.6-preview</option>
+            <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+          </select>
+          <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} />
+        </div>
 
         {/* Detection Type Selector */}
         <section className="space-y-1.5">
@@ -227,14 +250,6 @@ export function UnifiedSidebar({
           </div>
         </section>
 
-        {/* Selection inspector — docked here so you edit the selected entity in the right panel. */}
-        {inspector && (
-          <section className="pt-1">
-            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-1.5">Selection</h3>
-            {inspector}
-          </section>
-        )}
-
         {/* History / Logs Section */}
         <section className="space-y-2 pt-2">
           <div className="flex items-center gap-2 px-1">
@@ -312,6 +327,12 @@ export function UnifiedSidebar({
             )}
           </div>
         </section>
+        </div>
+        </Sec>
+
+        {jog && <Sec title="Jog joints" isDarkMode={isDarkMode}>{jog}</Sec>}
+        {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
+        {overlays && <Sec title="Overlays" isDarkMode={isDarkMode}>{overlays}</Sec>}
       </div>
     </div>
   );

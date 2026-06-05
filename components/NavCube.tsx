@@ -61,7 +61,7 @@ export function NavCube({ onView, isDarkMode, getOrbit, dockOpen }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/80 border-white/10' : 'bg-white/80 border-white/80';
 
   return (
-    <div className={`absolute top-[34%] left-4 ${dockOpen ? 'min-[660px]:left-[22.5rem]' : 'min-[660px]:left-[4.25rem]'} z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
+    <div className={`absolute top-6 right-4 min-[660px]:right-[22.5rem] z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
       <div
         style={{ width: 64, height: 64, perspective: 260, ['--h' as string]: '27px' }}
         className="relative"

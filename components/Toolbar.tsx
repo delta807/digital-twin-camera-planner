@@ -18,6 +18,7 @@ interface ToolbarProps {
   onFrameSelection: () => void;  // zoom to the selected object (F)
   tweaksOpen: boolean;
   onToggleTweaks: () => void;    // appearance tweaks (theme/accent) panel
+  inline?: boolean;             // render as a compact wrap-row inside the sidebar dashboard
 }
 
 /**
@@ -35,14 +36,18 @@ export function Toolbar({
   onResetView,
   onFrameSelection,
   tweaksOpen,
-  onToggleTweaks
+  onToggleTweaks,
+  inline
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
 
-  // Bottom-centre so it clears the full-height left dock (which would otherwise cover it).
+  // Inline: a compact wrap-row inside the sidebar (child-selector overrides shrink the w-14 buttons).
+  // Otherwise: bottom-centre floating bar clearing the left dock.
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30">
+    <div className={inline
+      ? 'flex flex-wrap items-center justify-center gap-1.5 [&_button]:w-9 [&_button]:h-9 [&_button]:rounded-xl [&_button]:shadow-none [&_svg]:w-4 [&_svg]:h-4'
+      : 'absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30'}>
       
       {/* Play/Pause Button */}
       <button 

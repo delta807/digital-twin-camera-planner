@@ -11,6 +11,7 @@ interface Props {
   planner: PlannerToggles;
   isDarkMode: boolean;
   dockOpen: boolean;
+  inline?: boolean; // render inside the sidebar dashboard (no absolute positioning / panel chrome)
 }
 
 type Shape = 'fill' | 'dash' | 'soft' | 'dot';
@@ -28,7 +29,7 @@ function Swatch({ color, shape }: { color: string; shape: Shape }) {
  * OverlayLegend — a lab-instrument legend keyed to the active 3D overlays, using the design's
  * categorical colors (camera=amber, reach=violet, precision=cyan, object=terracotta).
  */
-export function OverlayLegend({ camera, planner, isDarkMode, dockOpen }: Props) {
+export function OverlayLegend({ camera, planner, isDarkMode, dockOpen, inline }: Props) {
   const all: Item[] = [
     { on: camera.enabled && camera.footprint, color: 'var(--c-cam)', shape: 'soft', label: 'Camera footprint' },
     { on: camera.enabled && camera.frustum, color: 'var(--c-cam)', shape: 'dash', label: 'FOV frustum' },
@@ -38,6 +39,23 @@ export function OverlayLegend({ camera, planner, isDarkMode, dockOpen }: Props) 
     { on: planner.tasks, color: 'var(--c-object)', shape: 'dot', label: 'Task points' },
   ];
   const items = all.filter((i) => i.on);
+  const cssVars = { ['--c-cam' as string]: 'oklch(0.82 0.14 78)', ['--c-reach' as string]: 'oklch(0.70 0.10 292)', ['--c-precision' as string]: 'oklch(0.83 0.13 188)', ['--c-object' as string]: 'oklch(0.78 0.10 35)' };
+  const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+
+  if (inline) {
+    return (
+      <div style={cssVars}>
+        {items.length === 0
+          ? <p className={`text-[10px] ${subtle}`}>No overlays active.</p>
+          : <div className="space-y-1.5">{items.map((i) => (
+              <div key={i.label} className="flex items-center gap-2">
+                <span className="w-3.5 grid place-items-center"><Swatch color={i.color} shape={i.shape} /></span>
+                <span className="text-[11px] whitespace-nowrap">{i.label}</span>
+              </div>
+            ))}</div>}
+      </div>
+    );
+  }
 
   if (items.length === 0) return null;
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-700';
@@ -45,7 +63,7 @@ export function OverlayLegend({ camera, planner, isDarkMode, dockOpen }: Props) 
   return (
     <div
       className={`absolute bottom-[5.25rem] left-[4.25rem] ${dockOpen ? 'min-[660px]:left-[23.25rem]' : 'min-[660px]:left-[4.25rem]'} z-30 rounded-xl glass-panel border shadow-lg px-3 py-2.5 ${panel}`}
-      style={{ ['--c-cam' as string]: 'oklch(0.82 0.14 78)', ['--c-reach' as string]: 'oklch(0.70 0.10 292)', ['--c-precision' as string]: 'oklch(0.83 0.13 188)', ['--c-object' as string]: 'oklch(0.78 0.10 35)' }}
+      style={cssVars}
     >
       <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-2 opacity-70">Overlays</div>
       <div className="space-y-1.5">
