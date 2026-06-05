@@ -38,7 +38,7 @@ export class RenderSystem {
     extraCameras = new Map<string, StationCamera>();
     extraCamerasEnabled = false;
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
-    private wristMount = { back: 0.035, up: 0.16, reach: 0.10, fov: 58, tilt: 38, aspect: 16 / 9 };
+    private wristMount = { posX: 0, posY: 0.14, posZ: 0.02, fov: 58, tilt: 25, aspect: 16 / 9 };
     private readonly tmpVec = new THREE.Vector3();
     baseBuilder: BaseBuilder;
     measureTool!: MeasureTool;
@@ -662,14 +662,14 @@ export class RenderSystem {
     }
 
     /** Update the shared wrist mount offsets + FOV; re-applies to every live feed. */
-    setWristMount(m: { back: number; up: number; reach: number; fov: number; tilt: number }) {
-        this.wristMount.back = m.back; this.wristMount.up = m.up;
-        this.wristMount.reach = m.reach; this.wristMount.fov = m.fov; this.wristMount.tilt = m.tilt;
+    setWristMount(m: { posX: number; posY: number; posZ: number; fov: number; tilt: number }) {
+        this.wristMount.posX = m.posX; this.wristMount.posY = m.posY; this.wristMount.posZ = m.posZ;
+        this.wristMount.fov = m.fov; this.wristMount.tilt = m.tilt;
         this.wristCameras.forEach((c) => this.applyWristMount(c));
     }
 
     private applyWristMount(c: WristCamera) {
-        c.back = this.wristMount.back; c.up = this.wristMount.up; c.reach = this.wristMount.reach;
+        c.posX = this.wristMount.posX; c.posY = this.wristMount.posY; c.posZ = this.wristMount.posZ;
         c.tiltDeg = this.wristMount.tilt;
         c.setIntrinsics(this.wristMount.fov, this.wristMount.aspect);
     }

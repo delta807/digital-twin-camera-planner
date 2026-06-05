@@ -518,7 +518,7 @@ export function App() {
 
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
   // Shared across every arm's feed.
-  const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.16, reach: 0.10, fov: 58, tilt: 38 });
+  const [wristMount, setWristMount] = useState({ posX: 0, posY: 0.14, posZ: 0.02, fov: 58, tilt: 25 });
   useEffect(() => {
     simRef.current?.renderSys.setWristMount(wristMount);
   }, [wristMount, isLoading, wristView]);
