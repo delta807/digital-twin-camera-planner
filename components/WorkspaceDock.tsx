@@ -20,6 +20,8 @@ export interface DockWorkcellProps {
   onChange: (next: WorkcellConfig) => void;
   onAddStation: () => void;
   onRemoveStation: (id: string) => void;
+  onAddExtraCamera: () => void;
+  onRemoveExtraCamera: (id: string) => void;
 }
 export interface DockArmsProps {
   list: ArmInstance[];
@@ -228,6 +230,24 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
             ))}
             <button onClick={workcell.onAddStation} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add workstation</button>
             <p className={`text-[9px] ${subtle}`}>Each adds a worktop + an arm (clamped to its edge). X/Y = its centre.</p>
+          </div>
+
+          {/* Extra overhead D435i cameras — each looks straight down + gets a Feeds PIP. */}
+          <div className={`mt-2 pt-2 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1.5`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Overhead D435i cameras</span>
+            {(wc.extraCameras ?? []).map((cam, i) => (
+              <div key={cam.id} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase ${subtle} w-12`}>Cam {i + 2}</span>
+                {(['x', 'y', 'z'] as const).map((ax) => (
+                  <input key={ax} type="number" step={0.05} value={Number(cam[ax].toFixed(2))} title={ax.toUpperCase()}
+                    onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.extraCameras]; next[i] = { ...next[i], [ax]: v }; workcell.onChange({ ...wc, extraCameras: next }); } }}
+                    className={`w-11 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
+                ))}
+                <button onClick={() => workcell.onRemoveExtraCamera(cam.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove camera">✕</button>
+              </div>
+            ))}
+            <button onClick={workcell.onAddExtraCamera} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add overhead camera</button>
+            <p className={`text-[9px] ${subtle}`}>Each looks straight down from X/Y/Z; see its feed in the Feeds dock.</p>
           </div>
         </Section>
 

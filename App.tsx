@@ -477,6 +477,40 @@ export function App() {
     return cb;
   };
 
+  // Extra placeable overhead D435i cameras (#3) — same Map/toggle/callback-ref pattern again.
+  const [extraCamView, setExtraCamView] = useState(false);
+  useEffect(() => {
+    if (!isLoading && simRef.current) simRef.current.renderSys.extraCamerasEnabled = extraCamView;
+  }, [isLoading, extraCamView]);
+  useEffect(() => {
+    if (!isLoading) simRef.current?.renderSys.syncExtraCameras(workcellConfig.extraCameras ?? []);
+  }, [workcellConfig.extraCameras, isLoading]);
+  const extraCamRefCbs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const extraCamRefCb = (id: string) => {
+    let cb = extraCamRefCbs.current.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const rs = simRef.current?.renderSys;
+        if (!rs) return;
+        if (el) rs.ensureExtraCamera(id).attachPip(el);
+        else rs.getExtraCamera(id)?.detachPip();
+      };
+      extraCamRefCbs.current.set(id, cb);
+    }
+    return cb;
+  };
+  const nextExtraCamRef = useRef(2);
+  const handleAddExtraCamera = () => {
+    const wc = workcellConfigRef.current;
+    const n = nextExtraCamRef.current++;
+    handleWorkcellChange({ ...wc, extraCameras: [...(wc.extraCameras ?? []), { id: `cam-${n}`, x: 0, y: 0, z: 0.85 }] });
+    setExtraCamView(true);
+  };
+  const handleRemoveExtraCamera = (id: string) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).filter((c) => c.id !== id) });
+  };
+
   // Wrist-cam mount tuning (matches the real HBVCAM framing: fingers at the bottom, grasp ahead).
   // Shared across every arm's feed.
   const [wristMount, setWristMount] = useState({ back: 0.035, up: 0.06, reach: 0.10, fov: 58, tilt: 38 });
@@ -1377,8 +1411,9 @@ export function App() {
               overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
               wrist: wristView, onWrist: setWristView,
               station: (workcellConfig.stations ?? []).length > 0 ? { on: stationView, onToggle: setStationView } : undefined,
+              extraCam: (workcellConfig.extraCameras ?? []).length > 0 ? { on: extraCamView, onToggle: setExtraCamView } : undefined,
             }}
-            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0)}
+            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0) + (stationView ? (workcellConfig.stations ?? []).length : 0) + (extraCamView ? (workcellConfig.extraCameras ?? []).length : 0)}
           >
             {cameraToggles.sensorPip && (
               <SensorView
@@ -1428,6 +1463,18 @@ export function App() {
                 onClose={() => setStationView(false)}
               />
             ))}
+            {extraCamView && (workcellConfig.extraCameras ?? []).map((c, i) => (
+              <SensorView
+                inline
+                key={c.id}
+                canvasHostRef={extraCamRefCb(c.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={4 / 3}
+                title={`Overhead D435i ${i + 2}`}
+                onClose={() => setExtraCamView(false)}
+              />
+            ))}
           </FeedsDock>
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
@@ -1442,7 +1489,7 @@ export function App() {
                 onAxesToggle: (v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); },
                 cameraPos,
               }}
-              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation }}
+              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation, onAddExtraCamera: handleAddExtraCamera, onRemoveExtraCamera: handleRemoveExtraCamera }}
               arms={{
                 list: armInstances,
                 selectedId: selectedArmId,

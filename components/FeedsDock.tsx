@@ -20,6 +20,7 @@ interface Props {
     overhead: boolean; onOverhead: (v: boolean) => void;
     wrist: boolean; onWrist: (v: boolean) => void;
     station?: { on: boolean; onToggle: (v: boolean) => void }; // only when satellite stations exist
+    extraCam?: { on: boolean; onToggle: (v: boolean) => void }; // only when extra overhead cameras exist
   };
   /** How many feed cards are currently shown (for the rail badge + empty state). */
   feedCount: number;
@@ -69,6 +70,7 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
             <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
             <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
             {toggles.station && <Check label="Station cams" v={toggles.station.on} on={toggles.station.onToggle} />}
+            {toggles.extraCam && <Check label="Extra overhead cams" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
           </div>
           <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
             {children}

@@ -116,6 +116,9 @@ export interface WorkcellConfig {
    *  with its own arm (added on creation). Lets you lay out a multi-cell lab. postX/postY are
    *  RELATIVE to the station's own centre. */
   stations: Array<{ id: string; x: number; y: number; yaw: number; length: number; width: number; postX: number; postY: number; postHeight: number }>;
+  /** Extra placeable overhead D435i cameras (beyond the primary) — each looks straight down from
+   *  (x,y,z) and renders its own live PIP in the Feeds dock. */
+  extraCameras: Array<{ id: string; x: number; y: number; z: number }>;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
@@ -130,6 +133,7 @@ export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
   postY: 0.0,
   extraPosts: [],
   stations: [],
+  extraCameras: [],
 };
 
 export interface ArmInstance {

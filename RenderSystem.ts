@@ -34,6 +34,9 @@ export class RenderSystem {
     /** One overhead feed per satellite workstation (#6), keyed by station id. */
     stationCameras = new Map<string, StationCamera>();
     stationEnabled = false; // master toggle for all station feeds
+    /** Extra placeable overhead D435i cameras (reuse the StationCamera overhead-PIP machinery). */
+    extraCameras = new Map<string, StationCamera>();
+    extraCamerasEnabled = false;
     gripperSiteId = -1; // set by MujocoSim so the wrist cam can track the end-effector
     private wristMount = { back: 0.035, up: 0.06, reach: 0.10, fov: 58, tilt: 38, aspect: 16 / 9 };
     private readonly tmpVec = new THREE.Vector3();
@@ -274,6 +277,12 @@ export class RenderSystem {
             const sHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
                 this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
             this.stationCameras.forEach((cam) => cam.renderPip(sHide));
+        }
+        // Extra placeable overhead D435i cameras — same clean hide-list.
+        if (this.extraCamerasEnabled && this.extraCameras.size > 0) {
+            const eHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+            this.extraCameras.forEach((cam) => cam.renderPip(eHide));
         }
 
         // Measurement labels (DOM overlay).
@@ -616,6 +625,22 @@ export class RenderSystem {
         }
     }
 
+    ensureExtraCamera(id: string): StationCamera {
+        let cam = this.extraCameras.get(id);
+        if (!cam) { cam = new StationCamera(this.scene); this.extraCameras.set(id, cam); }
+        return cam;
+    }
+    getExtraCamera(id: string): StationCamera | undefined { return this.extraCameras.get(id); }
+
+    /** Reconcile the extra overhead cameras with config: each looks straight DOWN from (x,y,z). */
+    syncExtraCameras(cams: Array<{ id: string; x: number; y: number; z: number }>) {
+        const keep = new Set(cams.map((c) => c.id));
+        for (const [id, cam] of this.extraCameras) {
+            if (!keep.has(id)) { cam.dispose(); this.extraCameras.delete(id); }
+        }
+        for (const c of cams) this.ensureExtraCamera(c.id).setPose(c.x, c.y, c.z, c.x, c.y);
+    }
+
     /** Dispose wrist feeds whose arm no longer exists (called when arms are added/removed). */
     syncWristArms(armIds: string[]) {
         const keep = new Set(armIds);
@@ -644,6 +669,8 @@ export class RenderSystem {
         this.wristCameras.clear();
         this.stationCameras.forEach((c) => c.dispose());
         this.stationCameras.clear();
+        this.extraCameras.forEach((c) => c.dispose());
+        this.extraCameras.clear();
         this.baseBuilder.dispose();
         this.measureTool.dispose();
         this.selection.dispose();
