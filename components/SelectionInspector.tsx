@@ -12,8 +12,9 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
-  station: { x: number; y: number; yaw: number } | null;
-  onStation: (p: { x?: number; y?: number; yaw?: number }) => void;
+  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number }) => void;
+  onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
   cameraPos: { x: number; y: number; z: number } | null;
@@ -76,6 +77,15 @@ export function SelectionInspector(p: InspectorProps) {
             { k: 'Y', v: p.station.y, min: -2, max: 2, on: (v) => p.onStation({ y: v }) },
             { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
           ]} />
+          <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Shape &amp; size</span>
+            <Sliders subtle={subtle} fields={[
+              { k: 'Sides', v: p.station.shapeSides, min: 3, max: 8, on: (v) => p.onStation({ shapeSides: Math.round(v) }) },
+              { k: 'Length', v: p.station.length * 1000, min: 400, max: 1400, on: (v) => p.onStation({ length: v / 1000 }) },
+              { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, on: (v) => p.onStation({ width: v / 1000 }) },
+            ]} />
+          </div>
+          <button onClick={p.onCloneStation} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Clone this workstation</button>
           <p className={`text-[9px] ${subtle}`}>Moves the worktop + its arm as a unit. Right-click → Aim to rotate.</p>
         </div>
       )}
@@ -184,7 +194,7 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
     <div className="space-y-0.5">
       {fields.map(({ k, v, min, max, on }) => (
         <div key={k} className="flex items-center gap-2">
-          <span className={`text-[9px] font-bold uppercase w-7 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+          <span className={`text-[9px] font-bold uppercase w-11 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
           <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
             onChange={(e) => on(parseFloat(e.target.value))}
             className="flex-1 h-1 accent-indigo-600 cursor-pointer" />

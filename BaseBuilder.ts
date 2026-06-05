@@ -112,7 +112,8 @@ export class BaseBuilder {
 
     // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
     (config.stations ?? []).forEach((st, si) => {
-      this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
+      this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(3, Math.min(8, Math.round(st.shapeSides ?? 4))),
+        Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
         barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id);
     });
   }
@@ -121,13 +122,22 @@ export class BaseBuilder {
    *  Shared by the satellite workstations; their rails carry `center` so edge-snap faces inward
    *  toward the right table. (The primary worktop is built inline above to preserve its exact
    *  post-axis / shape-N-gon behaviour.) */
-  private buildWorktop(cx: number, cy: number, yaw: number, halfX: number, halfY: number, barW: number, barH: number,
+  private buildWorktop(cx: number, cy: number, yaw: number, sides: number, halfX: number, halfY: number, barW: number, barH: number,
                        post: { x: number; y: number; height: number }, labelPrefix: string, stationId: string) {
     const center = new THREE.Vector3(cx, cy, 0);
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
     // station-local (lx,ly) → world, rotated by yaw about the station centre.
     const toWorld = (lx: number, ly: number): [number, number] => [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
-    const rim: Array<[number, number]> = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
+    // Rim: rectangle (4) or a regular N-gon inscribed in the half-extents — same as the primary worktop.
+    const rim: Array<[number, number]> = [];
+    if (sides === 4) {
+      rim.push([-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]);
+    } else {
+      for (let i = 0; i < sides; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
+        rim.push([Math.cos(a) * halfX, Math.sin(a) * halfY]);
+      }
+    }
 
     const shape = new THREE.Shape();
     rim.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));

@@ -935,30 +935,33 @@ export function App() {
   // facing in; its reach overlay renders automatically (the planner draws every arm). Removing a
   // station also removes its paired arm. Live — no reload (the worktop is Three.js-only).
   const nextStationNumberRef = useRef(2);
-  const handleAddStation = () => {
+  // Spawn a workstation by CLONING a source worktop config (the primary or another station) so you
+  // don't rebuild the setup each time — full shape/size/post copied. Placed in the +X aisle past the
+  // rightmost worktop, with a paired arm clamped to its near edge.
+  type StationShape = { shapeSides: number; length: number; width: number; postX: number; postY: number; postHeight: number };
+  const spawnStation = (src: StationShape) => {
     const n = nextStationNumberRef.current++;
     const id = `station-${n}`;
     const wc = workcellConfigRef.current;
-    // Place the new worktop one table-width + a 0.2 m aisle to the +X of the primary.
-    const sx = wc.length / 2 + 0.2 + 0.83 / 2;
-    const station = { id, x: sx, y: 0, yaw: 0, length: 0.83, width: 0.83, postX: 0.265, postY: 0, postHeight: 0.84 };
-    handleWorkcellChange({ ...wc, stations: [...(wc.stations ?? []), station] });
-    // Pair an arm to the station, clamped to its near (-Y) edge facing into that worktop. Read the
-    // counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
+    const existing = wc.stations ?? [];
+    const rightmost = existing.reduce((mx, s) => Math.max(mx, s.x + s.length / 2), wc.length / 2);
+    const sx = rightmost + 0.2 + src.length / 2;
+    handleWorkcellChange({ ...wc, stations: [...existing, { id, x: sx, y: 0, yaw: 0, ...src }] });
+    // Read the counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
     const armNumber = nextArmNumberRef.current++;
     const armId = `so101-${armNumber}`;
     const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
-    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: -station.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
-    setArmInstances(prev => {
-      const next = [...prev, arm];
-      setSelectedArmId(armId);
-      simRef.current?.setArmInstances(next);
-      return next;
-    });
+    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: -src.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
+    setArmInstances(prev => { const next = [...prev, arm]; setSelectedArmId(armId); simRef.current?.setArmInstances(next); return next; });
   };
-  // Edit a station like the arm (X/Y/Yaw) — live worktop rebuild + station-cam re-sync (via the
-  // stations effect). The paired arm moves with the worktop as a unit (rotated about the centre).
-  const handleStationChange = (id: string, patch: { x?: number; y?: number; yaw?: number }) => {
+  const handleAddStation = () => { const wc = workcellConfigRef.current; spawnStation({ shapeSides: wc.shapeSides, length: wc.length, width: wc.width, postX: wc.postX, postY: wc.postY, postHeight: wc.postHeight }); };
+  const handleCloneStation = (id: string) => {
+    const s = (workcellConfigRef.current.stations ?? []).find((x) => x.id === id);
+    if (s) spawnStation({ shapeSides: s.shapeSides, length: s.length, width: s.width, postX: s.postX, postY: s.postY, postHeight: s.postHeight });
+  };
+  // Edit a station like the arm — X/Y/Yaw + shape/size — live rebuild + station-cam re-sync. The
+  // paired arm moves with the worktop as a unit (rotated about the centre).
+  const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number }>) => {
     const wc = workcellConfigRef.current;
     const prev = (wc.stations ?? []).find((s) => s.id === id);
     if (!prev) return;
@@ -1399,8 +1402,9 @@ export function App() {
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
-                station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw } : null; })()}
+                station={(() => { const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width } : null; })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
+                onCloneStation={() => { if (selection?.stationId) handleCloneStation(selection.stationId); }}
                 extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
                 onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
                 cameraPos={cameraPos}
@@ -1532,7 +1536,7 @@ export function App() {
                 onAxesToggle: (v) => { setAxesVisible(v); simRef.current?.renderSys.setAxesVisible(v); },
                 cameraPos,
               }}
-              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation, onAddExtraCamera: handleAddExtraCamera, onRemoveExtraCamera: handleRemoveExtraCamera }}
+              workcell={{ config: workcellConfig, onChange: handleWorkcellChange, onAddStation: handleAddStation, onRemoveStation: handleRemoveStation, onCloneStation: handleCloneStation, onAddExtraCamera: handleAddExtraCamera, onRemoveExtraCamera: handleRemoveExtraCamera }}
               arms={{
                 list: armInstances,
                 selectedId: selectedArmId,

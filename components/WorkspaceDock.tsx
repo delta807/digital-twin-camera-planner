@@ -20,6 +20,7 @@ export interface DockWorkcellProps {
   onChange: (next: WorkcellConfig) => void;
   onAddStation: () => void;
   onRemoveStation: (id: string) => void;
+  onCloneStation: (id: string) => void;
   onAddExtraCamera: () => void;
   onRemoveExtraCamera: (id: string) => void;
 }
@@ -227,11 +228,12 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
                 <span className={`text-[9px] font-bold uppercase ${subtle} w-12`}>Cell {i + 2}</span>
                 <input type="number" step={0.05} value={Number(st.x.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], x: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="X" />
                 <input type="number" step={0.05} value={Number(st.y.toFixed(2))} onChange={(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { const next = [...wc.stations]; next[i] = { ...next[i], y: v }; workcell.onChange({ ...wc, stations: next }); } }} className={`w-12 bg-transparent text-right tabular-nums text-[10px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} title="Y" />
-                <button onClick={() => workcell.onRemoveStation(st.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove workstation + its arm">✕</button>
+                <button onClick={() => workcell.onCloneStation(st.id)} className={`ml-auto px-1.5 rounded ${isDarkMode ? 'text-indigo-300 hover:bg-white/10' : 'text-indigo-600 hover:bg-black/5'}`} title="Clone this workstation">⧉</button>
+                <button onClick={() => workcell.onRemoveStation(st.id)} className={`px-1.5 rounded ${isDarkMode ? 'text-red-300 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-50'}`} title="Remove workstation + its arm">✕</button>
               </div>
             ))}
-            <button onClick={workcell.onAddStation} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add workstation</button>
-            <p className={`text-[9px] ${subtle}`}>Each adds a worktop + an arm (clamped to its edge). X/Y = its centre.</p>
+            <button onClick={workcell.onAddStation} className={`w-full py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>+ Add workstation (clone of primary)</button>
+            <p className={`text-[9px] ${subtle}`}>Adds a copy of the primary worktop + an arm. ⧉ clones a station; select one to edit its shape/size.</p>
           </div>
 
           {/* Extra overhead D435i cameras — each looks straight down + gets a Feeds PIP. */}
