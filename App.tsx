@@ -178,6 +178,8 @@ export function App() {
   const [feedsOpen, setFeedsOpen] = useState(() => window.innerWidth >= 660);
   // Layout-profiles panel is a toggle (off the always-on top bar that collided with the title).
   const [layoutsOpen, setLayoutsOpen] = useState(false);
+  // Appearance tweaks panel — now opened from the toolbar (was a floating bottom-right gear).
+  const [tweaksOpen, setTweaksOpen] = useState(false);
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
   const [dockOpen, setDockOpen] = useState(true);
@@ -1174,6 +1176,8 @@ export function App() {
             toggleDarkMode={toggleDarkMode}
             onResetView={handleResetView}
             onFrameSelection={handleFrameSelection}
+            tweaksOpen={tweaksOpen}
+            onToggleTweaks={() => setTweaksOpen((v) => !v)}
           />
 
           {!sceneIsFranka && layoutsOpen && (
@@ -1213,7 +1217,7 @@ export function App() {
               )}
             </>
           )}
-          <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} />
+          <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} open={tweaksOpen} onClose={() => setTweaksOpen(false)} sidebarOpen={showSidebar} />
           {radial && (
             <RadialMenu
               x={radial.x} y={radial.y}

@@ -4,11 +4,16 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Moon, Sun, Sliders, X } from 'lucide-react';
+import { Moon, Sun, X } from 'lucide-react';
 
 interface Props {
   isDarkMode: boolean;
   onToggleTheme: () => void;
+  /** Controlled by the toolbar's Tweaks button (no longer a floating gear). */
+  open: boolean;
+  onClose: () => void;
+  /** Shift left of the full-height reasoning sidebar when it's open. */
+  sidebarOpen: boolean;
 }
 
 const ACCENTS: { name: string; h: number }[] = [
@@ -25,8 +30,7 @@ const ACCENTS: { name: string; h: number }[] = [
  * --accent-h CSS var that the remapped indigo scale reads), and density (compact tightens spacing).
  * Persisted in localStorage. A floating gear opens it.
  */
-export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
-  const [open, setOpen] = useState(false);
+export function TweaksPanel({ isDarkMode, onToggleTheme, open, onClose, sidebarOpen }: Props) {
   const stored = Number(localStorage.getItem('accent-h'));
   const [hue, setHue] = useState(() => (Number.isFinite(stored) && stored > 0 ? stored : 262));
 
@@ -40,13 +44,14 @@ export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
   const seg = (active: boolean) =>
     `flex-1 text-[10px] font-bold uppercase tracking-wide py-1 rounded-md transition-colors ${active ? 'bg-indigo-600 text-white' : isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`;
 
+  if (!open) return null;
   return (
-    <div className="absolute bottom-6 right-6 z-40 flex flex-col items-end gap-2">
-      {open && (
+    <div className={`absolute bottom-24 right-6 ${sidebarOpen ? 'min-[660px]:right-[27rem]' : ''} z-50 flex flex-col items-end gap-2`}>
+      {(
         <div className={`w-56 rounded-2xl glass-panel border shadow-xl p-3 space-y-3 ${panel}`}>
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-70">Tweaks</span>
-            <button onClick={() => setOpen(false)} aria-label="Close tweaks" className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={onClose} aria-label="Close tweaks" className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
           </div>
 
           <div className="space-y-1">
@@ -71,14 +76,6 @@ export function TweaksPanel({ isDarkMode, onToggleTheme }: Props) {
           </div>
         </div>
       )}
-
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title="Appearance tweaks" aria-label="Appearance tweaks"
-        className={`w-10 h-10 rounded-full glass-panel border shadow-lg grid place-items-center ${open ? 'bg-indigo-600 text-white border-indigo-500' : panel}`}
-      >
-        <Sliders className="w-4 h-4" />
-      </button>
     </div>
   );
 }
