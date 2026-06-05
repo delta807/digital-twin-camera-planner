@@ -576,6 +576,27 @@ export function App() {
     return rod && pos ? projectToRod(pos, rod).t : 0;
   })();
 
+  // Snap an ARM base onto the nearest table EDGE (perimeter rail) AND rotate it to face INTO the
+  // table — mirrors the real rig, where the SO-101 is clamped to an edge pointing at the worktop.
+  // Reuses nearestRod (rail = rim edge) + the planner's reach-derived forward so we never hardcode
+  // the model's facing convention. After snapping it still slides along the edge via the Along slider.
+  const handleSnapArmToEdge = () => {
+    if (selection?.kind !== 'arm') return;
+    const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (!a) return;
+    const all = rods();
+    const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.startsWith('Rail'));
+    const near = nearestRod(new THREE.Vector3(a.x, a.y, 0), edges); if (!near) return;
+    const edge = edges[near.index];
+    // Inward normal of the edge segment (perpendicular, pointing toward the table centre = origin).
+    const dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
+    let nx = -dy, ny = dx;
+    if (nx * -near.point.x + ny * -near.point.y < 0) { nx = -nx; ny = -ny; }
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
+    const yaw = Math.atan2(ny, nx) - fwd;
+    handleArmChange(a.id, { x: near.point.x, y: near.point.y, yaw });
+    setRodSnap({ rodIndex: all.indexOf(edge), label: edge.label });
+  };
+
   // Snap the camera onto the top of the aluminium post and aim it straight down —
   // one click to replicate "camera mounted N cm up the rod, looking at the worktop".
   const handleSnapCameraToPost = () => {
@@ -1180,6 +1201,7 @@ export function App() {
             onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
             onFrame={handleFrameSelection}
             onSnapToRod={handleSnapToRod}
+            onSnapToEdge={handleSnapArmToEdge}
             onSlideAlongRod={handleSlideAlongRod}
             rodLabel={rodSnap?.label ?? null}
             rodT={rodT}

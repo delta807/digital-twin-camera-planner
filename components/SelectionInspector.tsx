@@ -25,6 +25,7 @@ export interface InspectorProps {
   onFrame: () => void;
   // Rod snapping: mount the selection on a rod, then slide it along (0..1).
   onSnapToRod: () => void;
+  onSnapToEdge: () => void;
   onSlideAlongRod: (t: number) => void;
   rodLabel: string | null;
   rodT: number;
@@ -65,7 +66,10 @@ export function SelectionInspector(p: InspectorProps) {
             { k: 'Y', v: p.arm.y, min: -0.6, max: 0.6, on: (v) => p.onArm({ y: v }) },
             { k: 'Yaw', v: p.arm.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onArm({ yaw: v * Math.PI / 180 }) },
           ]} />
-          <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre base on origin</button>
+          <div className="flex gap-2">
+            <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
+            <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
+          </div>
         </div>
       )}
 

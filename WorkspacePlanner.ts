@@ -161,6 +161,28 @@ export class WorkspacePlanner {
     this.renderOutlines();
   }
 
+  /**
+   * Reach-weighted mean direction of the graspable (precision) fan, in the arm's LOCAL frame
+   * (base at origin, yaw 0). This is "which way the arm actually reaches" derived from the live
+   * MuJoCo sweep — so callers can face a snapped arm INTO the table without hardcoding the
+   * model's base-orientation convention. Falls back to the full envelope, then 0.
+   */
+  localForwardAngle(): number {
+    const meanDir = (rad: Radial): [number, number] => {
+      let sx = 0, sy = 0;
+      for (let b = 0; b < ANG_BINS; b++) {
+        const r = rad.rMax[b];
+        if (!isFinite(r) || r <= 0) continue;
+        const theta = -Math.PI + ((b + 0.5) / ANG_BINS) * 2 * Math.PI;
+        sx += r * Math.cos(theta); sy += r * Math.sin(theta);
+      }
+      return [sx, sy];
+    };
+    let [sx, sy] = meanDir(this.radPrec);
+    if (sx === 0 && sy === 0) [sx, sy] = meanDir(this.radMax);
+    return sx === 0 && sy === 0 ? 0 : Math.atan2(sy, sx);
+  }
+
   // ── Forward reachability: sweep joints on a scratch MjData ──
   // The base-rotation joint (sweptJoints[0]) is swept FINELY (BASE_STEPS) since it dominates the
   // angular spread; the remaining joints at `resolution`. Each accepted TCP fills two things:

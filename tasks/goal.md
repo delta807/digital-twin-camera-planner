@@ -37,11 +37,11 @@ chosen in sim hold up in the real world.
 - [clarify] **#4** "on top of snapping…" — fragment; assumed part of #7 (snap arms to edges). Confirm.
 - [x] **#5** default to mm units (87e0325).
 - [ ] **#6** multiple bases / workstations — BIGGEST, not started.
-- [ ] **#7** snap arms to edges (on top of rod/post snapping) — not started.
+- [ ] **#7** snap arms to edges (on top of rod/post snapping) — IN PROGRESS.
 - [x] **#8** extra mount posts broke the main post's selection — fixed: raycast skips non-selectable
       occluders (54d0d8c).
 - [x] **#9** right-click radial menu (Jog/Move/Aim), reusing existing mode fns + arm rotate gizmo (7c695bd).
-- [ ] **#1 trio** NavCube + dock search + per-object eye toggles — not started.
+- [x] **#1 trio** NavCube (snapToView) + dock search (KW filter) + per-object eye toggles (edd07b8). DONE.
 
 ## BIGGER ITEMS
 - [x] **Save layout profiles** (f6dbc17) — save/restore the positional config (worktop + arm bases +
