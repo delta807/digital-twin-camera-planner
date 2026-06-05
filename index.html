@@ -88,6 +88,8 @@
         }
         .animate-pulse-soft { animation: pulse-soft 3s infinite ease-in-out; }
         @keyframes pop-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+        /* NavCube face hover — accent highlight (kept here since :hover can't be inline). */
+        .nav-face:hover { background: oklch(0.655 0.155 var(--accent-h,262)) !important; color: #fff !important; border-color: transparent !important; }
     </style>
 <script type="importmap">
 {

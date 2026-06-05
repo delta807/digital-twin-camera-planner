@@ -1168,7 +1168,16 @@ export function App() {
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
               {/* Legend shows in both modes — the camera footprint/frustum overlays persist into Compare. */}
               <OverlayLegend camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} />
-              <NavCube onView={(p) => simRef.current?.renderSys.snapToView(p)} isDarkMode={isDarkMode} />
+              <NavCube
+                onView={(p) => simRef.current?.renderSys.snapToView(p)}
+                isDarkMode={isDarkMode}
+                getOrbit={() => {
+                  const rs = simRef.current?.renderSys;
+                  if (!rs) return null;
+                  const p = rs.camera.position, t = rs.controls.target;
+                  return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
+                }}
+              />
               {mode === 'compare' && (
                 <CompareView cameraPos={cameraPos} intrinsics={intrinsics} baseResult={baseResult} taskCount={objectEntities.filter((e) => e.kind === 'object').length} isDarkMode={isDarkMode} onExit={() => setMode('edit')} />
               )}

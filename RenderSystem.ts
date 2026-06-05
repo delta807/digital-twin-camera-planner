@@ -412,10 +412,11 @@ export class RenderSystem {
 
     /** Snap the orbit camera to a named view (NavCube). Reuses the moveCameraTo animation; the
      *  worktop is at the origin so every preset looks at (0,0,0). */
-    snapToView(preset: 'top' | 'front' | 'back' | 'left' | 'right' | 'iso') {
+    snapToView(preset: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso') {
         const D = 2.4, Z = 0.4;
         const P: Record<string, THREE.Vector3> = {
-            top: new THREE.Vector3(0.001, -0.001, D + 0.5), // tiny offset avoids Z-up gimbal at nadir
+            top: new THREE.Vector3(0, -0.001, D + 0.5),   // tiny -Y offset avoids Z-up gimbal + keeps the cube axis-aligned
+            bottom: new THREE.Vector3(0, -0.001, -(D + 0.5)),
             front: new THREE.Vector3(0, -D, Z),
             back: new THREE.Vector3(0, D, Z),
             left: new THREE.Vector3(-D, 0, Z),
