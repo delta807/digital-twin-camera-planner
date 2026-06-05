@@ -28,6 +28,7 @@ import { TweaksPanel } from './components/TweaksPanel';
 import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
+import type { CompareSetup } from './components/SceneMap';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
 import { Hand, Move as MoveIcon, RotateCw } from 'lucide-react';
@@ -182,6 +183,9 @@ export function App() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
+  // Compare mode holds two captured WORKSTATION SETUPS (full layouts), shown side-by-side.
+  const [compareA, setCompareA] = useState<CompareSetup | null>(null);
+  const [compareB, setCompareB] = useState<CompareSetup | null>(null);
   const [dockOpen, setDockOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
@@ -888,6 +892,31 @@ export function App() {
     });
   };
 
+  // ── Compare A/B: capture the current LIVE layout as a full workstation setup, and snapshot it
+  // into slot A or B. Compare mode then renders the two captured setups side-by-side (SceneMap).
+  const captureSetup = (): CompareSetup => {
+    const wc = workcellConfigRef.current;
+    const arm = armInstancesRef.current.find((a) => a.primary) ?? armInstancesRef.current[0];
+    const cam = cameraPos ?? { x: wc.postX, y: wc.postY, z: wc.postHeight };
+    const pts = simRef.current?.planner?.taskWorldPoints() ?? [];
+    return {
+      table: { length: wc.length, width: wc.width, railH: wc.barHeight },
+      post: { x: wc.postX, y: wc.postY, h: wc.postHeight },
+      camera: { x: cam.x, y: cam.y, z: cam.z, fovH: intrinsics.hFovDeg },
+      arm: arm ? { x: arm.x, y: arm.y, yawDeg: (arm.yaw * 180) / Math.PI } : { x: 0, y: 0, yawDeg: 0 },
+      blocks: pts.map((p, i) => ({ id: `task${i}`, x: p.x, y: p.y, color: 'orange' as const })),
+    };
+  };
+  const handleSnapshot = (slot: 'A' | 'B') => {
+    const s = captureSetup();
+    if (slot === 'A') setCompareA(s); else setCompareB(s);
+  };
+  const enterCompare = () => {
+    // Seed A with the current layout on first entry so there's always something to compare against.
+    setCompareA((a) => a ?? captureSetup());
+    setMode('compare');
+  };
+
   const handleApplyArmPose = () => {
     const selected = armInstances.find((arm) => arm.id === selectedArmId);
     const sim = simRef.current;
@@ -1193,7 +1222,7 @@ export function App() {
           {!sceneIsFranka && (
             <>
               <ModeRail
-                mode={mode} onMode={setMode}
+                mode={mode} onMode={(m) => (m === 'compare' ? enterCompare() : setMode(m))}
                 dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => !v)}
                 perceiveOpen={showSidebar} onTogglePerceive={() => setShowSidebar((v) => !v)}
                 layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
@@ -1214,7 +1243,14 @@ export function App() {
                 }}
               />
               {mode === 'compare' && (
-                <CompareView cameraPos={cameraPos} intrinsics={intrinsics} baseResult={baseResult} taskCount={objectEntities.filter((e) => e.kind === 'object').length} isDarkMode={isDarkMode} onExit={() => setMode('edit')} />
+                <CompareView
+                  setupA={compareA}
+                  setupB={compareB}
+                  isDarkMode={isDarkMode}
+                  sidebarOpen={showSidebar}
+                  onSnapshot={handleSnapshot}
+                  onExit={() => setMode('edit')}
+                />
               )}
             </>
           )}
@@ -1304,7 +1340,7 @@ export function App() {
           {/* Consolidated camera feeds + reasoning toggle (replaces the old floating PIP pile). */}
           <FeedsDock
             isDarkMode={isDarkMode}
-            open={feedsOpen}
+            open={feedsOpen && mode !== 'compare'}
             onToggle={() => setFeedsOpen((v) => !v)}
             reasoningOpen={showSidebar}
             onReasoning={() => setShowSidebar((v) => !v)}

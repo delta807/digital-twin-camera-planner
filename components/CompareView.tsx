@@ -3,104 +3,144 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
-import { Camera, Copy, X } from 'lucide-react';
-import type { CameraIntrinsics } from '../types';
+import { Columns2, Info, Camera, X } from 'lucide-react';
+import { SceneMap, CompareSetup } from './SceneMap';
 
 interface Props {
-  cameraPos: { x: number; y: number; z: number } | null;
-  intrinsics: CameraIntrinsics;
-  baseResult: { covered: number; total: number } | null;
-  taskCount: number;
+  setupA: CompareSetup | null;
+  setupB: CompareSetup | null;
   isDarkMode: boolean;
+  sidebarOpen: boolean;
+  onSnapshot: (slot: 'A' | 'B') => void;
   onExit: () => void;
 }
 
-interface Setup { z: number; fovDeg: number; aspect: number }
-interface Metrics { heightCm: number; fovDeg: number; footprintCm2: number; coverPct: number }
+interface Metrics { heightCm: number; footprintCm2: number; coveragePct: number; reachPct: number; inFp: number; reachable: number; total: number }
 
-/** Footprint area + how much of the worktop the camera frames, from height + FOV + aspect
- *  (top-down model: half-width = z·tan(hFov/2), height derived from the image aspect). */
-function compute(s: Setup): Metrics {
-  const halfW = s.z * Math.tan((s.fovDeg * Math.PI / 180) / 2);
-  const w = halfW * 2, h = w / (s.aspect || 1.6);
-  const footprintCm2 = Math.round(w * h * 1e4);
-  // fraction of an 0.83×0.83 m worktop the footprint spans (capped at 100%).
-  const coverPct = Math.min(100, Math.round((w * h) / (0.83 * 0.83) * 100));
-  return { heightCm: Math.round(s.z * 100), fovDeg: Math.round(s.fovDeg * 10) / 10, footprintCm2, coverPct };
+/** Footprint + how many task blocks fall inside the camera frame / within arm reach, for a setup.
+ *  Mirrors the design's metricsFor: footprint ≈ (2·reach)×(1.8·reach); coverage = blocks in the
+ *  asymmetric footprint; reach = blocks within the precision-fan radius of the arm base. */
+function metricsFor(s: CompareSetup): Metrics {
+  const reach = s.camera.z * Math.tan((s.camera.fovH * Math.PI / 180) / 2);
+  const fpArea = (reach * 2) * (reach * 1.8);
+  const inFp = s.blocks.filter((b) =>
+    Math.abs(b.x - s.camera.x) < reach && (b.y - s.camera.y) > -reach * 0.7 && (b.y - s.camera.y) < reach * 1.1).length;
+  const reachable = s.blocks.filter((b) => Math.hypot(b.x - s.arm.x, b.y - s.arm.y) < 0.24).length;
+  const total = s.blocks.length || 1;
+  return {
+    heightCm: Math.round(s.camera.z * 100),
+    footprintCm2: Math.round(fpArea * 1e4),
+    coveragePct: Math.round((inFp / total) * 100),
+    reachPct: Math.round((reachable / total) * 100),
+    inFp, reachable, total: s.blocks.length,
+  };
 }
 
-function Col({ tag, accent, m, isDarkMode }: { tag: string; accent: string; m: Metrics; isDarkMode: boolean }) {
+function MiniMetric({ label, value, unit, pct, good, isDarkMode }: { label: string; value: string; unit?: string; pct?: boolean; good?: boolean; isDarkMode: boolean }) {
   const sub = isDarkMode ? 'text-slate-400' : 'text-slate-500';
-  const Row = ({ k, v, u }: { k: string; v: string; u: string }) => (
-    <div className="flex items-baseline justify-between gap-2">
-      <span className={`text-[10px] uppercase tracking-wide ${sub}`}>{k}</span>
-      <span className="font-mono text-[13px] font-semibold tabular-nums">{v}<span className={`text-[9px] ml-0.5 ${sub}`}>{u}</span></span>
+  const color = pct ? (good ? 'oklch(0.72 0.16 150)' : 'oklch(0.70 0.16 25)') : undefined;
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className={`text-[8.5px] font-bold uppercase tracking-wide ${sub}`}>{label}</span>
+      <div className="flex items-baseline gap-1">
+        <span className="font-mono text-[17px] font-semibold tabular-nums" style={{ color }}>{value}</span>
+        {unit && <span className={`text-[10px] ${sub}`}>{unit}</span>}
+      </div>
     </div>
   );
+}
+
+function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode }: {
+  tag: string; accent: string; setup: CompareSetup | null; slot: 'A' | 'B'; onSnapshot: (s: 'A' | 'B') => void; isDarkMode: boolean;
+}) {
+  const sub = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const m = setup ? metricsFor(setup) : null;
   return (
-    <div className="flex-1 space-y-1.5">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="w-6 h-6 rounded-md grid place-items-center text-white text-[12px] font-bold" style={{ background: accent }}>{tag}</span>
-        <span className="font-mono text-[10px] opacity-60">cam Z {(m.heightCm / 100).toFixed(2)} · {m.fovDeg}°</span>
+    <div className="flex-1 min-w-0 flex flex-col relative">
+      {/* badge + readout */}
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+        <span className="w-6 h-6 rounded-md grid place-items-center text-white text-[12px] font-bold shadow" style={{ background: accent }}>{tag}</span>
+        {setup && (
+          <span className={`font-mono text-[10px] px-2 py-1 rounded-md border ${isDarkMode ? 'bg-slate-900/70 border-white/10 text-slate-300' : 'bg-white/80 border-black/10 text-slate-600'}`}>
+            cam Z {setup.camera.z.toFixed(2)} · {Math.round(setup.camera.fovH)}°
+          </span>
+        )}
+        <button
+          onClick={() => onSnapshot(slot)}
+          title={`Capture the current live layout into ${tag}`}
+          className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 shadow"
+        >
+          <Camera className="w-3 h-3" /> Snapshot
+        </button>
       </div>
-      <Row k="Cam height" v={String(m.heightCm)} u="cm" />
-      <Row k="H-FOV" v={String(m.fovDeg)} u="°" />
-      <Row k="Footprint" v={m.footprintCm2.toLocaleString()} u="cm²" />
-      <Row k="Worktop framed" v={String(m.coverPct)} u="%" />
+
+      {/* scene map or empty state */}
+      <div className="flex-1 min-h-0">
+        {setup ? (
+          <SceneMap setup={setup} isDarkMode={isDarkMode} />
+        ) : (
+          <div className={`h-full grid place-items-center text-center px-6 ${sub}`}>
+            <div>
+              <Camera className="w-6 h-6 mx-auto mb-2 opacity-40" />
+              <p className="text-[12px] font-medium">Setup {tag} is empty</p>
+              <p className="text-[10px] mt-1">Arrange the workcell, then click <b>Snapshot</b> to capture it here.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* metrics */}
+      {m && (
+        <div className={`grid grid-cols-4 gap-2 px-4 py-2.5 border-t ${isDarkMode ? 'border-white/10 bg-slate-900/40' : 'border-black/5 bg-black/[0.02]'}`}>
+          <MiniMetric label="Cam height" value={String(m.heightCm)} unit="cm" isDarkMode={isDarkMode} />
+          <MiniMetric label="Footprint" value={m.footprintCm2.toLocaleString()} unit="cm²" isDarkMode={isDarkMode} />
+          <MiniMetric label="In frame" value={`${m.coveragePct}%`} pct good={m.coveragePct >= 75} isDarkMode={isDarkMode} />
+          <MiniMetric label="Reachable" value={`${m.reachPct}%`} pct good={m.reachPct >= 75} isDarkMode={isDarkMode} />
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * CompareView — Compare A/B camera placements against the same workcell. A is a snapshot you take;
- * B is the live camera (move/aim it while in Compare mode and the numbers update). A verdict calls
- * which setup frames more of the worktop, so camera-placement decisions are quantified.
+ * CompareView — A/B side-by-side comparison of two whole WORKSTATION SETUPS (not just camera
+ * footage). Each pane is an isometric scene map of a captured layout (table, arm, camera, post,
+ * blocks, reach + footprint) with coverage/reach metrics; a verdict calls which setup frames /
+ * reaches more of the task objects. "Snapshot" captures the current live layout into A or B.
  */
-export function CompareView({ cameraPos, intrinsics, baseResult, taskCount, isDarkMode, onExit }: Props) {
-  const live: Setup = { z: cameraPos?.z ?? 0.85, fovDeg: intrinsics.hFovDeg, aspect: intrinsics.aspect };
-  const [setupA, setSetupA] = useState<Setup>(live);
-  const mA = compute(setupA);
-  const mB = compute(live);
-
-  const verdict = mA.coverPct === mB.coverPct
-    ? 'Equal worktop coverage — decide on reach/angle.'
-    : `Setup ${mA.coverPct > mB.coverPct ? 'A' : 'B'} frames ${Math.abs(mA.coverPct - mB.coverPct)}% more of the worktop.`;
-  const reachNote = baseResult && baseResult.total > 0
-    ? `Arm reaches ${baseResult.covered}/${baseResult.total} task points (camera-independent).`
-    : `${taskCount} task points on the bench.`;
-
+export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapshot, onExit }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/90 border-white/10 text-slate-100' : 'bg-white/92 border-white/80 text-slate-800';
+  const mA = setupA ? metricsFor(setupA) : null;
+  const mB = setupB ? metricsFor(setupB) : null;
+
+  let verdict = 'Snapshot a layout into A and B to compare.';
+  if (mA && mB) {
+    const frame = mA.coveragePct === mB.coveragePct
+      ? 'Equal frame coverage'
+      : `Setup ${mA.coveragePct > mB.coveragePct ? 'A' : 'B'} frames ${Math.abs(mA.coveragePct - mB.coveragePct)}% more`;
+    const reach = mA.reachPct === mB.reachPct
+      ? 'equal reach'
+      : `${mA.reachPct > mB.reachPct ? 'A' : 'B'} reaches ${Math.abs(mA.reachPct - mB.reachPct)}% more`;
+    verdict = `${frame}; ${reach} of the task objects.`;
+  }
 
   return (
-    <div className={`absolute top-20 left-[4.75rem] z-30 w-[26rem] max-w-[calc(100vw-7rem)] rounded-2xl glass-panel border shadow-2xl ${panel}`}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-black/5">
-        <Camera className="w-4 h-4 text-indigo-500" />
-        <span className="text-[11px] font-bold uppercase tracking-widest flex-1">Compare A / B · camera</span>
+    <div className={`absolute top-4 bottom-4 left-[4.75rem] ${sidebarOpen ? 'right-[22.5rem]' : 'right-4'} z-30 rounded-2xl glass-panel border shadow-2xl flex flex-col overflow-hidden ${panel}`}>
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-black/10 shrink-0">
+        <Columns2 className="w-4 h-4 text-indigo-500" />
+        <span className="text-[11px] font-bold uppercase tracking-widest flex-1">Compare workstation setups · A / B</span>
         <button onClick={onExit} aria-label="Exit compare" className="opacity-60 hover:opacity-100"><X className="w-4 h-4" /></button>
       </div>
 
-      <div className="px-4 py-3">
-        <p className={`text-[11px] leading-snug mb-3 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-          <b>A</b> is a saved snapshot; <b>B</b> is the live camera — <b>drag it in the viewport</b> to
-          reposition and B updates (switch to Edit to re-aim or change FOV).
-        </p>
-        <div className="flex gap-4">
-          <Col tag="A" accent="oklch(0.72 0.13 262)" m={mA} isDarkMode={isDarkMode} />
-          <span className="w-px self-stretch bg-current opacity-10" />
-          <Col tag="B" accent="oklch(0.70 0.13 292)" m={mB} isDarkMode={isDarkMode} />
-        </div>
+      <div className="flex-1 min-h-0 flex">
+        <Pane tag="A" accent="oklch(0.655 0.155 262)" setup={setupA} slot="A" onSnapshot={onSnapshot} isDarkMode={isDarkMode} />
+        <span className={`w-px self-stretch ${isDarkMode ? 'bg-white/10' : 'bg-black/10'}`} />
+        <Pane tag="B" accent="oklch(0.70 0.13 292)" setup={setupB} slot="B" onSnapshot={onSnapshot} isDarkMode={isDarkMode} />
       </div>
 
-      <div className="px-4 py-2.5 border-t border-black/5 space-y-2">
-        <div className="text-[12px] font-medium">{verdict}</div>
-        <div className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{reachNote}</div>
-        <button
-          onClick={() => setSetupA(live)}
-          className="w-full mt-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-500"
-        >
-          <Copy className="w-3 h-3" /> Snapshot current as A
-        </button>
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-t shrink-0 ${isDarkMode ? 'border-white/10 bg-slate-900/50' : 'border-black/5 bg-black/[0.02]'}`}>
+        <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+        <span className="text-[12px] font-medium">{verdict}</span>
       </div>
     </div>
   );

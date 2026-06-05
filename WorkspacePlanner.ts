@@ -498,7 +498,7 @@ export class WorkspacePlanner {
     if (!data) d.delete();
   }
 
-  private taskWorldPoints(): Array<{ x: number; y: number; z: number }> {
+  taskWorldPoints(): Array<{ x: number; y: number; z: number }> {
     // Read positions from a fresh forward pass so they reflect any base relocation.
     const { mujoco, model } = this.cfg;
     const scratch = new mujoco.MjData(model);
