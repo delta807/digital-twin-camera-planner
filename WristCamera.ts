@@ -22,17 +22,21 @@ export class WristCamera {
   /** Which arm this feed is mounted on (primary or a planning ghost). '' = legacy/selected. */
   armId = '';
 
-  // Mount offsets in the gripper frame (m) — tuned against real LeRobot wrist footage (fingers at
-  // the bottom of frame, the grasp/object ahead). Tunable via the dock sliders.
-  back = 0.035;  // behind the fingertips — closer = the gripper fills more of the frame (like real)
-  up = 0.055;    // above the gripper centre-line (keeps the fingers at the bottom edge)
-  reach = 0.05;  // how far ahead the camera aims (toward/just past the grasp point)
+  // Rigid mount in the GRIPPER's local frame (probed: localY≈up so -localY=down toward the
+  // fingertips; localZ≈the table-facing/forward direction; localX is sideways and must NOT be used).
+  // The real bracket sits above the wrist and tilts the lens forward at the table, so the gripper
+  // fingers sit at the BOTTOM of the frame and the workspace fills the top — matching real FPV.
+  back = 0.035;  // shift the mount back toward the wrist (along -localZ)
+  up = 0.06;     // raise the mount above the wrist (along +localY) — the bracket height
+  reach = 0.10;  // how far ahead along the optical axis the camera aims
+  tiltDeg = 38;  // forward tilt of the optical axis from straight-down (0 = straight down past fingers)
 
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
   private readonly ly = new THREE.Vector3();
-  private readonly lup = new THREE.Vector3();
-  private readonly approach = new THREE.Vector3();
+  private readonly lz = new THREE.Vector3();
+  private readonly fwd = new THREE.Vector3();
+  private readonly camUp = new THREE.Vector3();
   private readonly camPos = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
   private readonly p = new THREE.Vector3();
@@ -54,27 +58,35 @@ export class WristCamera {
   /** Re-pose the camera from the gripper TCP world position + its 3×3 orientation (site_xmat). */
   track(pos: THREE.Vector3, xmat: ArrayLike<number>, base = 0) {
     // MuJoCo site_xmat is row-major local→world; columns are the local axes in world coords.
-    this.ly.set(xmat[base + 1], xmat[base + 4], xmat[base + 7]);  // local Y: fingers/grasp extend along -localY (look dir)
-    this.lup.set(xmat[base + 0], xmat[base + 3], xmat[base + 6]); // local X = wrist "up" (the bracket offset axis)
+    this.ly.set(xmat[base + 1], xmat[base + 4], xmat[base + 7]);  // local Y: fingers extend along -localY (down)
+    this.lz.set(xmat[base + 2], xmat[base + 5], xmat[base + 8]);  // local Z: the table-facing/forward direction
     this.aim(pos);
   }
 
   /** Re-pose from a gripper world Matrix4 (used for static ghost arms via their TCP marker). */
   trackFromMatrix(m: THREE.Matrix4) {
-    const e = m.elements; // column-major: col0 = localX (up), col1 = localY, col3 = translation
+    const e = m.elements; // column-major: col1 = localY, col2 = localZ, col3 = translation
     this.ly.set(e[4], e[5], e[6]);
-    this.lup.set(e[0], e[1], e[2]);
+    this.lz.set(e[8], e[9], e[10]);
     this.aim(this.p.set(e[12], e[13], e[14]));
   }
 
-  /** Place the camera behind+above the gripper, looking toward the grasp point. */
+  /** Rigid wrist mount: above the gripper looking DOWN past the fingertips, tilted forward at the
+   *  workspace so the fingers sit at the bottom of the frame and the table fills the top — the real
+   *  HBVCAM FPV. All in the gripper's local frame so it stays correct as the arm moves. */
   private aim(pos: THREE.Vector3) {
-    this.approach.copy(this.ly).negate().normalize(); // look dir = -localY (down + forward over the fingertips)
-    this.lup.normalize();                              // up = +localX (out of the wrist bracket, up + forward)
-    this.camPos.copy(pos).addScaledVector(this.approach, -this.back).addScaledVector(this.lup, this.up);
-    this.target.copy(pos).addScaledVector(this.approach, this.reach);
+    this.ly.normalize();
+    this.lz.normalize();
+    const t = (this.tiltDeg * Math.PI) / 180;
+    // optical axis: straight down (-localY) tilted FORWARD toward the table (+localZ) by tiltDeg.
+    this.fwd.copy(this.ly).multiplyScalar(-Math.cos(t)).addScaledVector(this.lz, Math.sin(t)).normalize();
+    // image up = the table/forward direction, so "ahead" is at the top and the fingers fall to the bottom.
+    this.camUp.copy(this.lz);
+    // mount: raise above the wrist (+localY) and shift back toward the wrist (-localZ) — the bracket.
+    this.camPos.copy(pos).addScaledVector(this.ly, this.up).addScaledVector(this.lz, -this.back);
+    this.target.copy(this.camPos).addScaledVector(this.fwd, this.reach + 0.25);
     this.camera.position.copy(this.camPos);
-    this.camera.up.copy(this.lup);
+    this.camera.up.copy(this.camUp);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
   }
