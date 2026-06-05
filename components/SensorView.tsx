@@ -30,6 +30,8 @@ interface SensorViewProps {
   compare?: CompareOverlay;
   /** When provided, shows an RGB/Depth toggle (simulated D435i depth stream). */
   depth?: { on: boolean; onToggle: (v: boolean) => void };
+  /** Render as a flow card inside the Feeds dock (no absolute positioning) instead of a floating PIP. */
+  inline?: boolean;
 }
 
 /**
@@ -38,7 +40,7 @@ interface SensorViewProps {
  * sensor camera — "what the footage looks like" to the robot / teleoperator.
  * The inner host div follows the selected camera stream profile aspect ratio.
  */
-export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onClose, title = 'Sensor View · D435i', secondary = false, topRem, compare, depth }: SensorViewProps) {
+export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onClose, title = 'Sensor View · D435i', secondary = false, topRem, compare, depth, inline = false }: SensorViewProps) {
   const panelStyle = isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/70 border-white/80 text-slate-800';
   // Tuck the panel left of the analysis sidebar when it's open (desktop only).
   const rightClass = sidebarOpen ? 'min-[660px]:right-[25rem]' : 'min-[660px]:right-6';
@@ -47,8 +49,13 @@ export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onC
   const topStyle = topRem !== undefined ? { top: `${topRem}rem` } : undefined;
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
 
+  // Inline = a flow card inside the Feeds dock; otherwise a free-floating absolute PIP.
+  const rootClass = inline
+    ? `relative w-full rounded-xl border shadow-sm overflow-hidden ${panelStyle}`
+    : `absolute ${topClass} right-6 ${rightClass} z-30 w-72 max-[660px]:w-56 rounded-2xl glass-panel shadow-xl overflow-hidden ${panelStyle}`;
+
   return (
-    <div style={topStyle} className={`absolute ${topClass} right-6 ${rightClass} z-30 w-72 max-[660px]:w-56 rounded-2xl glass-panel shadow-xl overflow-hidden ${panelStyle}`}>
+    <div style={inline ? undefined : topStyle} className={rootClass}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-black/5">
         <div className="flex items-center gap-2">
           <Video className="w-3.5 h-3.5 text-indigo-500" />

@@ -14,6 +14,7 @@ import { WorkspaceDock } from './components/WorkspaceDock';
 import { Measurement } from './MeasureTool';
 import { RobotSelector } from './components/RobotSelector';
 import { SensorView } from './components/SensorView';
+import { FeedsDock } from './components/FeedsDock';
 import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_RGB_640X480_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
@@ -173,6 +174,8 @@ export function App() {
   const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
+  // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
+  const [feedsOpen, setFeedsOpen] = useState(() => window.innerWidth >= 660);
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
   const [dockOpen, setDockOpen] = useState(true);
@@ -408,12 +411,12 @@ export function App() {
   useEffect(() => {
     const r = rig();
     if (isLoading || !r) return;
-    if (cameraToggles.sensorPip && sensorViewRef.current) {
+    if (cameraToggles.sensorPip && feedsOpen && sensorViewRef.current) {
       r.attachPip(sensorViewRef.current);
     }
     return () => { rig()?.detachPip(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, cameraToggles.sensorPip]);
+  }, [isLoading, cameraToggles.sensorPip, feedsOpen]);
 
   // Wrist cameras: one gripper-mounted feed PER arm (primary = live; ghost arms = static mount
   // preview). The master toggle enables them all; each arm's PIP attaches via a stable callback ref.
@@ -1255,54 +1258,57 @@ export function App() {
             rodT={rodT}
           />
 
-          {/* Explicit launcher to REOPEN the Embodied Reasoning panel once it's closed. */}
-          {!showSidebar && (
-            <button
-              onClick={() => setShowSidebar(true)}
-              title="Open Embodied Reasoning"
-              className={`absolute top-6 right-0 z-30 flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-l-2xl glass-panel shadow-xl text-[11px] font-bold uppercase tracking-widest transition-transform hover:-translate-x-0.5 ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/80 border-white/80 text-slate-800'}`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Reasoning
-            </button>
-          )}
-
-          {cameraToggles.sensorPip && (
-            <SensorView
-              canvasHostRef={sensorViewRef}
-              isDarkMode={isDarkMode}
-              sidebarOpen={showSidebar}
-              aspect={intrinsics.aspect}
-              onClose={() => handleCameraToggle('sensorPip', false)}
-              compare={{
-                src: JETSON_SCENE_STREAM,
-                on: sceneOverlayOn, onToggle: setSceneOverlayOn,
-                opacity: overlayOpacity, onOpacity: setOverlayOpacity,
-                blend: overlayBlend, onBlend: setOverlayBlend,
-              }}
-              depth={{ on: depthView, onToggle: setDepthView }}
-            />
-          )}
-
-          {wristView && armInstances.map((arm, i) => (
-            <SensorView
-              key={arm.id}
-              canvasHostRef={wristRefCb(arm.id)}
-              isDarkMode={isDarkMode}
-              sidebarOpen={showSidebar}
-              aspect={16 / 9}
-              title={`Wrist Cam · ${arm.label}`}
-              // Stack under the D435i feed (if shown), then one below another (~13rem each).
-              topRem={(cameraToggles.sensorPip ? 15.5 : 1.5) + i * 13}
-              onClose={() => setWristView(false)}
-              // Only the PRIMARY arm has a real wrist cam to compare against (the follower's HBVCAM).
-              compare={arm.primary ? {
-                src: JETSON_WRIST_STREAM,
-                on: wristOverlayOn, onToggle: setWristOverlayOn,
-                opacity: overlayOpacity, onOpacity: setOverlayOpacity,
-                blend: overlayBlend, onBlend: setOverlayBlend,
-              } : undefined}
-            />
-          ))}
+          {/* Consolidated camera feeds + reasoning toggle (replaces the old floating PIP pile). */}
+          <FeedsDock
+            isDarkMode={isDarkMode}
+            open={feedsOpen}
+            onToggle={() => setFeedsOpen((v) => !v)}
+            reasoningOpen={showSidebar}
+            onReasoning={() => setShowSidebar((v) => !v)}
+            sidebarOpen={showSidebar}
+            toggles={{
+              overhead: cameraToggles.sensorPip, onOverhead: (v) => handleCameraToggle('sensorPip', v),
+              wrist: wristView, onWrist: setWristView,
+            }}
+            feedCount={(cameraToggles.sensorPip ? 1 : 0) + (wristView ? armInstances.length : 0)}
+          >
+            {cameraToggles.sensorPip && (
+              <SensorView
+                inline
+                canvasHostRef={sensorViewRef}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={intrinsics.aspect}
+                onClose={() => handleCameraToggle('sensorPip', false)}
+                compare={{
+                  src: JETSON_SCENE_STREAM,
+                  on: sceneOverlayOn, onToggle: setSceneOverlayOn,
+                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                  blend: overlayBlend, onBlend: setOverlayBlend,
+                }}
+                depth={{ on: depthView, onToggle: setDepthView }}
+              />
+            )}
+            {wristView && armInstances.map((arm) => (
+              <SensorView
+                inline
+                key={arm.id}
+                canvasHostRef={wristRefCb(arm.id)}
+                isDarkMode={isDarkMode}
+                sidebarOpen={showSidebar}
+                aspect={16 / 9}
+                title={`Wrist Cam · ${arm.label}`}
+                onClose={() => setWristView(false)}
+                // Only the PRIMARY arm has a real wrist cam to compare against (the follower's HBVCAM).
+                compare={arm.primary ? {
+                  src: JETSON_WRIST_STREAM,
+                  on: wristOverlayOn, onToggle: setWristOverlayOn,
+                  opacity: overlayOpacity, onOpacity: setOverlayOpacity,
+                  blend: overlayBlend, onBlend: setOverlayBlend,
+                } : undefined}
+              />
+            ))}
+          </FeedsDock>
 
           {/* Consolidated object-centric control dock (SO-101 twin) */}
           {!sceneIsFranka && dockOpen && mode === 'edit' && (
