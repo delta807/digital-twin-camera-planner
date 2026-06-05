@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, Camera, ChevronDown, Crosshair, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Search, Trash2 } from 'lucide-react';
+import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Ruler, Search, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
@@ -71,6 +71,8 @@ export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;
   onSelect: (e: DockObjectEntity) => void;
+  hidden: Set<string>;
+  onToggleVisible: (e: DockObjectEntity) => void;
 }
 
 interface WorkspaceDockProps {
@@ -146,14 +148,21 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
             <div className="space-y-0.5">
               {objects.entities.map((e) => {
                 const active = e.key === objects.selectedKey;
+                const isHidden = objects.hidden.has(e.key);
                 const on = isDarkMode ? 'bg-indigo-500/25 text-indigo-200' : 'bg-indigo-600/10 text-indigo-700';
                 const off = isDarkMode ? 'hover:bg-white/5 text-slate-300' : 'hover:bg-black/5 text-slate-700';
                 return (
-                  <button key={e.key} onClick={() => objects.onSelect(e)}
-                    className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-left ${active ? on : off}`}>
-                    <span className={`w-1.5 h-1.5 rounded-sm ${active ? 'bg-yellow-400' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                    <span className="truncate">{e.label}</span>
-                  </button>
+                  <div key={e.key} className={`group w-full flex items-center gap-2 pr-1 rounded-md ${active ? on : off}`}>
+                    <button onClick={() => objects.onSelect(e)}
+                      className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-1 text-[11px] text-left ${isHidden ? 'opacity-40' : ''}`}>
+                      <span className={`w-1.5 h-1.5 rounded-sm shrink-0 ${active ? 'bg-yellow-400' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                      <span className="truncate">{e.label}</span>
+                    </button>
+                    <button onClick={() => objects.onToggleVisible(e)} title={isHidden ? 'Show' : 'Hide'}
+                      className={`shrink-0 p-1 rounded ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'} ${isHidden ? subtle : (isDarkMode ? 'text-slate-400' : 'text-slate-500')} ${isHidden ? '' : 'opacity-0 group-hover:opacity-100'}`}>
+                      {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  </div>
                 );
               })}
             </div>

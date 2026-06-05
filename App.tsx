@@ -669,6 +669,18 @@ export function App() {
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
   };
 
+  // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object'; bodyId?: number; armId?: string }) => {
+    setHiddenKeys((prev) => {
+      const next = new Set(prev);
+      const willHide = !next.has(e.key);
+      if (willHide) next.add(e.key); else next.delete(e.key);
+      simRef.current?.setEntityVisible(e.kind, e.kind === 'object' ? e.bodyId : e.armId, !willHide);
+      return next;
+    });
+  };
+
   const handleMeasureActive = (v: boolean) => {
     setMeasureActive(v);
     simRef.current?.renderSys.measureTool?.setActive(v);
@@ -1226,7 +1238,7 @@ export function App() {
           {!sceneIsFranka && dockOpen && mode === 'edit' && (
             <WorkspaceDock
               isDarkMode={isDarkMode}
-              objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect }}
+              objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,
                 onUnit: setLengthUnit,
