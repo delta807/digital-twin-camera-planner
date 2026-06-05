@@ -46,6 +46,22 @@ chosen in sim hold up in the real world.
 - [x] **#9** right-click radial menu (Jog/Move/Aim), reusing existing mode fns + arm rotate gizmo (7c695bd).
 - [x] **#1 trio** NavCube (snapToView) + dock search (KW filter) + per-object eye toggles (edd07b8). DONE.
 
+## BATCH (Jun 2026) — NavCube / wrist cam / station feeds / HUD declutter
+- [x] **NavCube** (ed108fa) — replaced the flat SVG with a real camera-synced CSS-3D view-cube
+      (faces snap views, hover, Iso reset). Subagents confirmed neither OrcaSlicer NOR BambuStudio
+      ships a view-cube widget (keyboard + Camera::select_view only), so it's original, using their
+      Z-up orientation set.
+- [x] **Wrist cam direction** (f7539e0) — it pointed inward at the base; aim() used local-Z (which
+      lies horizontal) as "up". Fixed to local-X (the bracket axis) → now looks down over the
+      fingertips at the table, matching the real HBVCAM mount.
+- [x] **#3 per-station overhead feeds** (92f8a24) — StationCamera on each station's post → live
+      overhead PIP per workstation, inside the new Feeds dock. (Completes #6's deferred camera half.)
+- [x] **#4 HUD declutter** — right edge: all camera PIPs consolidated into ONE bounded, scrollable
+      Feeds dock + Reasoning toggle on a slim rail (00175a3). Top/left: LayoutProfiles → rail toggle
+      (clears the title collision), legend lifted above the jog cluster (510babe). Approved Option 2
+      (three edge docks). REMAINING (optional next): fuller LeftRail tabs (fold NavCube/CompareView
+      into a View panel), TweaksPanel into the toolbar, formal z-index scale.
+
 ## BIGGER ITEMS
 - [x] **Save layout profiles** (f6dbc17) — save/restore the positional config (worktop + arm bases +
       overhead camera pose) as named profiles, persisted in localStorage. So mapped real-rig layouts
