@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Box, Move3d, Columns2, PanelLeft, Sparkles } from 'lucide-react';
+import { Box, Move3d, Columns2, PanelLeft, Sparkles, Bookmark } from 'lucide-react';
 
 export type WorkMode = 'edit' | 'compare';
 
@@ -15,6 +15,8 @@ interface Props {
   onToggleDock: () => void;
   perceiveOpen: boolean;
   onTogglePerceive: () => void;
+  layoutsOpen: boolean;
+  onToggleLayouts: () => void;
   isDarkMode: boolean;
 }
 
@@ -41,7 +43,7 @@ function RailBtn({ icon: Icon, label, active, accent, onClick, isDarkMode }: {
  * ModeRail — the lab-instrument left icon rail: brand mark, the Edit/Compare work modes, and
  * dock / perceive toggles. Sits at the far-left edge; the dock + left-anchored overlays shift right.
  */
-export function ModeRail({ mode, onMode, dockOpen, onToggleDock, perceiveOpen, onTogglePerceive, isDarkMode }: Props) {
+export function ModeRail({ mode, onMode, dockOpen, onToggleDock, perceiveOpen, onTogglePerceive, layoutsOpen, onToggleLayouts, isDarkMode }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/85 border-white/80 text-slate-700';
   return (
     <div className={`absolute left-0 top-0 bottom-0 z-40 w-14 flex flex-col items-center py-3 gap-1.5 glass-panel border-r ${panel}`}>
@@ -50,6 +52,7 @@ export function ModeRail({ mode, onMode, dockOpen, onToggleDock, perceiveOpen, o
       </div>
       <RailBtn icon={Move3d} label="Edit workcell" active={mode === 'edit'} onClick={() => onMode('edit')} isDarkMode={isDarkMode} />
       <RailBtn icon={Columns2} label="Compare A/B cameras" active={mode === 'compare'} onClick={() => onMode('compare')} isDarkMode={isDarkMode} />
+      <RailBtn icon={Bookmark} label="Layout profiles" active={layoutsOpen} onClick={onToggleLayouts} isDarkMode={isDarkMode} />
       <div className="flex-1" />
       <RailBtn icon={PanelLeft} label={dockOpen ? 'Hide dock' : 'Show dock'} active={dockOpen} onClick={onToggleDock} isDarkMode={isDarkMode} />
       <RailBtn icon={Sparkles} label="Embodied reasoning" active={perceiveOpen} accent onClick={onTogglePerceive} isDarkMode={isDarkMode} />

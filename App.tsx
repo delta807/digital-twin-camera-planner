@@ -176,6 +176,8 @@ export function App() {
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
   const [feedsOpen, setFeedsOpen] = useState(() => window.innerWidth >= 660);
+  // Layout-profiles panel is a toggle (off the always-on top bar that collided with the title).
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
   const [dockOpen, setDockOpen] = useState(true);
@@ -1174,7 +1176,7 @@ export function App() {
             onFrameSelection={handleFrameSelection}
           />
 
-          {!sceneIsFranka && (
+          {!sceneIsFranka && layoutsOpen && (
             <LayoutProfiles
               profiles={profiles}
               onSave={handleSaveProfile}
@@ -1190,6 +1192,7 @@ export function App() {
                 mode={mode} onMode={setMode}
                 dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => !v)}
                 perceiveOpen={showSidebar} onTogglePerceive={() => setShowSidebar((v) => !v)}
+                layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
                 isDarkMode={isDarkMode}
               />
               <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />
