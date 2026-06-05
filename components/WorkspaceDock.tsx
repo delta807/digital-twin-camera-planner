@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Search, Trash2 } from 'lucide-react';
+import { Box, Boxes, Camera, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Move3d, Plus, Rotate3d, Save, Search, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
@@ -89,6 +89,8 @@ interface WorkspaceDockProps {
   workcell: DockWorkcellProps;
   arms: DockArmsProps;
   camera: DockCameraProps;
+  /** Open the layout-profiles panel to save/load the whole workspace. */
+  onSaveWorkspace?: () => void;
 }
 
 const PLANNER_ROWS: Array<{ key: keyof PlannerToggles; label: string }> = [
@@ -113,7 +115,7 @@ const CAMERA_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
  * and live coordinates. Replaces the old scattered CameraControls / ReachabilityControls /
  * CoordinatesHud panels.
  */
-export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, camera, onSaveWorkspace }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -138,8 +140,16 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, came
   return (
     <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
-        <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
-        <span className={`block text-[9px] ${subtle}`}>origin = table center · X→ Y↑ Z out</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
+          {onSaveWorkspace && (
+            <button onClick={onSaveWorkspace} title="Save / load this workspace layout"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+              <Save className="w-3.5 h-3.5" /> Save
+            </button>
+          )}
+        </div>
+        <span className={`block text-[9px] ${subtle} mt-1`}>origin = table center · X→ Y↑ Z out</span>
         <div className={`mt-2 flex items-center gap-1.5 px-2 py-1 rounded-md border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
           <Search className={`w-3 h-3 ${subtle}`} />
           <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search controls…  ( / )" className={`flex-1 min-w-0 bg-transparent text-[11px] outline-none ${isDarkMode ? 'placeholder:text-slate-500' : 'placeholder:text-slate-400'}`} />

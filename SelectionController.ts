@@ -83,6 +83,10 @@ export class SelectionController {
   getWristPose?: (armId: string) => { pos: THREE.Vector3; quat: THREE.Quaternion } | null;
   private selectedWristArmId: string | undefined = undefined;
   private wristAim = false;
+  // Task objects (boxes) reuse the proxy gizmo: move = teleport freejoint XY; aim = yaw about Z.
+  onObjectMove?: (bodyId: number, x: number, y: number, z: number) => void;
+  onObjectRotate?: (bodyId: number, yaw: number) => void;
+  private objectAim = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -137,6 +141,11 @@ export class SelectionController {
       if (this.selected?.kind === 'wristcam') {
         if (this.wristAim) this.onWristAim?.(this.selected.wristArmId!, this.proxy.quaternion);
         else this.onWristMove?.(this.selected.wristArmId!, this.proxy.position);
+        return;
+      }
+      if (this.selected?.kind === 'object' && this.selected.bodyId !== undefined) {
+        if (this.objectAim) this.onObjectRotate?.(this.selected.bodyId, this.proxy.rotation.z);
+        else this.onObjectMove?.(this.selected.bodyId, this.proxy.position.x, this.proxy.position.y, this.proxy.position.z);
         return;
       }
       if (this.selected?.kind !== 'post') return;
@@ -274,7 +283,13 @@ export class SelectionController {
         this.box.setFromCenterAndSize(pose.pos, this.vSize.set(0.06, 0.06, 0.06)); box = this.box;
         if (!(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.copy(pose.pos); this.proxy.quaternion.copy(pose.quat); }
       }
-    } else if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
+    } else if (this.selectedBody) {
+      this.box.setFromObject(this.selectedBody); box = this.box;
+      // Keep the move/aim gizmo on the box centre (unless mid-drag) so physics nudges don't desync it.
+      if (this.selected.kind === 'object' && this.control.enabled && !(this.control as unknown as { dragging: boolean }).dragging) {
+        this.box.getCenter(this.vCenter); this.proxy.position.copy(this.vCenter);
+      }
+    }
     if (!box || box.isEmpty()) return;
     box.getSize(this.vSize);
     box.getCenter(this.vCenter);
@@ -360,17 +375,41 @@ export class SelectionController {
   }
 
   private selectObject(body: THREE.Object3D) {
-    this.control.enabled = false;
-    this.helper.visible = false;
+    this.objectAim = false; // fresh selection starts in move (translate) mode
     this.outline.rotation.set(0, 0, 0);
     this.outline.visible = true;
     this.selectedBody = body;
     const label = (body.userData.bodyName as string) || `Object ${body.userData.bodyID}`;
     this.box.setFromObject(body);
     this.box.getCenter(this.vCenter);
+    // XY-translate gizmo so a box can be dragged across the table (Z kept; numeric field still edits it).
+    const dynamic = body.userData.dynamic !== false; // only freejoint blocks can be moved
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    this.proxy.rotation.set(0, 0, 0);
+    this.proxy.position.copy(this.vCenter);
+    this.control.enabled = dynamic; this.helper.visible = dynamic;
     this.selected = { kind: 'object', label, x: this.vCenter.x, y: this.vCenter.y, z: this.vCenter.z, movable: true, bodyId: body.userData.bodyID as number };
     this.update();             // size + position the outline from the live bbox
     this.onChange?.(this.selected);
+  }
+
+  /** Switch a selected task object between Move (translate XY) and Aim (rotate about Z). */
+  setObjectAim(rotate: boolean) {
+    this.objectAim = rotate;
+    if (this.selected?.kind !== 'object') return;
+    if (rotate) { this.control.setMode('rotate'); this.control.showX = false; this.control.showY = false; this.control.showZ = true; }
+    else { this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = false; }
+    this.control.enabled = true; this.helper.visible = true;
+  }
+
+  /** World point on the table plane (z=0) under a screen pixel — for "create here" on empty space. */
+  groundPointAt(clientX: number, clientY: number): { x: number; y: number } | null {
+    const rect = this.dom.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const hit = new THREE.Vector3();
+    return this.raycaster.ray.intersectPlane(plane, hit) ? { x: hit.x, y: hit.y } : null;
   }
 
   /** Select a specific arm (by id; undefined = the primary physics arm) — outline + drag gizmo. */

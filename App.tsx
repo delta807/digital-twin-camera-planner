@@ -31,7 +31,7 @@ import { CompareView } from './components/CompareView';
 import type { CompareSetup } from './components/SceneMap';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
-import { Hand, Move as MoveIcon, RotateCw } from 'lucide-react';
+import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Pin, RotateCw, Trash2 } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
@@ -172,7 +172,7 @@ export function App() {
   };
   // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
   // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
-  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' } | null>(null);
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' | 'object' | 'create'; gx?: number; gy?: number } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
@@ -587,36 +587,106 @@ export function App() {
     rig()?.setDragMode(mode);
   };
 
-  // Right-click an arm/camera → open the radial mode menu at the cursor.
+  // Right-click an item → mode/delete/duplicate radial; right-click empty space → a "create here" radial.
   const handleContextMenu = (e: React.MouseEvent) => {
     if (sceneIsFranka || isLoading) return;
-    const k = simRef.current?.renderSys.selection.selectAt(e.clientX, e.clientY);
-    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam') { e.preventDefault(); setRadial({ x: e.clientX, y: e.clientY, kind: k }); }
+    const sel = simRef.current?.renderSys.selection;
+    const k = sel?.selectAt(e.clientX, e.clientY);
+    e.preventDefault();
+    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object') {
+      setRadial({ x: e.clientX, y: e.clientY, kind: k });
+    } else {
+      const g = sel?.groundPointAt(e.clientX, e.clientY) ?? { x: 0, y: 0 };
+      setRadial({ x: e.clientX, y: e.clientY, kind: 'create', gx: g.x, gy: g.y });
+    }
   };
-  const radialItems = (kind: 'arm' | 'camera' | 'station' | 'wristcam'): RadialItem[] =>
-    kind === 'arm'
-      ? [
-          { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
-          { id: 'move', label: 'Move', icon: MoveIcon },
-          { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
-        ]
-      : [
-          { id: 'move', label: 'Move', icon: MoveIcon, active: kind === 'camera' && dragMode === 'translate' },
-          { id: 'aim', label: kind === 'station' ? 'Aim · yaw' : 'Aim', icon: RotateCw, active: kind === 'camera' && dragMode === 'rotate' },
-        ];
+  // Build the radial items for the object under the cursor — reusing the existing add/remove/clone
+  // handlers (DRY): Move / Aim live on the gizmo; Duplicate / Delete reuse the dock handlers.
+  const radialItems = (kind: NonNullable<typeof radial>['kind']): RadialItem[] => {
+    if (kind === 'create') return [
+      { id: 'new-station', label: 'Workcell', icon: BoxIcon },
+      { id: 'new-camera', label: 'D435i cam', icon: CameraIcon },
+      { id: 'new-arm', label: 'SO-101', icon: Bot },
+      { id: 'new-post', label: 'Mount post', icon: Pin },
+    ];
+    if (kind === 'object') return [
+      { id: 'move', label: 'Move', icon: MoveIcon },
+      { id: 'aim', label: 'Aim', icon: RotateCw },
+      { id: 'hide', label: 'Hide', icon: EyeOff },
+    ];
+    if (kind === 'wristcam') return [
+      { id: 'move', label: 'Move', icon: MoveIcon },
+      { id: 'aim', label: 'Aim', icon: RotateCw },
+    ];
+    if (kind === 'arm') {
+      const isPrimary = (armInstances.find((a) => a.id === selectedArmId)?.primary) ?? true;
+      return [
+        { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
+        { id: 'move', label: 'Move', icon: MoveIcon },
+        { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
+        { id: 'duplicate', label: 'Duplicate', icon: Copy },
+        ...(isPrimary ? [] : [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem]),
+      ];
+    }
+    if (kind === 'station') {
+      const isPrimary = selection?.stationId === 'primary';
+      return [
+        { id: 'move', label: 'Move', icon: MoveIcon },
+        { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
+        { id: 'duplicate', label: 'Duplicate', icon: Copy },
+        ...(isPrimary ? [] : [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem]),
+      ];
+    }
+    // camera: primary (own rig) gets Move/Aim; an extra camera also gets Duplicate/Delete.
+    const isExtra = !!selection?.cameraId;
+    return [
+      { id: 'move', label: 'Move', icon: MoveIcon, active: kind === 'camera' && !isExtra && dragMode === 'translate' },
+      { id: 'aim', label: 'Aim', icon: RotateCw, active: kind === 'camera' && !isExtra && dragMode === 'rotate' },
+      ...(isExtra ? [{ id: 'duplicate', label: 'Duplicate', icon: Copy } as RadialItem, { id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem] : []),
+    ];
+  };
   const handleRadialSelect = (id: string) => {
-    const kind = radial?.kind;
+    const r = radial; const kind = r?.kind;
+    const sel = simRef.current?.renderSys.selection;
+    // ── Create-here actions (empty-space radial): place the new item at the clicked ground point ──
+    if (kind === 'create') {
+      const x = r?.gx ?? 0, y = r?.gy ?? 0;
+      if (id === 'new-station') handleAddStationAt(x, y);
+      else if (id === 'new-camera') handleAddExtraCameraAt(x, y);
+      else if (id === 'new-arm') handleAddArmAt(x, y);
+      else if (id === 'new-post') handleWorkcellChange({ ...workcellConfigRef.current, extraPosts: [...(workcellConfigRef.current.extraPosts ?? []), { x, y, height: workcellConfigRef.current.postHeight }] });
+      return;
+    }
     if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
     if (poseMode) togglePoseMode(); // move/aim need jog OFF (jog disables selection gizmos)
+    // ── Duplicate / Delete (reuse the dock handlers) ──
+    if (id === 'duplicate') {
+      if (kind === 'arm') handleAddArm();
+      else if (kind === 'station') { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }
+      else if (kind === 'camera' && selection?.cameraId) handleAddExtraCamera();
+      return;
+    }
+    if (id === 'delete') {
+      if (kind === 'arm' && selectedArmId) handleRemoveArm(selectedArmId);
+      else if (kind === 'station' && selection?.stationId && selection.stationId !== 'primary') handleRemoveStation(selection.stationId);
+      else if (kind === 'camera' && selection?.cameraId) handleRemoveExtraCamera(selection.cameraId);
+      return;
+    }
+    if (id === 'hide') {
+      // Route through the tree's visibility state so the Objects eye-toggle stays in sync (re-showable).
+      if (kind === 'object' && selection?.bodyId !== undefined) { toggleVisible({ key: `obj:${selection.bodyId}`, kind: 'object', bodyId: selection.bodyId }); sel?.deselect(); }
+      return;
+    }
+    // ── Move / Aim mode toggles ──
     if (kind === 'camera') {
-      // An extra camera uses the proxy gizmo (setCameraAim); the primary uses its own rig.
-      if (selection?.cameraId) simRef.current?.renderSys.selection.setCameraAim(id === 'aim');
+      if (selection?.cameraId) sel?.setCameraAim(id === 'aim');
       else handleDragMode(id === 'aim' ? 'rotate' : 'translate');
       return;
     }
-    if (kind === 'arm') simRef.current?.renderSys.selection.setArmAim(id === 'aim');
-    if (kind === 'station') simRef.current?.renderSys.selection.setStationAim(id === 'aim');
-    if (kind === 'wristcam') simRef.current?.renderSys.selection.setWristCamAim(id === 'aim');
+    if (kind === 'arm') sel?.setArmAim(id === 'aim');
+    if (kind === 'station') sel?.setStationAim(id === 'aim');
+    if (kind === 'wristcam') sel?.setWristCamAim(id === 'aim');
+    if (kind === 'object') sel?.setObjectAim(id === 'aim');
   };
 
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
@@ -771,6 +841,9 @@ export function App() {
     sel.getWristPose = (armId) => { const c = simRef.current?.renderSys.getWristCamera(armId); return c ? { pos: c.getWorldPos(), quat: c.getWorldQuat() } : null; };
     sel.onWristMove = (armId, world) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const o = c.worldToLocalOffset(world); setWristMount((m) => ({ ...m, posX: o.posX, posY: o.posY, posZ: o.posZ })); } };
     sel.onWristAim = (armId, quat) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(quat); setWristMount((m) => ({ ...m, tilt: c.worldDirToTilt(dir) })); } };
+    // Task objects (boxes): viewport move/aim gizmo → teleport / yaw the freejoint block.
+    sel.onObjectMove = (bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z);
+    sel.onObjectRotate = (bodyId, yaw) => simRef.current?.setTaskBodyYaw(bodyId, yaw);
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
@@ -946,20 +1019,34 @@ export function App() {
   // don't rebuild the setup each time — full shape/size/post copied. Placed in the +X aisle past the
   // rightmost worktop, with a paired arm clamped to its near edge.
   type StationShape = { shapeSides: number; length: number; width: number; postX: number; postY: number; postHeight: number };
-  const spawnStation = (src: StationShape) => {
+  const spawnStation = (src: StationShape, pos?: { x: number; y: number }) => {
     const n = nextStationNumberRef.current++;
     const id = `station-${n}`;
     const wc = workcellConfigRef.current;
     const existing = wc.stations ?? [];
+    // Place at an explicit point (right-click → create here) or auto-tuck into the +X aisle.
     const rightmost = existing.reduce((mx, s) => Math.max(mx, s.x + s.length / 2), wc.length / 2);
-    const sx = rightmost + 0.2 + src.length / 2;
-    handleWorkcellChange({ ...wc, stations: [...existing, { id, x: sx, y: 0, yaw: 0, ...src }] });
+    const sx = pos?.x ?? rightmost + 0.2 + src.length / 2;
+    const sy = pos?.y ?? 0;
+    handleWorkcellChange({ ...wc, stations: [...existing, { id, x: sx, y: sy, yaw: 0, ...src }] });
     // Read the counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
     const armNumber = nextArmNumberRef.current++;
     const armId = `so101-${armNumber}`;
     const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
-    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: -src.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
+    const arm: ArmInstance = { id: armId, label: `SO101 ${armNumber}`, x: sx, y: sy - src.width / 2, yaw: Math.PI / 2 - fwd, stationId: id };
     setArmInstances(prev => { const next = [...prev, arm]; setSelectedArmId(armId); simRef.current?.setArmInstances(next); return next; });
+  };
+  // ── "Create here" handlers (empty-space radial) — place a new item at the clicked ground point ──
+  const handleAddStationAt = (x: number, y: number) => { const wc = workcellConfigRef.current; spawnStation({ shapeSides: wc.shapeSides, length: wc.length, width: wc.width, postX: wc.postX, postY: wc.postY, postHeight: wc.postHeight }, { x, y }); };
+  const handleAddExtraCameraAt = (x: number, y: number) => {
+    const wc = workcellConfigRef.current; const n = nextExtraCamRef.current++;
+    handleWorkcellChange({ ...wc, extraCameras: [...(wc.extraCameras ?? []), { id: `cam-${n}`, x, y, z: 0.85, rotX: 0, rotY: 0, rotZ: 0 }] });
+    setExtraCamView(true);
+  };
+  const handleAddArmAt = (x: number, y: number) => {
+    const armNumber = nextArmNumberRef.current++;
+    const id = `so101-${armNumber}`;
+    setArmInstances(prev => { const next: ArmInstance[] = [...prev, { id, label: `SO101 ${armNumber}`, x, y, yaw: Math.PI / 2 }]; setSelectedArmId(id); simRef.current?.setArmInstances(next); return next; });
   };
   const handleAddStation = () => { const wc = workcellConfigRef.current; spawnStation({ shapeSides: wc.shapeSides, length: wc.length, width: wc.width, postX: wc.postX, postY: wc.postY, postHeight: wc.postHeight }); };
   const handleCloneStation = (id: string) => {
@@ -970,18 +1057,25 @@ export function App() {
   // paired arm moves with the worktop as a unit (rotated about the centre).
   const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number }>) => {
     const wc = workcellConfigRef.current;
-    // The primary worktop maps onto the top-level config (originX/originY/yaw + shape/size) — moving
-    // it is purely visual (the world origin stays at 0,0), so reach/coords are unaffected.
+    // The primary worktop maps onto the top-level config (originX/originY/yaw + shape/size). The
+    // primary arm is bolted to it, so a move/rotate carries the arm along (rotated about the table
+    // centre) — same rigid-body rule as a satellite station + its arm.
     if (id === 'primary') {
+      const prevOX = wc.originX ?? 0, prevOY = wc.originY ?? 0, prevYaw = wc.yaw ?? 0;
+      const nextOX = patch.x ?? prevOX, nextOY = patch.y ?? prevOY, nextYaw = patch.yaw ?? prevYaw;
       handleWorkcellChange({
-        ...wc,
-        ...(patch.x !== undefined ? { originX: patch.x } : {}),
-        ...(patch.y !== undefined ? { originY: patch.y } : {}),
-        ...(patch.yaw !== undefined ? { yaw: patch.yaw } : {}),
+        ...wc, originX: nextOX, originY: nextOY, yaw: nextYaw,
         ...(patch.shapeSides !== undefined ? { shapeSides: patch.shapeSides } : {}),
         ...(patch.length !== undefined ? { length: patch.length } : {}),
         ...(patch.width !== undefined ? { width: patch.width } : {}),
       });
+      const dx = nextOX - prevOX, dy = nextOY - prevOY, dyaw = nextYaw - prevYaw;
+      const arm = armInstancesRef.current.find((a) => a.primary);
+      if (arm && (dx || dy || dyaw)) {
+        const ox = arm.x - prevOX, oy = arm.y - prevOY;
+        const c = Math.cos(dyaw), s = Math.sin(dyaw);
+        handleArmChange(arm.id, { x: prevOX + (ox * c - oy * s) + dx, y: prevOY + (ox * s + oy * c) + dy, yaw: arm.yaw + dyaw });
+      }
       return;
     }
     const prev = (wc.stations ?? []).find((s) => s.id === id);
@@ -1491,7 +1585,22 @@ export function App() {
                   playbackSpeed={playbackSpeed}
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
                   inspector={selection ? inspectorEl(true) : null}
-                  headerContent={!sceneIsFranka ? <MetricBar inline armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} /> : null}
+                  headerContent={!sceneIsFranka ? (
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-[11px] font-semibold whitespace-nowrap">SO-101 Digital Twin</span>
+                      <span className="w-px h-5 bg-current opacity-15" />
+                      <div className="flex flex-col items-end leading-none">
+                        <span className="text-[8px] font-bold uppercase tracking-[0.08em] opacity-60 whitespace-nowrap">Arms</span>
+                        <span className="font-mono text-[12px] font-semibold tabular-nums">{armInstances.length}</span>
+                      </div>
+                      <span className="w-px h-5 bg-current opacity-15" />
+                      <div className="flex items-center gap-1" title="Display units for all length readouts">
+                        {(['m', 'mm'] as const).map((u) => (
+                          <button key={u} onClick={() => setLengthUnit(u)} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${lengthUnit === u ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600 text-white') : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>{u}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   feeds={!sceneIsFranka ? feedsEl : null}
                   toolbar={toolbarEl}
                   overlays={!sceneIsFranka ? overlaysEl : null}
@@ -1505,6 +1614,7 @@ export function App() {
           {!sceneIsFranka && dockOpen && mode === 'edit' && (
             <WorkspaceDock
               isDarkMode={isDarkMode}
+              onSaveWorkspace={() => setLayoutsOpen(true)}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,

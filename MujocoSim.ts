@@ -384,7 +384,21 @@ export class MujocoSim {
         if (jadr < 0 || m.jnt_type[jadr] !== 0) return; // only dynamic (freejoint) blocks
         const a = m.jnt_qposadr[jadr];
         d.qpos[a] = x; d.qpos[a + 1] = y; d.qpos[a + 2] = Math.max(z, 0.018);
-        d.qpos[a + 3] = 1; d.qpos[a + 4] = 0; d.qpos[a + 5] = 0; d.qpos[a + 6] = 0;
+        // Preserve the block's orientation (don't snap to identity) so a Move after an Aim keeps its yaw.
+        const dof = m.jnt_dofadr[jadr];
+        for (let k = 0; k < 6; k++) d.qvel[dof + k] = 0;
+        this.mujoco.mj_forward(m, d);
+    }
+
+    /** Rotate a freejoint task block about Z (yaw, radians), keeping its position. */
+    setTaskBodyYaw(bodyId: number, yaw: number) {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return;
+        const jadr = m.body_jntadr[bodyId];
+        if (jadr < 0 || m.jnt_type[jadr] !== 0) return; // freejoint only
+        const a = m.jnt_qposadr[jadr];
+        const h = yaw / 2;
+        d.qpos[a + 3] = Math.cos(h); d.qpos[a + 4] = 0; d.qpos[a + 5] = 0; d.qpos[a + 6] = Math.sin(h);
         const dof = m.jnt_dofadr[jadr];
         for (let k = 0; k < 6; k++) d.qvel[dof + k] = 0;
         this.mujoco.mj_forward(m, d);
