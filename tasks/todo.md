@@ -231,3 +231,12 @@ Radial audit (min Move/Aim/Duplicate/Delete):
       also gets Move/Duplicate via right-click.
 - Decisions taken: #1 per-clone FK jog = next, on its own (articulated ghost rebuild); #9 compare =
       two live 3D scenes sharing the NavCube camera (queued).
+
+## #1 Per-clone FK jog (done)
+- Each additional SO-101 now jogs independently via a per-joint slider in its Selection card.
+- Approach: FK ORACLE — transiently pose the single MuJoCo arm to a ghost's joint angles, read the
+  base-relative body/TCP world transforms (MuJoCo's own FK), restore, and apply to the ghost's flat
+  body-clones. No hand-rolled articulation math; reuses the proven snapshot path. Primary jogs live
+  physics (drag still works). joints[] persists with profiles.
+- Verified: 2nd arm posed independently (extends+rotates) with its own wrist feed; tsc+smoke green.
+- Follow-up (optional): viewport click-drag jog for ghosts (articulated nodes) — slider jog covers it now.
