@@ -1102,6 +1102,8 @@ export function App() {
   const handleMeasureActive = (v: boolean) => {
     setMeasureActive(v);
     simRef.current?.renderSys.measureTool?.setActive(v);
+    // Measurements are transient: exiting measure mode wipes them (no separate "clear all").
+    if (!v) simRef.current?.renderSys.measureTool?.clear();
     // Measure and select both consume clicks — only one is live at a time.
     simRef.current?.renderSys.selection?.setEnabled(!v);
   };
@@ -2072,7 +2074,7 @@ export function App() {
                           <button onClick={() => simRef.current?.renderSys.measureTool?.remove(m.id)} className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>✕</button>
                         </div>
                       ))}
-                    {measurements.length > 0 && <button onClick={() => simRef.current?.renderSys.measureTool?.clear()} className={`w-full py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300' : 'bg-black/5 text-slate-600'}`}>Clear all</button>}
+                    {measurements.length > 0 && <p className={`text-[9px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Measurements clear when you exit measure mode.</p>}
                   </div>
                 )}
               </div>

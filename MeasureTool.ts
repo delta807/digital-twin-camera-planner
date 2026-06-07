@@ -12,7 +12,10 @@ const SNAP_PX = 12;
 /** Feature-edge angle (deg): keep sharp edges (box/slab 90°, cylinder rim 90°), drop facet seams. */
 const FEATURE_ANGLE = 30;
 type SnapType = 'vertex' | 'center' | 'edge' | 'surface';
-const SNAP_COLOR: Record<SnapType, number> = { vertex: 0x22c55e, center: 0xa855f7, edge: 0x3b82f6, surface: 0xf59e0b };
+const SNAP_COLOR: Record<SnapType, number> = { vertex: 0x22c55e, center: 0xec4899, edge: 0x3b82f6, surface: 0xf59e0b };
+/** Accent per measurement kind (line + markers + label border). Point = amber, gap = teal. */
+const KIND_COLOR = { point: 0xf59e0b, gap: 0x14b8a6 };
+const KIND_HEX: Record<MeasureMode, string> = { point: '#b45309', gap: '#0f766e' };
 const SNAP_NAME: Record<SnapType, string> = { vertex: 'vertex', center: 'center', edge: 'edge', surface: 'surface' };
 const AXIS_COLOR = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
 
@@ -201,7 +204,7 @@ export class MeasureTool {
     if (!hit) return;
     const mesh = hit.object as THREE.Mesh;
     if (!this.pendingObj) {
-      const marker = this.makeMarker(hit.point.clone(), 0xa855f7);
+      const marker = this.makeMarker(hit.point.clone(), KIND_COLOR.gap);
       this.group.add(marker);
       this.pendingObj = { mesh, marker };
     } else if (mesh !== this.pendingObj.mesh) {
@@ -279,7 +282,7 @@ export class MeasureTool {
     const id = `m${++this.idCounter}`;
     const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
     const distance = Math.hypot(dx, dy, dz);
-    const lineColor = kind === 'gap' ? 0xa855f7 : 0xf59e0b;
+    const lineColor = KIND_COLOR[kind];
 
     const objects: THREE.Object3D[] = [];
     // Direct dimension line (draws over geometry).
@@ -295,9 +298,10 @@ export class MeasureTool {
     const c1 = new THREE.Vector3(b.x, a.y, a.z), c2 = new THREE.Vector3(b.x, b.y, a.z);
     objects.push(this.makeAxisLine(a, c1, AXIS_COLOR.x), this.makeAxisLine(c1, c2, AXIS_COLOR.y), this.makeAxisLine(c2, b, AXIS_COLOR.z));
 
-    // Multi-line label at the midpoint (CSS2D = crisp DOM text): total + Δ axes.
+    // Multi-line label at the midpoint (CSS2D = crisp DOM text): total + Δ axes. White background so
+    // the readings are easy to read against any scene; a coloured border keys it to point/gap.
     const labelEl = document.createElement('div');
-    labelEl.style.cssText = `padding:2px 7px;border-radius:6px;background:${kind === 'gap' ? '#a855f7' : '#f59e0b'};color:#1a1a1a;font:600 11px ui-sans-serif,system-ui;white-space:nowrap;text-align:center;line-height:1.25;transform:translateY(-2px);`;
+    labelEl.style.cssText = `padding:2px 7px;border-radius:6px;background:rgba(255,255,255,0.96);color:#1f2937;border:1px solid ${KIND_HEX[kind]};box-shadow:0 1px 4px rgba(0,0,0,0.18);font:600 11px ui-sans-serif,system-ui;white-space:nowrap;text-align:center;line-height:1.25;transform:translateY(-2px);`;
     const label = new CSS2DObject(labelEl);
     label.position.copy(a).add(b).multiplyScalar(0.5);
     objects.push(label);
@@ -313,7 +317,7 @@ export class MeasureTool {
   /** Two-line label: bold total + dim ΔX/ΔY/ΔZ, formatted in the current unit. */
   private renderLabel(el: HTMLDivElement, d: Measurement) {
     const f = (v: number) => formatLen(v, this.unit);
-    const top = document.createElement('div'); top.style.fontWeight = '700'; top.textContent = f(d.distance);
+    const top = document.createElement('div'); top.style.fontWeight = '700'; top.style.color = KIND_HEX[d.kind]; top.textContent = f(d.distance);
     const sub = document.createElement('div'); sub.style.cssText = 'font-size:9px;opacity:0.8;';
     sub.textContent = `Δ ${f(d.dx)}  ${f(d.dy)}  ${f(d.dz)}`;
     el.replaceChildren(top, sub);

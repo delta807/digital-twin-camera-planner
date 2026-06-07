@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ChevronDown, Crosshair, RotateCcw, Trash2, X } from 'lucide-react';
 import type { SelectionInfo } from '../SelectionController';
 import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
+import { D435I_PRESET, DEFAULT_WORKCELL_CONFIG } from '../types';
 import type { PlannerToggles } from '../WorkspacePlanner';
 
 /** Camera controls migrated from the dock into the primary-camera selection card. */
@@ -139,11 +140,11 @@ export function SelectionInspector(p: InspectorProps) {
           {sel.stationId === 'primary' && p.workcell && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
               <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails &amp; post</span>
-              <WMSlider label="Rail height" min={12} max={80} step={2} value={p.workcell.config.barHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barHeight: v / 1000 })} subtle={subtle} unit="mm" />
-              <WMSlider label="Rail width" min={12} max={80} step={2} value={p.workcell.config.barWidth * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barWidth: v / 1000 })} subtle={subtle} unit="mm" />
-              <WMSlider label="Post height" min={100} max={1400} step={20} value={p.workcell.config.postHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postHeight: v / 1000 })} subtle={subtle} unit="mm" />
-              <WMSlider label="Post X" min={-600} max={600} step={5} value={p.workcell.config.postX * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postX: v / 1000 })} subtle={subtle} unit="mm" />
-              <WMSlider label="Post Y" min={-600} max={600} step={5} value={p.workcell.config.postY * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postY: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Rail height" min={12} max={80} step={2} value={p.workcell.config.barHeight * 1000} def={DEFAULT_WORKCELL_CONFIG.barHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barHeight: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Rail width" min={12} max={80} step={2} value={p.workcell.config.barWidth * 1000} def={DEFAULT_WORKCELL_CONFIG.barWidth * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, barWidth: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post height" min={100} max={1400} step={20} value={p.workcell.config.postHeight * 1000} def={DEFAULT_WORKCELL_CONFIG.postHeight * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postHeight: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post X" min={-600} max={600} step={5} value={p.workcell.config.postX * 1000} def={DEFAULT_WORKCELL_CONFIG.postX * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postX: v / 1000 })} subtle={subtle} unit="mm" />
+              <WMSlider label="Post Y" min={-600} max={600} step={5} value={p.workcell.config.postY * 1000} def={DEFAULT_WORKCELL_CONFIG.postY * 1000} on={(v) => p.workcell!.onChange({ ...p.workcell!.config, postY: v / 1000 })} subtle={subtle} unit="mm" />
             </div>
           )}
           {sel.stationId !== 'primary' && <button onClick={p.onCloneStation} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Clone this workstation</button>}
@@ -202,7 +203,7 @@ export function SelectionInspector(p: InspectorProps) {
           {p.camera && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
               {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
-              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.extraCamera.fovDeg} on={(v) => p.onExtraCamera({ fovDeg: v })} subtle={subtle} unit="°" />
+              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.extraCamera.fovDeg} def={D435I_PRESET.hFovDeg} on={(v) => p.onExtraCamera({ fovDeg: v })} subtle={subtle} unit="°" />
             </div>
           )}
           <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>
@@ -233,9 +234,9 @@ export function SelectionInspector(p: InspectorProps) {
                   {p.camera.streamProfiles.map((sp) => <option key={sp.id} value={sp.id}>{sp.label}</option>)}
                 </select>
               </label>
-              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.camera.intrinsics.hFovDeg} on={(v) => p.camera!.onIntrinsic('hFovDeg', v)} subtle={subtle} unit="°" />
-              <WMSlider label="Min range" min={50} max={1000} step={10} value={p.camera.intrinsics.near * 1000} on={(v) => p.camera!.onIntrinsic('near', v / 1000)} subtle={subtle} unit="mm" />
-              <WMSlider label="Max range" min={1000} max={6000} step={50} value={p.camera.intrinsics.far * 1000} on={(v) => p.camera!.onIntrinsic('far', v / 1000)} subtle={subtle} unit="mm" />
+              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.camera.intrinsics.hFovDeg} def={D435I_PRESET.hFovDeg} on={(v) => p.camera!.onIntrinsic('hFovDeg', v)} subtle={subtle} unit="°" />
+              <WMSlider label="Min range" min={50} max={1000} step={10} value={p.camera.intrinsics.near * 1000} def={D435I_PRESET.near * 1000} on={(v) => p.camera!.onIntrinsic('near', v / 1000)} subtle={subtle} unit="mm" />
+              <WMSlider label="Max range" min={1000} max={6000} step={50} value={p.camera.intrinsics.far * 1000} def={D435I_PRESET.far * 1000} on={(v) => p.camera!.onIntrinsic('far', v / 1000)} subtle={subtle} unit="mm" />
               <button onClick={p.camera.onReset} className={`w-full py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide ${p.isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>Reset optics</button>
             </div>
           )}
@@ -251,7 +252,7 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.prop.z, on: (v) => p.onProp!({ z: v }) },
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.prop.yaw * 180 / Math.PI} on={(d) => p.onProp!({ yaw: d * Math.PI / 180 })} />
-          <WMSlider label="Size" min={10} max={300} step={5} value={p.prop.size * 1000} on={(v) => p.onProp!({ size: v / 1000 })} subtle={subtle} unit="mm" />
+          <WMSlider label="Size" min={10} max={300} step={5} value={p.prop.size * 1000} def={50} on={(v) => p.onProp!({ size: v / 1000 })} subtle={subtle} unit="mm" />
           <label className="flex items-center justify-between gap-2 text-[10px] font-medium">
             <span>Colour</span>
             <input type="color" value={p.prop.color} onChange={(e) => p.onProp!({ color: e.target.value })} className="w-8 h-5 rounded cursor-pointer bg-transparent" />
@@ -467,16 +468,22 @@ function Check({ label, checked, onChange, accent = 'indigo' }: { label: string;
 }
 
 /** A labelled slider with a typeable numeric value + unit — for the wrist-cam mount controls. */
-function WMSlider({ label, min, max, step, value, on, subtle, unit }: { label: string; min: number; max: number; step: number; value: number; on: (v: number) => void; subtle: string; unit: string }) {
+function WMSlider({ label, min, max, step, value, on, subtle, unit, def }: { label: string; min: number; max: number; step: number; value: number; on: (v: number) => void; subtle: string; unit: string; def?: number }) {
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  // OrcaSlicer-style: differs from default → orange label + reset arrow.
+  const changed = def !== undefined && Math.abs(value - def) > Math.max(step / 2, 0.001);
   return (
     <div className="space-y-0.5">
       <div className="flex justify-between items-center text-[10px] font-medium gap-2">
-        <span>{label}</span>
-        <span className={`flex items-center gap-0.5 ${subtle}`}>
+        <span className={changed ? 'text-orange-500' : undefined}>{label}</span>
+        <span className={`flex items-center gap-1 ${subtle}`}>
+          {changed && (
+            <button type="button" onClick={() => on(def!)} title={`Reset to default (${Number(def!.toFixed(0))})`}
+              className="text-orange-500 hover:text-orange-600"><RotateCcw className="w-3 h-3" /></button>
+          )}
           <input type="number" min={min} max={max} step={step} value={Number(value.toFixed(0))}
             onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(clamp(d)); }}
-            className="w-11 bg-transparent text-right tabular-nums outline-none border-b border-transparent focus:border-indigo-400" />
+            className={`w-11 bg-transparent text-right tabular-nums outline-none border-b focus:border-indigo-400 ${changed ? 'border-orange-300 text-orange-500' : 'border-transparent'}`} />
           <span>{unit}</span>
         </span>
       </div>
