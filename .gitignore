@@ -32,3 +32,8 @@ dist-ssr
 # Playwright
 test-results/
 playwright-report/
+.netlify-deploy.log
+.netlify-deploy.lock
+
+# Stray tool lockfile (project is npm-based)
+deno.lock
