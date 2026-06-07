@@ -23,6 +23,8 @@ export interface LayoutProfile {
   } | null;
   /** Shipped with the repo (read-only in the UI) rather than saved by this user. */
   builtin?: boolean;
+  /** Came from the team's shared store (Netlify Blobs) rather than this device. */
+  shared?: boolean;
 }
 
 const KEY = 'so101-layout-profiles';

@@ -22,6 +22,7 @@ import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
+import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
 import { LayoutProfiles } from './components/LayoutProfiles';
 import { OverlayLegend } from './components/OverlayLegend';
 import { TweaksPanel } from './components/TweaksPanel';
@@ -255,6 +256,15 @@ export function App() {
     }));
   };
   const handleDeleteProfile = (name: string) => setProfiles(deleteProfile(name));
+  // Team sync (Netlify Blobs): on load, pull any shared layouts + merge (local/built-in win by name).
+  // No-op under plain `vite dev` (the function isn't there) — sync activates once deployed.
+  const mergeShared = (shared: LayoutProfile[]) => setProfiles((prev) => { const names = new Set(prev.map((p) => p.name)); return [...prev, ...shared.filter((p) => !names.has(p.name))]; });
+  useEffect(() => { fetchSharedProfiles().then((sp) => { if (sp.length) mergeShared(sp); }); }, []);
+  const handlePublishProfiles = async (): Promise<boolean> => {
+    const ok = await publishSharedProfiles(profiles.filter((p) => !p.builtin && !p.shared));
+    if (ok) { const sp = await fetchSharedProfiles(); setProfiles(listProfiles()); mergeShared(sp); }
+    return ok;
+  };
   const handleLoadProfile = (p: LayoutProfile) => {
     const sim = simRef.current;
     // Worktop (live rebuild).
@@ -1457,6 +1467,7 @@ export function App() {
               onSave={handleSaveProfile}
               onLoad={handleLoadProfile}
               onDelete={handleDeleteProfile}
+              onPublish={handlePublishProfiles}
               isDarkMode={isDarkMode}
             />
           )}

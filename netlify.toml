@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = "dist"
 
+# Serverless functions (team layout sync via Netlify Blobs). Active on deploy / `netlify dev`.
+[functions]
+  directory = "netlify/functions"
+
 [build.environment]
   NODE_VERSION = "20"
 
