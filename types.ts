@@ -116,7 +116,7 @@ export interface WorkcellConfig {
   postX: number;
   postY: number;
   /** Extra user-added upright posts (mount points) — each snappable like the main post. */
-  extraPosts: Array<{ x: number; y: number; height: number }>;
+  extraPosts: Array<{ x: number; y: number; height: number; id?: string }>;
   /** Additional workstations — each is its own worktop (slab + rails + post) at a world X/Y,
    *  with its own arm (added on creation). Lets you lay out a multi-cell lab. postX/postY are
    *  RELATIVE to the station's own centre. */

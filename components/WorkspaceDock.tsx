@@ -44,7 +44,7 @@ export interface DockArmsProps {
   onSuggestLayout: () => void; // place all arms for max task coverage
   layoutResult: { covered: number; total: number } | null;
 }
-export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; propId?: string }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; propId?: string; postIndex?: number }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;

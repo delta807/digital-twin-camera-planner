@@ -173,7 +173,7 @@ export function App() {
   };
   // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
   // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
-  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' | 'object' | 'prop' | 'create'; gx?: number; gy?: number } | null>(null);
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' | 'object' | 'prop' | 'post' | 'create'; gx?: number; gy?: number } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
@@ -618,7 +618,7 @@ export function App() {
     if (sceneIsFranka || isLoading) return;
     const sel = simRef.current?.renderSys.selection;
     const k = sel?.selectAt(clientX, clientY);
-    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object' || k === 'prop') {
+    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object' || k === 'prop' || k === 'post') {
       setRadial({ x: clientX, y: clientY, kind: k });
     } else {
       const g = sel?.groundPointAt(clientX, clientY) ?? { x: 0, y: 0 };
@@ -651,6 +651,15 @@ export function App() {
       { id: 'duplicate', label: 'Duplicate', icon: Copy },
       { id: 'delete', label: 'Delete', icon: Trash2 },
     ];
+    if (kind === 'post') {
+      // Posts are vertical + symmetric → no Aim. Extra mount posts can be deleted; the main cam post can't.
+      const isExtra = selection?.postIndex !== undefined;
+      return [
+        { id: 'move', label: 'Move', icon: MoveIcon },
+        { id: 'duplicate', label: 'Duplicate', icon: Copy },
+        ...(isExtra ? [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem] : []),
+      ];
+    }
     if (kind === 'wristcam') return [
       { id: 'move', label: 'Move', icon: MoveIcon },
       { id: 'aim', label: 'Aim', icon: RotateCw },
@@ -704,6 +713,7 @@ export function App() {
       else if (kind === 'station') { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }
       else if (kind === 'camera') handleAddExtraCamera(); // duplicate primary OR extra → a new overhead cam
       else if (kind === 'prop' && selection?.propId) handleCloneProp(selection.propId);
+      else if (kind === 'post') { if (selection?.postIndex !== undefined) handleCloneExtraPost(selection.postIndex); else handleWorkcellChange({ ...workcellConfigRef.current, extraPosts: [...(workcellConfigRef.current.extraPosts ?? []), { x: workcellConfigRef.current.postX, y: workcellConfigRef.current.postY, height: workcellConfigRef.current.postHeight }] }); }
       return;
     }
     if (id === 'delete') {
@@ -711,6 +721,7 @@ export function App() {
       else if (kind === 'station' && selection?.stationId && selection.stationId !== 'primary') handleRemoveStation(selection.stationId);
       else if (kind === 'camera' && selection?.cameraId) handleRemoveExtraCamera(selection.cameraId);
       else if (kind === 'prop' && selection?.propId) handleRemoveProp(selection.propId);
+      else if (kind === 'post' && selection?.postIndex !== undefined) handleRemoveExtraPost(selection.postIndex);
       return;
     }
     if (id === 'hide') {
@@ -864,6 +875,9 @@ export function App() {
       if (s?.kind === 'arm') setSelectedArmId(s.armId ?? armInstancesRef.current.find((a) => a.primary)?.id ?? 'so101-1');
     };
     sel.onPostMove = (x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y });
+    // Extra mount posts (selectable by index): move via gizmo; pose read back from config.
+    sel.getExtraPostPose = (i) => { const ep = workcellConfigRef.current.extraPosts?.[i]; return ep ? { x: ep.x, y: ep.y, height: ep.height } : null; };
+    sel.onExtraPostMove = (i, x, y) => { const wc = workcellConfigRef.current; const next = [...(wc.extraPosts ?? [])]; if (next[i]) { next[i] = { ...next[i], x, y }; handleWorkcellChange({ ...wc, extraPosts: next }); } };
     // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
     sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
     sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
@@ -896,7 +910,7 @@ export function App() {
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number }[] = [];
     list.push({ key: 'station:primary', kind: 'station', label: 'Workcell (table)', stationId: 'primary' });
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
     (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
@@ -904,6 +918,7 @@ export function App() {
     armInstances.forEach((a) => list.push({ key: `wristcam:${a.id}`, kind: 'wristcam', label: `Wrist camera · ${a.label}`, armId: a.id }));
     (workcellConfig.extraCameras ?? []).forEach((c, i) => list.push({ key: `camera:${c.id}`, kind: 'camera', label: `Overhead D435i ${i + 2}`, cameraId: c.id }));
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
+    (workcellConfig.extraPosts ?? []).forEach((_, i) => list.push({ key: `post:${i}`, kind: 'post', label: `Mount post ${i + 2}`, postIndex: i }));
     (workcellConfig.props ?? []).forEach((p, i) => list.push({ key: `prop:${p.id}`, kind: 'prop', label: `Prop ${i + 1}`, propId: p.id }));
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
     return list;
@@ -915,9 +930,10 @@ export function App() {
     : selection.kind === 'station' ? `station:${selection.stationId}`
     : selection.kind === 'wristcam' ? `wristcam:${selection.wristArmId}`
     : selection.kind === 'prop' ? `prop:${selection.propId}`
+    : selection.kind === 'post' && selection.postIndex !== undefined ? `post:${selection.postIndex}`
     : selection.kind === 'camera' && selection.cameraId ? `camera:${selection.cameraId}`
-    : selection.kind; // 'camera' (primary) | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }) => {
+    : selection.kind; // 'camera' (primary) | 'post' (main)
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
@@ -925,6 +941,7 @@ export function App() {
     else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
     else if (e.kind === 'wristcam') sel.selectByKind('wristcam', e.armId);
     else if (e.kind === 'prop') sel.selectByKind('prop', e.propId);
+    else if (e.kind === 'post') sel.selectByKind('post', e.postIndex !== undefined ? String(e.postIndex) : undefined);
     else if (e.kind === 'camera') sel.selectByKind('camera', e.cameraId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
@@ -932,12 +949,12 @@ export function App() {
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }) => {
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number }) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
       if (willHide) next.add(e.key); else next.delete(e.key);
-      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.armId;
+      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.kind === 'post' ? e.postIndex : e.armId;
       simRef.current?.setEntityVisible(e.kind, id, !willHide);
       return next;
     });
@@ -1107,6 +1124,10 @@ export function App() {
   const handleRemoveProp = (id: string) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).filter((p) => p.id !== id) }); };
   const handleCloneProp = (id: string) => { const wc = workcellConfigRef.current; const p = (wc.props ?? []).find((x) => x.id === id); if (p) { const n = nextPropRef.current++; handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { ...p, id: `prop-${n}`, x: p.x + 0.06, y: p.y + 0.06 }] }); } };
   const handlePropChange = (id: string, patch: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) }); };
+  // ── Extra mount posts (selectable by index) ──
+  const handleExtraPostChange = (i: number, patch: Partial<{ x: number; y: number; height: number }>) => { const wc = workcellConfigRef.current; const next = [...(wc.extraPosts ?? [])]; if (next[i]) { next[i] = { ...next[i], ...patch }; handleWorkcellChange({ ...wc, extraPosts: next }); } };
+  const handleRemoveExtraPost = (i: number) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, extraPosts: (wc.extraPosts ?? []).filter((_, j) => j !== i) }); };
+  const handleCloneExtraPost = (i: number) => { const wc = workcellConfigRef.current; const ep = (wc.extraPosts ?? [])[i]; if (ep) handleWorkcellChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { ...ep, x: ep.x + 0.06, y: ep.y + 0.06 }] }); };
   const handleAddStation = () => { const wc = workcellConfigRef.current; spawnStation({ shapeSides: wc.shapeSides, length: wc.length, width: wc.width, postX: wc.postX, postY: wc.postY, postHeight: wc.postHeight }); };
   const handleCloneStation = (id: string) => {
     const s = (workcellConfigRef.current.stations ?? []).find((x) => x.id === id);
@@ -1621,6 +1642,10 @@ export function App() {
                 onProp={(patch) => { if (selection?.propId) handlePropChange(selection.propId, patch); }}
                 onCloneProp={() => { if (selection?.propId) handleCloneProp(selection.propId); }}
                 onRemoveProp={() => { if (selection?.propId) handleRemoveProp(selection.propId); }}
+                extraPost={(() => { const i = selection?.postIndex; const ep = i !== undefined ? workcellConfig.extraPosts?.[i] : null; return ep ? { x: ep.x, y: ep.y, height: ep.height } : null; })()}
+                onExtraPost={(patch) => { if (selection?.postIndex !== undefined) handleExtraPostChange(selection.postIndex, patch); }}
+                onCloneExtraPost={() => { if (selection?.postIndex !== undefined) handleCloneExtraPost(selection.postIndex); }}
+                onRemoveExtraPost={() => { if (selection?.postIndex !== undefined) handleRemoveExtraPost(selection.postIndex); }}
                 cameraPos={cameraPos}
                 post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}

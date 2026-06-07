@@ -32,6 +32,11 @@ export interface InspectorProps {
   onProp?: (p: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => void;
   onCloneProp?: () => void;
   onRemoveProp?: () => void;
+  // Extra mount post (selected by index).
+  extraPost?: { x: number; y: number; height: number } | null;
+  onExtraPost?: (p: Partial<{ x: number; y: number; height: number }>) => void;
+  onCloneExtraPost?: () => void;
+  onRemoveExtraPost?: () => void;
   cameraPos: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
@@ -269,12 +274,32 @@ export function SelectionInspector(p: InspectorProps) {
         </div>
       )}
 
-      {sel.kind === 'post' && (
+      {sel.kind === 'post' && sel.postIndex === undefined && (
         <Row3 unit={p.unit} subtle={subtle}
           fields={[
             { k: 'X', v: p.post.x, on: (v) => p.onPost(v, p.post.y) },
             { k: 'Y', v: p.post.y, on: (v) => p.onPost(p.post.x, v) },
           ]} />
+      )}
+
+      {sel.kind === 'post' && sel.postIndex !== undefined && p.extraPost && p.onExtraPost && (
+        <div className="space-y-1.5">
+          <Row3 unit={p.unit} subtle={subtle}
+            fields={[
+              { k: 'X', v: p.extraPost.x, on: (v) => p.onExtraPost!({ x: v }) },
+              { k: 'Y', v: p.extraPost.y, on: (v) => p.onExtraPost!({ y: v }) },
+            ]} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.extraPost.x, min: -2, max: 2, on: (v) => p.onExtraPost!({ x: v }) },
+            { k: 'Y', v: p.extraPost.y, min: -2, max: 2, on: (v) => p.onExtraPost!({ y: v }) },
+          ]} />
+          <WMSlider label="Height" min={100} max={1400} step={20} value={p.extraPost.height * 1000} on={(v) => p.onExtraPost!({ height: v / 1000 })} subtle={subtle} unit="mm" />
+          <div className="flex gap-2">
+            {p.onCloneExtraPost && <button onClick={p.onCloneExtraPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Duplicate</button>}
+            {p.onRemoveExtraPost && <button onClick={p.onRemoveExtraPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-red-500 hover:text-red-400 py-1">Delete</button>}
+          </div>
+          <p className={`text-[9px] ${subtle}`}>A mount post — snap cameras/sensors onto it. Right-click → Move.</p>
+        </div>
       )}
 
       {sel.kind === 'object' && sel.bodyId !== undefined && (

@@ -273,7 +273,10 @@ export class MujocoSim {
             rs.planningArmsGroup.children.forEach((g) => { if (g.userData.armId === id) g.visible = visible; });
         }
         else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
-        else if (kind === 'post') rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
+        else if (kind === 'post') {
+            if (typeof id === 'number') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.selectable === 'post' && m.userData?.postIndex === id) m.visible = visible; });
+            else rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
+        }
         else if (kind === 'camera') {
             if (typeof id === 'string') { const c = rs.getExtraCamera(id); if (c) { c.glyph.userData.hiddenByUser = !visible; c.glyph.visible = visible; } }
             else rs.cameraRig.gizmo.visible = visible;

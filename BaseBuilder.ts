@@ -115,6 +115,7 @@ export class BaseBuilder {
       const m = new THREE.Mesh(new THREE.BoxGeometry(barW, barW, h), this.railMat);
       m.position.set(ep.x, ep.y, h / 2);
       m.castShadow = true;
+      m.userData.selectable = 'post'; m.userData.postIndex = i; // right-click → move/duplicate/delete
       this.group.add(m);
       this.postMeshes.push(m);
       this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
