@@ -2066,7 +2066,7 @@ export function App() {
                     {measurements.length === 0
                       ? <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{measureMode === 'gap' ? 'Click two objects → minimum gap between them.' : 'Click two points. Snaps to vertex / circle-center / edge; Shift = free point.'}</p>
                       : measurements.map((m) => (
-                        <div key={m.id} className={`rounded-lg px-2 py-1 text-[10px] tabular-nums flex items-center justify-between ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
+                        <div key={m.id} className={`rounded-lg px-2 py-1 text-[10px] tabular-nums flex items-center justify-between border shadow-sm ${isDarkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-black/10'}`}>
                           <div>
                             <div className="font-bold">{m.label}: {lengthUnit === 'mm' ? Math.round(m.distance * 1000) : m.distance.toFixed(2)} {lengthUnit}</div>
                             <div className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Δ {lengthUnit === 'mm' ? Math.round(m.dx * 1000) : m.dx.toFixed(2)}, {lengthUnit === 'mm' ? Math.round(m.dy * 1000) : m.dy.toFixed(2)}, {lengthUnit === 'mm' ? Math.round(m.dz * 1000) : m.dz.toFixed(2)} {lengthUnit}</div>
