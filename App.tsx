@@ -614,8 +614,10 @@ export function App() {
     }
   };
   const handleContextMenu = (e: React.MouseEvent) => { if (sceneIsFranka || isLoading) return; e.preventDefault(); openRadialAt(e.clientX, e.clientY); };
-  // Double-click an object → same radial (a second, mouse-friendly way to reach it besides right-click).
-  const handleDoubleClick = (e: React.MouseEvent) => { if (sceneIsFranka || isLoading || poseMode || measureActive) return; openRadialAt(e.clientX, e.clientY); };
+  // Double-click an object → same radial (a second, mouse-friendly way to reach it besides
+  // right-click). Works in jog mode too (a dbl-click isn't a joint drag); only measure mode — which
+  // consumes individual clicks to place points — is excluded.
+  const handleDoubleClick = (e: React.MouseEvent) => { if (sceneIsFranka || isLoading || measureActive) return; openRadialAt(e.clientX, e.clientY); };
   // Build the radial items for the object under the cursor — reusing the existing add/remove/clone
   // handlers (DRY): Move / Aim live on the gizmo; Duplicate / Delete reuse the dock handlers.
   const radialItems = (kind: NonNullable<typeof radial>['kind']): RadialItem[] => {

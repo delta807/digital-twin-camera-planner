@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bookmark, Bot, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, PanelLeftClose, Pin, Plus, Save } from 'lucide-react';
+import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, PanelLeftClose, Plus, Save } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import type { LayoutProfile } from '../profiles';
@@ -69,15 +69,36 @@ interface WorkspaceDockProps {
   onClose?: () => void;
 }
 
-// Outliner grouping: every scene entity bucketed by kind, in a stable, readable order.
+// Bodies grouping: every scene entity bucketed by kind, in a stable, readable order.
 const OUTLINER_GROUPS: Array<{ kind: DockObjectEntity['kind']; label: string }> = [
   { kind: 'arm', label: 'Arms' },
   { kind: 'station', label: 'Workcells' },
   { kind: 'camera', label: 'Cameras' },
   { kind: 'wristcam', label: 'Wrist cams' },
   { kind: 'post', label: 'Posts' },
-  { kind: 'object', label: 'Tasks' },
+  { kind: 'object', label: 'Objects' },
 ];
+
+/** SO-101 arm glyph (provided) — used on the Insert palette card. */
+function So101Icon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden>
+      <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5">
+        <path d="m9.25 18.876l-6.512-4.682m3.002-2.673l5.143 3.813M.751 11.751a2.5 2.5 0 1 0 5 0a2.5 2.5 0 0 0-5 0m4.886-.746l5.611-5.465m-.856-3.962L1.257 10.25m8.492-7a2.5 2.5 0 1 0 5 0a2.5 2.5 0 0 0-5 0m6.545 4.132l-2.3-2.35m1.756 3.719a2 2 0 1 0 4 0a2 2 0 0 0-4 0" />
+        <path d="M19.7 8.3a3 3 0 0 1 3.55 2.951m-3 3A3 3 0 0 1 17.3 10.7M1 23.251h22m-13.75 0V18a3 3 0 0 1 6 0v5.25" />
+      </g>
+    </svg>
+  );
+}
+
+/** Mount-post glyph (provided) — used on the Insert palette card. */
+function PostIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden>
+      <path fill="currentColor" d="m11 3l1-1l1 1v17a2 2 0 0 1 2 2H9c0-1.1.9-2 2-2z" />
+    </svg>
+  );
+}
 
 /**
  * WorkspaceDock — the left "build" panel, organised as three jobs-to-be-done:
@@ -118,17 +139,17 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
         {/* ── Insert: click-to-add palette (mirrors the right-click → create-here radial) ── */}
         <Section title="Insert" icon={<Plus className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <div className="grid grid-cols-2 gap-1.5">
-            <InsertCard icon={<Bot className="w-4 h-4" />} label="SO-101" onClick={arms.onAdd} isDarkMode={isDarkMode} />
+            <InsertCard icon={<So101Icon className="w-4 h-4" />} label="SO-101" onClick={arms.onAdd} isDarkMode={isDarkMode} />
             <InsertCard icon={<Camera className="w-4 h-4" />} label="D435i cam" onClick={workcell.onAddExtraCamera} isDarkMode={isDarkMode} />
             <InsertCard icon={<Box className="w-4 h-4" />} label="Workstation" onClick={workcell.onAddStation} isDarkMode={isDarkMode} />
-            <InsertCard icon={<Pin className="w-4 h-4" />} label="Mount post" onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} isDarkMode={isDarkMode} />
+            <InsertCard icon={<PostIcon className="w-4 h-4" />} label="Mount post" onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} isDarkMode={isDarkMode} />
           </div>
           <p className={`text-[9px] ${subtle}`}>Adds at the origin. Or right-click / double-click empty space to place at a point.</p>
         </Section>
 
-        {/* ── Outliner: every object in the scene, grouped by type ── */}
+        {/* ── Bodies: every object in the scene, grouped by type ── */}
         {objects && (
-          <Section title="Outliner" icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+          <Section title="Bodies" icon={<Boxes className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
             <div className="space-y-2">
               {OUTLINER_GROUPS.map(({ kind, label }) => {
                 const rows = objects.entities.filter((e) => e.kind === kind);

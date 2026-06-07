@@ -264,7 +264,11 @@ export class MujocoSim {
         if (kind === 'object' && typeof id === 'number') { if (rs.bodies[id]) rs.bodies[id].visible = visible; }
         else if (kind === 'wristcam') { const c = rs.getWristCamera(typeof id === 'string' ? id : undefined); if (c?.glyph) c.glyph.visible = visible; }
         else if (kind === 'arm') {
-            for (const b of this.armBodyIds) if (rs.bodies[b]) rs.bodies[b].visible = visible;
+            // The PRIMARY arm is the physics body chain (armBodyIds); non-primary arms are ghost
+            // clones in planningArmsGroup tagged with their armId. Only touch the physics bodies when
+            // THIS id is the primary — otherwise hiding a ghost ("SO101 2") wrongly hid the real arm.
+            const isPrimary = id === undefined || this.armInstances.find((a) => a.id === id)?.primary === true;
+            if (isPrimary) for (const b of this.armBodyIds) if (rs.bodies[b]) rs.bodies[b].visible = visible;
             rs.planningArmsGroup.children.forEach((g) => { if (g.userData.armId === id) g.visible = visible; });
         }
         else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
