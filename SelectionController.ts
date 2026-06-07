@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-export type SelectionKind = 'post' | 'object' | 'arm' | 'camera' | 'station' | 'wristcam';
+export type SelectionKind = 'post' | 'object' | 'arm' | 'camera' | 'station' | 'wristcam' | 'prop';
 
 export interface SelectionInfo {
   kind: SelectionKind;
@@ -27,6 +27,8 @@ export interface SelectionInfo {
   cameraId?: string;
   /** Arm id for kind==='wristcam' (the gripper-mounted wrist camera). */
   wristArmId?: string;
+  /** Decoupled prop id for kind==='prop' (a non-physics Three.js cube). */
+  propId?: string;
 }
 
 interface PostAxis { x: number; y: number; height: number; width: number }
@@ -87,6 +89,12 @@ export class SelectionController {
   onObjectMove?: (bodyId: number, x: number, y: number, z: number) => void;
   onObjectRotate?: (bodyId: number, yaw: number) => void;
   private objectAim = false;
+  // Decoupled props (Three.js cubes): id-based selection (the mesh is rebuilt on every config edit).
+  onPropMove?: (id: string, x: number, y: number, z: number) => void;
+  onPropRotate?: (id: string, yaw: number) => void;
+  getPropPose?: (id: string) => { x: number; y: number; z: number; yaw: number } | null;
+  private selectedPropId: string | undefined = undefined;
+  private propAim = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -148,6 +156,11 @@ export class SelectionController {
         else this.onObjectMove?.(this.selected.bodyId, this.proxy.position.x, this.proxy.position.y, this.proxy.position.z);
         return;
       }
+      if (this.selected?.kind === 'prop' && this.selected.propId) {
+        if (this.propAim) this.onPropRotate?.(this.selected.propId, this.proxy.rotation.z);
+        else this.onPropMove?.(this.selected.propId, this.proxy.position.x, this.proxy.position.y, this.proxy.position.z);
+        return;
+      }
       if (this.selected?.kind !== 'post') return;
       this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
@@ -166,11 +179,12 @@ export class SelectionController {
   }
 
   /** Programmatic selection (from the object tree), without a viewport raycast. */
-  selectByKind(kind: 'arm' | 'post' | 'camera' | 'station' | 'wristcam', id?: string) {
+  selectByKind(kind: 'arm' | 'post' | 'camera' | 'station' | 'wristcam' | 'prop', id?: string) {
     if (kind === 'arm') return this.selectArm(id);
     if (kind === 'post') return this.selectPost();
     if (kind === 'station') { if (id) this.selectStation(id); return; }
     if (kind === 'wristcam') { if (id) this.selectWristCam(id); return; }
+    if (kind === 'prop') { if (id) this.selectProp(id); return; }
     // camera: match the cameraId (undefined = primary rig gizmo; an id = that extra camera's glyph).
     for (const root of this.getSelectables()) {
       if (root.userData?.selectable === 'camera' && (root.userData?.cameraId as string | undefined) === id) { this.selectCamera(root); return; }
@@ -269,6 +283,10 @@ export class SelectionController {
       box = this.stationBox(this.selectedStationId);
       const pose = this.getStationPose?.(this.selectedStationId!); // keep the gizmo on the station centre
       if (pose && !(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.set(pose.x, pose.y, 0.05); this.proxy.rotation.z = pose.yaw; }
+    } else if (k === 'prop') {
+      box = this.propBox(this.selectedPropId);
+      const pose = this.getPropPose?.(this.selectedPropId!); // keep the gizmo on the prop (rebuilt on edits)
+      if (pose && !(this.control as unknown as { dragging: boolean }).dragging) { this.proxy.position.set(pose.x, pose.y, pose.z); this.proxy.rotation.z = pose.yaw; }
     } else if (k === 'camera' && this.selectedCameraId) {
       if (this.selectedBody) { this.box.setFromObject(this.selectedBody); box = this.box; }
       const pose = this.getCameraPose?.(this.selectedCameraId); // keep the gizmo on the camera body
@@ -352,6 +370,7 @@ export class SelectionController {
       if (s === 'arm') { this.selectArm(node.userData?.armId as string | undefined); return; }
       if (s === 'station') { this.selectStation(node.userData?.stationId as string); return; }
       if (s === 'wristcam') { this.selectWristCam(node.userData?.armId as string); return; }
+      if (s === 'prop') { this.selectProp(node.userData?.propId as string); return; }
       if (s === 'camera') {
         // Outline the whole camera gizmo, not just the lens/body child that was hit.
         let cam = node;
@@ -541,6 +560,49 @@ export class SelectionController {
       });
     }
     return box.isEmpty() ? null : box;
+  }
+
+  /** Union world bbox of one prop cube (tagged selectable='prop' with this id). */
+  private propBox(id: string | undefined): THREE.Box3 | null {
+    if (!id) return null;
+    const box = this.box.makeEmpty();
+    for (const root of this.getSelectables()) {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.visible || !m.geometry) return;
+        if (m.userData?.selectable !== 'prop' || m.userData?.propId !== id) return;
+        this.box2.setFromObject(m);
+        if (!this.box2.isEmpty()) box.union(this.box2);
+      });
+    }
+    return box.isEmpty() ? null : box;
+  }
+
+  /** Select a decoupled prop by id. Id-based (the mesh is recreated on every config edit), with a
+   *  full XYZ-translate / Z-rotate gizmo — props float freely, unlike on-rail items. */
+  private selectProp(id: string) {
+    this.selectedPropId = id;
+    this.selectedBody = null;
+    this.propAim = false;
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true;
+    const pose = this.getPropPose?.(id);
+    this.proxy.rotation.set(0, 0, pose?.yaw ?? 0);
+    if (pose) this.proxy.position.set(pose.x, pose.y, pose.z);
+    this.control.enabled = !!pose; this.helper.visible = !!pose;
+    this.outline.rotation.set(0, 0, 0); this.outline.visible = true;
+    this.selected = { kind: 'prop', label: 'Prop', x: pose?.x ?? 0, y: pose?.y ?? 0, z: pose?.z ?? 0, movable: true, propId: id };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
+  /** Switch a prop's gizmo between Move (translate XYZ) and Aim (rotate about Z). */
+  setPropAim(rotate: boolean) {
+    this.propAim = rotate;
+    if (this.selected?.kind !== 'prop') return;
+    const pose = this.getPropPose?.(this.selectedPropId!);
+    if (rotate) { this.proxy.rotation.set(0, 0, pose?.yaw ?? 0); this.control.setMode('rotate'); this.control.showX = false; this.control.showY = false; this.control.showZ = true; }
+    else { this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = true; }
+    this.control.enabled = true; this.helper.visible = true;
   }
 
   private unionArmMeshes(armId?: string): THREE.Box3 | null {

@@ -259,9 +259,10 @@ export class MujocoSim {
 
     /** Show/hide a scene entity from the object tree's eye toggle. The render loop only syncs body
      *  position/quaternion (not visibility), so a hidden body stays hidden. */
-    setEntityVisible(kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam', id: number | string | undefined, visible: boolean): void {
+    setEntityVisible(kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop', id: number | string | undefined, visible: boolean): void {
         const rs = this.renderSys;
         if (kind === 'object' && typeof id === 'number') { if (rs.bodies[id]) rs.bodies[id].visible = visible; }
+        else if (kind === 'prop') { rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.selectable === 'prop' && m.userData?.propId === id) m.visible = visible; }); }
         else if (kind === 'wristcam') { const c = rs.getWristCamera(typeof id === 'string' ? id : undefined); if (c?.glyph) c.glyph.visible = visible; }
         else if (kind === 'arm') {
             // The PRIMARY arm is the physics body chain (armBodyIds); non-primary arms are ghost

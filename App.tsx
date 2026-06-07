@@ -31,7 +31,7 @@ import { CompareView } from './components/CompareView';
 import type { CompareSetup } from './components/SceneMap';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
-import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
+import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Package, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
@@ -172,7 +172,7 @@ export function App() {
   };
   // Right-click radial menu: switch an object's interaction mode (Jog / Move / Aim) without the
   // dock — reuses the existing mode functions (togglePoseMode, handleDragMode, setArmAim).
-  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' | 'object' | 'create'; gx?: number; gy?: number } | null>(null);
+  const [radial, setRadial] = useState<{ x: number; y: number; kind: 'arm' | 'camera' | 'station' | 'wristcam' | 'object' | 'prop' | 'create'; gx?: number; gy?: number } | null>(null);
   // Initialize sidebar based on screen width (hidden on mobile by default)
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 660);
   // Feeds dock (consolidated camera PIPs) open/closed — default open on desktop.
@@ -606,7 +606,7 @@ export function App() {
     if (sceneIsFranka || isLoading) return;
     const sel = simRef.current?.renderSys.selection;
     const k = sel?.selectAt(clientX, clientY);
-    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object') {
+    if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object' || k === 'prop') {
       setRadial({ x: clientX, y: clientY, kind: k });
     } else {
       const g = sel?.groundPointAt(clientX, clientY) ?? { x: 0, y: 0 };
@@ -626,11 +626,18 @@ export function App() {
       { id: 'new-camera', label: 'D435i cam', icon: CameraIcon },
       { id: 'new-arm', label: 'SO-101', icon: Bot },
       { id: 'new-post', label: 'Mount post', icon: Pin },
+      { id: 'new-prop', label: 'Object', icon: Package },
     ];
     if (kind === 'object') return [
       { id: 'move', label: 'Move', icon: MoveIcon },
       { id: 'aim', label: 'Aim', icon: RotateCw },
       { id: 'hide', label: 'Hide', icon: EyeOff },
+    ];
+    if (kind === 'prop') return [
+      { id: 'move', label: 'Move', icon: MoveIcon },
+      { id: 'aim', label: 'Aim', icon: RotateCw },
+      { id: 'duplicate', label: 'Duplicate', icon: Copy },
+      { id: 'delete', label: 'Delete', icon: Trash2 },
     ];
     if (kind === 'wristcam') return [
       { id: 'move', label: 'Move', icon: MoveIcon },
@@ -673,6 +680,7 @@ export function App() {
       else if (id === 'new-camera') handleAddExtraCameraAt(x, y);
       else if (id === 'new-arm') handleAddArmAt(x, y);
       else if (id === 'new-post') handleWorkcellChange({ ...workcellConfigRef.current, extraPosts: [...(workcellConfigRef.current.extraPosts ?? []), { x, y, height: workcellConfigRef.current.postHeight }] });
+      else if (id === 'new-prop') handleAddPropAt(x, y);
       return;
     }
     if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
@@ -682,12 +690,14 @@ export function App() {
       if (kind === 'arm') handleAddArm();
       else if (kind === 'station') { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }
       else if (kind === 'camera' && selection?.cameraId) handleAddExtraCamera();
+      else if (kind === 'prop' && selection?.propId) handleCloneProp(selection.propId);
       return;
     }
     if (id === 'delete') {
       if (kind === 'arm' && selectedArmId) handleRemoveArm(selectedArmId);
       else if (kind === 'station' && selection?.stationId && selection.stationId !== 'primary') handleRemoveStation(selection.stationId);
       else if (kind === 'camera' && selection?.cameraId) handleRemoveExtraCamera(selection.cameraId);
+      else if (kind === 'prop' && selection?.propId) handleRemoveProp(selection.propId);
       return;
     }
     if (id === 'hide') {
@@ -705,6 +715,7 @@ export function App() {
     if (kind === 'station') sel?.setStationAim(id === 'aim');
     if (kind === 'wristcam') sel?.setWristCamAim(id === 'aim');
     if (kind === 'object') sel?.setObjectAim(id === 'aim');
+    if (kind === 'prop') sel?.setPropAim(id === 'aim');
   };
 
   // Type exact camera coordinates (origin = table centre) to replicate the real rig.
@@ -862,13 +873,17 @@ export function App() {
     // Task objects (boxes): viewport move/aim gizmo → teleport / yaw the freejoint block.
     sel.onObjectMove = (bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z);
     sel.onObjectRotate = (bodyId, yaw) => simRef.current?.setTaskBodyYaw(bodyId, yaw);
+    // Decoupled props (Three.js cubes): gizmo move/aim → edit the config (live rebuild, no physics).
+    sel.getPropPose = (id) => { const p = workcellConfigRef.current.props?.find((x) => x.id === id); return p ? { x: p.x, y: p.y, z: p.z, yaw: p.yaw } : null; };
+    sel.onPropMove = (id, x, y, z) => handlePropChange(id, { x, y, z });
+    sel.onPropRotate = (id, yaw) => handlePropChange(id, { yaw });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
   // Object-tree entities (arm + camera + post + task blocks) and the currently-selected key.
   const objectEntities = (() => {
-    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }[] = [];
+    const list: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }[] = [];
     list.push({ key: 'station:primary', kind: 'station', label: 'Workcell (table)', stationId: 'primary' });
     armInstances.forEach((a) => list.push({ key: `arm:${a.id}`, kind: 'arm', label: a.label, armId: a.id }));
     (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `station:${s.id}`, kind: 'station', label: `Workstation ${i + 2}`, stationId: s.id }));
@@ -876,6 +891,7 @@ export function App() {
     armInstances.forEach((a) => list.push({ key: `wristcam:${a.id}`, kind: 'wristcam', label: `Wrist camera · ${a.label}`, armId: a.id }));
     (workcellConfig.extraCameras ?? []).forEach((c, i) => list.push({ key: `camera:${c.id}`, kind: 'camera', label: `Overhead D435i ${i + 2}`, cameraId: c.id }));
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
+    (workcellConfig.props ?? []).forEach((p, i) => list.push({ key: `prop:${p.id}`, kind: 'prop', label: `Prop ${i + 1}`, propId: p.id }));
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
     return list;
   })();
@@ -885,15 +901,17 @@ export function App() {
     : selection.kind === 'arm' ? `arm:${selectedArmId}` // the arm the inspector is editing
     : selection.kind === 'station' ? `station:${selection.stationId}`
     : selection.kind === 'wristcam' ? `wristcam:${selection.wristArmId}`
+    : selection.kind === 'prop' ? `prop:${selection.propId}`
     : selection.kind === 'camera' && selection.cameraId ? `camera:${selection.cameraId}`
     : selection.kind; // 'camera' (primary) | 'post'
-  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
+  const handleTreeSelect = (e: { kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }) => {
     const sel = simRef.current?.renderSys.selection;
     if (!sel) return;
     // selectByKind fires onChange (which resets selectedArmId→primary), so set the tree's arm LAST.
     if (e.kind === 'arm') { sel.selectByKind('arm', e.armId); if (e.armId) setSelectedArmId(e.armId); }
     else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
     else if (e.kind === 'wristcam') sel.selectByKind('wristcam', e.armId);
+    else if (e.kind === 'prop') sel.selectByKind('prop', e.propId);
     else if (e.kind === 'camera') sel.selectByKind('camera', e.cameraId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
@@ -901,12 +919,12 @@ export function App() {
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string }) => {
+  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string }) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
       if (willHide) next.add(e.key); else next.delete(e.key);
-      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.armId;
+      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.armId;
       simRef.current?.setEntityVisible(e.kind, id, !willHide);
       return next;
     });
@@ -1066,6 +1084,16 @@ export function App() {
     const id = `so101-${armNumber}`;
     setArmInstances(prev => { const next: ArmInstance[] = [...prev, { id, label: `SO101 ${armNumber}`, x, y, yaw: Math.PI / 2 }]; setSelectedArmId(id); simRef.current?.setArmInstances(next); return next; });
   };
+  // ── Decoupled props (Three.js cubes; no physics) — add/duplicate/delete/move live, no reload ──
+  const nextPropRef = useRef(1);
+  const handleAddPropAt = (x: number, y: number) => {
+    const wc = workcellConfigRef.current; const n = nextPropRef.current++; const size = 0.05;
+    handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { id: `prop-${n}`, x, y, z: size / 2, yaw: 0, size, color: '#e0772f' }] });
+  };
+  const handleAddProp = () => handleAddPropAt(0, 0);
+  const handleRemoveProp = (id: string) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).filter((p) => p.id !== id) }); };
+  const handleCloneProp = (id: string) => { const wc = workcellConfigRef.current; const p = (wc.props ?? []).find((x) => x.id === id); if (p) { const n = nextPropRef.current++; handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { ...p, id: `prop-${n}`, x: p.x + 0.06, y: p.y + 0.06 }] }); } };
+  const handlePropChange = (id: string, patch: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) }); };
   const handleAddStation = () => { const wc = workcellConfigRef.current; spawnStation({ shapeSides: wc.shapeSides, length: wc.length, width: wc.width, postX: wc.postX, postY: wc.postY, postHeight: wc.postHeight }); };
   const handleCloneStation = (id: string) => {
     const s = (workcellConfigRef.current.stations ?? []).find((x) => x.id === id);
@@ -1537,6 +1565,10 @@ export function App() {
                 workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
                 extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
                 onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
+                prop={(() => { const pr = workcellConfig.props?.find((x) => x.id === selection?.propId); return pr ? { x: pr.x, y: pr.y, z: pr.z, yaw: pr.yaw, size: pr.size, color: pr.color } : null; })()}
+                onProp={(patch) => { if (selection?.propId) handlePropChange(selection.propId, patch); }}
+                onCloneProp={() => { if (selection?.propId) handleCloneProp(selection.propId); }}
+                onRemoveProp={() => { if (selection?.propId) handleRemoveProp(selection.propId); }}
                 cameraPos={cameraPos}
                 post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
@@ -1685,6 +1717,7 @@ export function App() {
                 onSelect: setSelectedArmId,
                 onChange: handleArmChange,
                 onAdd: handleAddArm,
+                onAddProp: handleAddProp,
                 onRemove: handleRemoveArm,
                 onApplyPose: handleApplyArmPose,
                 toggles: plannerToggles,

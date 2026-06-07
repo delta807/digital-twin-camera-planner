@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, PanelLeftClose, Plus, Save } from 'lucide-react';
+import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, Package, PanelLeftClose, Plus, Save } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import type { LayoutProfile } from '../profiles';
@@ -31,6 +31,7 @@ export interface DockArmsProps {
   onSelect: (id: string) => void;
   onChange: (id: string, patch: Partial<ArmInstance>) => void;
   onAdd: () => void;
+  onAddProp?: () => void;
   onRemove: (id: string) => void;
   onApplyPose: () => void;
   toggles: PlannerToggles;
@@ -43,7 +44,7 @@ export interface DockArmsProps {
   onSuggestLayout: () => void; // place all arms for max task coverage
   layoutResult: { covered: number; total: number } | null;
 }
-export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam'; label: string; bodyId?: number; armId?: string; stationId?: string }
+export interface DockObjectEntity { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; label: string; bodyId?: number; armId?: string; stationId?: string; propId?: string }
 export interface DockObjectsProps {
   entities: DockObjectEntity[];
   selectedKey: string | null;
@@ -77,6 +78,7 @@ const OUTLINER_GROUPS: Array<{ kind: DockObjectEntity['kind']; label: string }> 
   { kind: 'camera', label: 'Cameras' },
   { kind: 'wristcam', label: 'Wrist cams' },
   { kind: 'post', label: 'Posts' },
+  { kind: 'prop', label: 'Props' },
   { kind: 'object', label: 'Objects' },
 ];
 
@@ -148,6 +150,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
             <InsertCard icon={<Camera className="w-4 h-4" />} label="D435i cam" onClick={workcell.onAddExtraCamera} isDarkMode={isDarkMode} />
             <InsertCard icon={<Box className="w-4 h-4" />} label="Workstation" onClick={workcell.onAddStation} isDarkMode={isDarkMode} />
             <InsertCard icon={<PostIcon className="w-4 h-4" />} label="Mount post" onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} isDarkMode={isDarkMode} />
+            {arms.onAddProp && <InsertCard icon={<Package className="w-4 h-4" />} label="Object" onClick={arms.onAddProp} isDarkMode={isDarkMode} />}
           </div>
           <p className={`text-[9px] ${subtle}`}>Adds at the origin. Or right-click / double-click empty space to place at a point.</p>
         </Section>

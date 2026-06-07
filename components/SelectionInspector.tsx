@@ -27,6 +27,11 @@ export interface InspectorProps {
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
+  // Decoupled prop (Three.js cube): full transform + size/colour + duplicate/delete.
+  prop?: { x: number; y: number; z: number; yaw: number; size: number; color: string } | null;
+  onProp?: (p: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => void;
+  onCloneProp?: () => void;
+  onRemoveProp?: () => void;
   cameraPos: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
@@ -217,6 +222,33 @@ export function SelectionInspector(p: InspectorProps) {
               <button onClick={p.camera.onReset} className={`w-full py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide ${p.isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>Reset optics</button>
             </div>
           )}
+        </div>
+      )}
+
+      {sel.kind === 'prop' && p.prop && p.onProp && (
+        <div className="space-y-1.5">
+          <Row3 unit={p.unit} subtle={subtle}
+            fields={[
+              { k: 'X', v: p.prop.x, on: (v) => p.onProp!({ x: v }) },
+              { k: 'Y', v: p.prop.y, on: (v) => p.onProp!({ y: v }) },
+              { k: 'Z', v: p.prop.z, on: (v) => p.onProp!({ z: v }) },
+            ]} />
+          <Sliders subtle={subtle} fields={[
+            { k: 'X', v: p.prop.x, min: -1, max: 1, on: (v) => p.onProp!({ x: v }) },
+            { k: 'Y', v: p.prop.y, min: -1, max: 1, on: (v) => p.onProp!({ y: v }) },
+            { k: 'Z', v: p.prop.z, min: 0, max: 1, on: (v) => p.onProp!({ z: v }) },
+            { k: 'Yaw', v: p.prop.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onProp!({ yaw: v * Math.PI / 180 }) },
+          ]} />
+          <WMSlider label="Size" min={10} max={300} step={5} value={p.prop.size * 1000} on={(v) => p.onProp!({ size: v / 1000 })} subtle={subtle} unit="mm" />
+          <label className="flex items-center justify-between gap-2 text-[10px] font-medium">
+            <span>Colour</span>
+            <input type="color" value={p.prop.color} onChange={(e) => p.onProp!({ color: e.target.value })} className="w-8 h-5 rounded cursor-pointer bg-transparent" />
+          </label>
+          <div className="flex gap-2">
+            {p.onCloneProp && <button onClick={p.onCloneProp} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Duplicate</button>}
+            {p.onRemoveProp && <button onClick={p.onRemoveProp} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-red-500 hover:text-red-400 py-1">Delete</button>}
+          </div>
+          <p className={`text-[9px] ${subtle}`}>A decoupled prop (no physics). Right-click → Move / Aim, or duplicate freely.</p>
         </div>
       )}
 

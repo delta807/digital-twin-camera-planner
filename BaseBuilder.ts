@@ -120,6 +120,17 @@ export class BaseBuilder {
       this.rods.push({ a: new THREE.Vector3(ep.x, ep.y, 0), b: new THREE.Vector3(ep.x, ep.y, h), label: `Post ${i + 2}` });
     });
 
+    // --- Decoupled props: pure Three.js cubes (no physics) — add/duplicate/delete/move live ---
+    (config.props ?? []).forEach((pr) => {
+      const s = Math.max(0.01, pr.size);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), new THREE.MeshStandardMaterial({ color: pr.color, roughness: 0.6, metalness: 0.05 }));
+      m.position.set(pr.x, pr.y, pr.z);
+      m.rotation.z = pr.yaw;
+      m.castShadow = true; m.receiveShadow = true;
+      m.userData.selectable = 'prop'; m.userData.propId = pr.id;
+      this.group.add(m);
+    });
+
     // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
     (config.stations ?? []).forEach((st, si) => {
       this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(3, Math.min(8, Math.round(st.shapeSides ?? 4))),
@@ -188,7 +199,10 @@ export class BaseBuilder {
   private clear() {
     for (const child of [...this.group.children]) {
       const mesh = child as THREE.Mesh;
-      mesh.geometry?.dispose(); // materials are shared + reused, don't dispose them
+      mesh.geometry?.dispose();
+      // slabMat/railMat are shared + reused; per-prop materials are one-off → dispose to avoid a leak.
+      const mat = mesh.material as THREE.Material | undefined;
+      if (mat && mat !== this.slabMat && mat !== this.railMat) mat.dispose();
       this.group.remove(mesh);
     }
   }
