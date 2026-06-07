@@ -54,6 +54,7 @@ export interface DockObjectsProps {
 export interface DockTemplatesProps {
   profiles: LayoutProfile[];
   onLoad: (p: LayoutProfile) => void;
+  onSave: (name: string) => void;
 }
 
 interface WorkspaceDockProps {
@@ -112,6 +113,10 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
+  // Inline "save current layout" (the previous flow — a separate floating panel — was unclear).
+  const [tplName, setTplName] = useState('');
+  const [tplSaved, setTplSaved] = useState('');
+  const saveTpl = () => { const n = tplName.trim(); if (!n || !templates) return; templates.onSave(n); setTplSaved(n); setTplName(''); setTimeout(() => setTplSaved(''), 2200); };
 
   return (
     <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
@@ -195,14 +200,25 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
             </div>}
           </div>
 
-          {/* Templates — load a saved or bundled (built-in) layout. */}
+          {/* Templates — save the current layout, and load a saved or bundled (built-in) layout. */}
           <div className={`pt-1.5 mt-1 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1`}>
             <div className="flex items-center justify-between">
-              <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Templates</span>
+              <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Templates (saved layouts)</span>
               {onSaveWorkspace && <button onClick={onSaveWorkspace} className="text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Manage</button>}
             </div>
+            {/* Save current layout — name it + Save, with a confirmation so it's clear it persisted. */}
+            <div className="flex items-center gap-1.5">
+              <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveTpl()}
+                placeholder="Name this layout…" className={`flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] outline-none border ${isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-500' : 'bg-black/5 border-black/10 placeholder:text-slate-400'}`} />
+              <button onClick={saveTpl} disabled={!tplName.trim()} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase flex items-center gap-1 hover:bg-indigo-500 disabled:opacity-40">
+                <Save className="w-3 h-3" /> Save
+              </button>
+            </div>
+            {tplSaved
+              ? <p className="text-[9px] text-emerald-500 font-medium">Saved “{tplSaved}” on this device ✓</p>
+              : <p className={`text-[9px] ${subtle}`}>Saved on this device. Share with teammates via Manage → Export JSON → presets.ts.</p>}
             {(!templates || templates.profiles.length === 0)
-              ? <p className={`text-[9px] ${subtle}`}>No saved layouts yet. Build one, then Save — or ship built-ins via presets.ts.</p>
+              ? <p className={`text-[9px] ${subtle}`}>No saved layouts yet.</p>
               : templates.profiles.slice(0, 6).map((p) => (
                 <button key={p.name} onClick={() => templates.onLoad(p)} title="Load this layout"
                   className={`w-full flex items-center gap-2 rounded-md px-2 py-1 text-left ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>

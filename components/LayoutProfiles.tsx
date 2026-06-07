@@ -21,7 +21,7 @@ interface Props {
  */
 export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, isDarkMode }: Props) {
   const [name, setName] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true); // open expanded when summoned (the old collapsed default hid the save UI)
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const inputCls = isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-500' : 'bg-black/5 border-black/10 placeholder:text-slate-400';

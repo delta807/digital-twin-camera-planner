@@ -1669,7 +1669,7 @@ export function App() {
               isDarkMode={isDarkMode}
               onSaveWorkspace={() => setLayoutsOpen(true)}
               onClose={() => setDockOpen(false)}
-              templates={{ profiles, onLoad: handleLoadProfile }}
+              templates={{ profiles, onLoad: handleLoadProfile, onSave: handleSaveProfile }}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,
