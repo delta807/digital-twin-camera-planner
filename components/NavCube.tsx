@@ -14,6 +14,9 @@ interface Props {
   getOrbit: () => { dx: number; dy: number; dz: number } | null;
   /** Sit right of the dock when it's open; tuck against the rail when it's closed (no dead gap). */
   dockOpen: boolean;
+  /** When the right panel is open, sit just left of it; when closed, sit in the top-right corner
+   *  beside the right-panel drawer toggle. */
+  sidebarOpen: boolean;
 }
 
 /**
@@ -35,7 +38,7 @@ const FACES: Array<{ view: Exclude<ViewPreset, 'iso'>; label: string; t: string 
   { view: 'bottom', label: 'BOT',    t: 'rotateX(-90deg) translateZ(var(--h))' },
 ];
 
-export function NavCube({ onView, isDarkMode, getOrbit, dockOpen }: Props) {
+export function NavCube({ onView, isDarkMode, getOrbit, dockOpen, sidebarOpen }: Props) {
   const cubeRef = useRef<HTMLDivElement>(null);
 
   // Per-frame: rotate the cube to mirror the camera's azimuth/elevation.
@@ -60,8 +63,10 @@ export function NavCube({ onView, isDarkMode, getOrbit, dockOpen }: Props) {
   const faceBorder = isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.14)';
   const panel = isDarkMode ? 'bg-slate-900/80 border-white/10' : 'bg-white/80 border-white/80';
 
+  // Open panel → tuck just left of it; closed → top-right corner beside the drawer toggle.
+  const place = sidebarOpen ? 'top-6 right-4 min-[660px]:right-[22.5rem]' : 'top-3 right-16';
   return (
-    <div className={`absolute top-6 right-4 min-[660px]:right-[22.5rem] z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
+    <div className={`absolute ${place} z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
       <div
         style={{ width: 64, height: 64, perspective: 260, ['--h' as string]: '27px' }}
         className="relative"

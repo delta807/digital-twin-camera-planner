@@ -164,7 +164,10 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
                 if (rows.length === 0) return null;
                 return (
                   <div key={kind} className="space-y-0.5">
-                    <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>{label}</span>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>{label}</span>
+                      <span className={`text-[8px] font-bold tabular-nums ${subtle}`}>{rows.length}</span>
+                    </div>
                     {rows.map((e) => {
                       const active = e.key === objects.selectedKey;
                       const isHidden = objects.hidden.has(e.key);

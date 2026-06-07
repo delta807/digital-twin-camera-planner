@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Box, Move3d, Columns2, PanelLeft, Sparkles, Bookmark } from 'lucide-react';
+import { Box, Move3d, Columns2, Bookmark } from 'lucide-react';
 
 export type WorkMode = 'edit' | 'compare';
 
@@ -53,9 +53,7 @@ export function ModeRail({ mode, onMode, dockOpen, onToggleDock, perceiveOpen, o
       <RailBtn icon={Move3d} label="Edit workcell" active={mode === 'edit'} onClick={() => onMode('edit')} isDarkMode={isDarkMode} />
       <RailBtn icon={Columns2} label="Compare A/B cameras" active={mode === 'compare'} onClick={() => onMode('compare')} isDarkMode={isDarkMode} />
       <RailBtn icon={Bookmark} label="Layout profiles" active={layoutsOpen} onClick={onToggleLayouts} isDarkMode={isDarkMode} />
-      <div className="flex-1" />
-      <RailBtn icon={PanelLeft} label={dockOpen ? 'Hide dock' : 'Show dock'} active={dockOpen} onClick={onToggleDock} isDarkMode={isDarkMode} />
-      <RailBtn icon={Sparkles} label="Embodied reasoning" active={perceiveOpen} accent onClick={onTogglePerceive} isDarkMode={isDarkMode} />
+      {/* Dock / perceive toggles removed — the top-corner drawer buttons (PanelLeft/PanelRight) own that now (#5). */}
     </div>
   );
 }

@@ -1489,6 +1489,7 @@ export function App() {
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
                 isDarkMode={isDarkMode}
                 dockOpen={dockOpen}
+                sidebarOpen={showSidebar}
                 getOrbit={() => {
                   const rs = simRef.current?.renderSys;
                   if (!rs) return null;
@@ -1682,14 +1683,8 @@ export function App() {
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
                   inspector={selection ? inspectorEl(true) : null}
                   headerContent={!sceneIsFranka ? (
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-[11px] font-semibold whitespace-nowrap">SO-101 Digital Twin</span>
-                      <span className="w-px h-5 bg-current opacity-15" />
-                      <div className="flex flex-col items-end leading-none">
-                        <span className="text-[8px] font-bold uppercase tracking-[0.08em] opacity-60 whitespace-nowrap">Arms</span>
-                        <span className="font-mono text-[12px] font-semibold tabular-nums">{armInstances.length}</span>
-                      </div>
-                      <span className="w-px h-5 bg-current opacity-15" />
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`text-[9px] font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Units</span>
                       <div className="flex items-center gap-1" title="Display units for all length readouts">
                         {(['m', 'mm'] as const).map((u) => (
                           <button key={u} onClick={() => setLengthUnit(u)} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${lengthUnit === u ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600 text-white') : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>{u}</button>

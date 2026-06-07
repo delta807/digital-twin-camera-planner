@@ -51,7 +51,7 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
   };
 
   return (
-    <div className={`absolute top-4 left-[4.25rem] min-[660px]:left-[23.25rem] z-30 w-64 rounded-2xl glass-panel shadow-xl border ${panel}`}>
+    <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-40 w-64 rounded-2xl glass-panel shadow-xl border ${panel}`}>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 px-3 py-2">
         <Bookmark className="w-3.5 h-3.5 text-indigo-500" />
         <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">Layout profiles</span>
