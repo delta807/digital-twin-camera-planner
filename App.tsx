@@ -955,6 +955,7 @@ export function App() {
   // Refs so the stable keydown listener always sees the latest selection + edit handlers.
   const selectionRef = useRef<SelectionInfo | null>(null); selectionRef.current = selection;
   const editFnsRef = useRef({ del: deleteSelection, dup: duplicateSelection }); editFnsRef.current = { del: deleteSelection, dup: duplicateSelection };
+  const histFnsRef = useRef<{ undo: () => void; redo: () => void }>({ undo: () => {}, redo: () => {} }); // assigned after undo/redo are defined
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -969,6 +970,8 @@ export function App() {
       else if (mod && (e.key === 'd' || e.key === 'D')) { if (sel) { e.preventDefault(); editFnsRef.current.dup(sel); } }
       else if (mod && (e.key === 'c' || e.key === 'C')) { clipboardRef.current = sel; }
       else if (mod && (e.key === 'v' || e.key === 'V')) { if (clipboardRef.current) { e.preventDefault(); editFnsRef.current.dup(clipboardRef.current); } }
+      else if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) { e.preventDefault(); histFnsRef.current.undo(); }
+      else if (mod && (((e.key === 'z' || e.key === 'Z') && e.shiftKey) || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); histFnsRef.current.redo(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1102,6 +1105,41 @@ export function App() {
     if (plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
     refreshBaseResult();
   };
+
+  // ── Undo / redo: a timeline of layout snapshots (workcell + arms). Rapid edits (a slider drag)
+  // coalesce into one step; discrete actions (add/move/delete) are their own steps. (Task-block
+  // physics positions live in mjData, not React state, so those moves aren't tracked yet.)
+  type LayoutSnap = { workcell: WorkcellConfig; arms: ArmInstance[] };
+  const historyRef = useRef<{ stack: LayoutSnap[]; idx: number; lastTs: number }>({ stack: [], idx: -1, lastTs: 0 });
+  const restoringRef = useRef(false);
+  const [histVer, setHistVer] = useState(0);
+  useEffect(() => {
+    if (isLoading) return;
+    const h = historyRef.current;
+    const snap: LayoutSnap = { workcell: workcellConfig, arms: armInstances };
+    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = performance.now(); setHistVer((v) => v + 1); return; }
+    if (restoringRef.current) return; // an undo/redo restore shouldn't be recorded as a new edit
+    const now = performance.now();
+    if (h.idx < h.stack.length - 1) h.stack = h.stack.slice(0, h.idx + 1); // a fresh edit clears the redo branch
+    if (now - h.lastTs < 350 && h.idx > 0) { h.stack[h.idx] = snap; } // coalesce a gesture into one step
+    else { h.stack.push(snap); h.idx = h.stack.length - 1; if (h.stack.length > 60) { h.stack.shift(); h.idx--; } }
+    h.lastTs = now;
+    setHistVer((v) => v + 1);
+  }, [workcellConfig, armInstances, isLoading]);
+  const applyLayoutSnap = (s: LayoutSnap) => {
+    restoringRef.current = true;
+    setWorkcellConfig(s.workcell); simRef.current?.setWorkcell(s.workcell);
+    setArmInstances(s.arms); simRef.current?.setArmInstances(s.arms);
+    const primary = s.arms.find((a) => a.primary);
+    if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => applyPlannerState());
+    setTimeout(() => { restoringRef.current = false; }, 0);
+  };
+  const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); setHistVer((v) => v + 1); } };
+  const redo = () => { const h = historyRef.current; if (h.idx < h.stack.length - 1) { h.idx++; applyLayoutSnap(h.stack[h.idx]); setHistVer((v) => v + 1); } };
+  void histVer; // histVer just forces re-render so the undo/redo button enabled state stays fresh
+  const canUndo = historyRef.current.idx > 0;
+  const canRedo = historyRef.current.idx < historyRef.current.stack.length - 1;
+  histFnsRef.current = { undo, redo };
 
   const handlePlannerToggle = (key: keyof PlannerToggles, value: boolean) => {
     setPlannerToggles(prev => ({ ...prev, [key]: value }));
@@ -1962,7 +2000,8 @@ export function App() {
                   onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)}
                   jogActive={poseMode} onToggleJog={togglePoseMode}
                   panActive={panMode} onTogglePan={() => setPanMode((v) => !v)} onDragHandle={onToolbarDragStart}
-                  measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)} />
+                  measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)}
+                  onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
                 {poseMode && (
                   <div className="flex flex-wrap items-center gap-2 px-0.5">
                     <span className="text-[10px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>

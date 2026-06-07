@@ -4,7 +4,7 @@
 */
 
 
-import { Focus, GripVertical, Hand, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
+import { Focus, GripVertical, Hand, House, Moon, Pause, Play, Redo2, RotateCcw, Ruler, Sliders, Sun, Undo2 } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { IconToolbar, JogIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
 
@@ -28,6 +28,11 @@ interface ToolbarProps {
   onTogglePan?: () => void;
   measureActive?: boolean;
   onToggleMeasure?: () => void;
+  /** Undo / redo the layout timeline. */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   /** Pointer-down handler for the drag grip (lets the user reposition the floating toolbar). */
   onDragHandle?: (e: ReactPointerEvent) => void;
 }
@@ -55,6 +60,10 @@ export function Toolbar({
   onTogglePan,
   measureActive = false,
   onToggleMeasure,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
   onDragHandle,
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
@@ -72,6 +81,9 @@ export function Toolbar({
               <GripVertical className="h-4 w-4" />
             </div>
           )}
+          {onUndo && <ToolbarButton label="Undo (⌘Z)" icon={Undo2} onClick={onUndo} disabled={!canUndo} isDarkMode={isDarkMode} />}
+          {onRedo && <ToolbarButton label="Redo (⇧⌘Z)" icon={Redo2} onClick={onRedo} disabled={!canRedo} isDarkMode={isDarkMode} />}
+          {(onUndo || onRedo) && <ToolbarDivider isDarkMode={isDarkMode} />}
           <ToolbarButton label="Home view (ISO)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
           <ToolbarButton label="Fit camera to selected object" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
           {(onToggleJog || onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}

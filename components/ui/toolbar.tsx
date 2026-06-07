@@ -31,19 +31,22 @@ export function ToolbarDivider({ isDarkMode }: { isDarkMode: boolean }) {
   return <span className={`w-px h-6 mx-0.5 ${isDarkMode ? 'bg-white/15' : 'bg-black/10'}`} />;
 }
 
-export function ToolbarButton({ label, icon: Icon, isActive = false, onClick, isDarkMode }: {
+export function ToolbarButton({ label, icon: Icon, isActive = false, onClick, isDarkMode, disabled = false }: {
   label: string;
   icon: ComponentType<{ className?: string }>;
   isActive?: boolean;
   onClick: () => void;
   isDarkMode: boolean;
+  disabled?: boolean;
 }) {
-  const base = isActive
-    ? (isDarkMode ? 'bg-indigo-500/25 text-indigo-300' : 'bg-indigo-600/10 text-indigo-600')
-    : (isDarkMode ? 'text-slate-200 hover:bg-white/10' : 'text-slate-700 hover:bg-black/10');
+  const base = disabled
+    ? 'opacity-30 cursor-not-allowed text-slate-400'
+    : isActive
+      ? (isDarkMode ? 'bg-indigo-500/25 text-indigo-300' : 'bg-indigo-600/10 text-indigo-600')
+      : (isDarkMode ? 'text-slate-200 hover:bg-white/10' : 'text-slate-700 hover:bg-black/10');
   return (
     <div className="relative group">
-      <button onClick={onClick} aria-label={label}
+      <button onClick={onClick} aria-label={label} disabled={disabled}
         className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors duration-200 focus:outline-none ${base}`}>
         <Icon className="h-4 w-4" />
       </button>
