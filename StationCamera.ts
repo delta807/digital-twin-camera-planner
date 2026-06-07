@@ -35,6 +35,17 @@ export class StationCamera {
 
   setGlyphVisible(v: boolean) { this.glyph.visible = v && !this.glyph.userData.hiddenByUser; }
 
+  /** Set the camera's horizontal FOV (deg); PerspectiveCamera.fov is vertical, so derive it from the
+   *  current aspect. Lets each additional D435i have its own FOV (like the primary). */
+  setFovHoriz(hFovDeg: number) {
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hFovDeg) / 2) / this.camera.aspect));
+    this.camera.updateProjectionMatrix();
+  }
+  /** Current horizontal FOV (deg), for the inspector readout. */
+  get fovHoriz(): number {
+    return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) * this.camera.aspect));
+  }
+
   /** Refresh the FOV frustum + footprint overlays (call each frame). */
   updateOverlay(showFrustum: boolean, showFootprint: boolean) { this.fov.update(this.camera, showFrustum, showFootprint); }
   /** Overlay meshes — so PIP renders can hide them (a camera shouldn't see FOV lines). */

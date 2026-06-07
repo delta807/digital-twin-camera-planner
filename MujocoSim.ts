@@ -17,6 +17,13 @@ import { SweptJoint, WorkspacePlanner } from './WorkspacePlanner';
 import { NumericIk } from './NumericIk';
 import { ArmJointDesc, GhostJointDesc, MujocoJointDrag, tagArmJoints, tagGhostJoints, untagArmJoints, untagGhostJoints } from './MujocoJointDrag';
 
+/** Physics snapshot of the task/cube freejoints — for the undo/redo timeline (these live in mjData,
+ *  not React state). */
+export interface TaskStateSnap {
+  items: Array<{ bodyId: number; geomId: number; qadr: number; qpos: number[]; contype: number; conaff: number; vis: boolean }>;
+  pool: boolean[];
+}
+
 /**
  * MujocoSim: The Central Orchestrator.
  * Manages the connection between the MuJoCo WASM engine and the Three.js visualization.
@@ -435,6 +442,43 @@ export class MujocoSim {
 
     /** How many pool cubes remain free (for UI / "pool exhausted" messaging). */
     freeBlockCount(): number { return this.blockPool.filter((p) => !p.used).length; }
+
+    /** Capture the physics state of every task/cube freejoint (pose + collision masks + visibility +
+     *  pool used-flags) — so the undo/redo timeline can include cube moves/spawns/despawns, which
+     *  live in mjData rather than React state. */
+    snapshotTaskState(): TaskStateSnap | null {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return null;
+        const items: TaskStateSnap['items'] = [];
+        for (let i = 0; i < m.nbody; i++) {
+            if (!/^(task|cube)/.test(getName(m, m.name_bodyadr[i]))) continue;
+            const jadr = m.body_jntadr[i];
+            if (jadr < 0 || m.jnt_type[jadr] !== 0) continue; // freejoint only
+            const a = m.jnt_qposadr[jadr], gid = m.body_geomadr[i];
+            items.push({
+                bodyId: i, geomId: gid, qadr: a,
+                qpos: [d.qpos[a], d.qpos[a + 1], d.qpos[a + 2], d.qpos[a + 3], d.qpos[a + 4], d.qpos[a + 5], d.qpos[a + 6]],
+                contype: m.geom_contype[gid], conaff: m.geom_conaffinity[gid],
+                vis: this.renderSys.bodies[i]?.visible ?? true,
+            });
+        }
+        return { items, pool: this.blockPool.map((p) => p.used) };
+    }
+
+    /** Restore a task/cube physics snapshot (poses + collision + visibility + pool flags). */
+    restoreTaskState(s: TaskStateSnap | null) {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d || !s) return;
+        for (const it of s.items) {
+            for (let k = 0; k < 7; k++) d.qpos[it.qadr + k] = it.qpos[k];
+            const jadr = m.body_jntadr[it.bodyId];
+            if (jadr >= 0) { const dof = m.jnt_dofadr[jadr]; for (let k = 0; k < 6; k++) d.qvel[dof + k] = 0; }
+            m.geom_contype[it.geomId] = it.contype; m.geom_conaffinity[it.geomId] = it.conaff;
+            if (this.renderSys.bodies[it.bodyId]) this.renderSys.bodies[it.bodyId].visible = it.vis;
+        }
+        s.pool.forEach((used, i) => { if (this.blockPool[i]) this.blockPool[i].used = used; });
+        this.mujoco.mj_forward(m, d);
+    }
 
     /** List the movable task blocks (for the object tree) — excludes despawned pool slots. */
     getTaskBodies(): { bodyId: number; name: string }[] {

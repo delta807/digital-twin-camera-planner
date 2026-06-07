@@ -25,8 +25,8 @@ export interface InspectorProps {
   station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
   onCloneStation: () => void;
-  extraCamera: { x: number; y: number; z: number } | null;
-  onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
+  extraCamera: { x: number; y: number; z: number; fovDeg: number } | null;
+  onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number; fovDeg?: number }) => void;
   // Decoupled prop (Three.js cube): full transform + size/colour + duplicate/delete.
   prop?: { x: number; y: number; z: number; yaw: number; size: number; color: string } | null;
   onProp?: (p: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => void;
@@ -195,10 +195,11 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
             ]} />
           <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
-          {/* Same overhead D435i view toggles as the primary (these apply to every overhead camera). */}
+          {/* Per-camera FOV + the same overhead D435i view toggles as the primary. */}
           {p.camera && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
               {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
+              <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.extraCamera.fovDeg} on={(v) => p.onExtraCamera({ fovDeg: v })} subtle={subtle} unit="°" />
             </div>
           )}
           <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>

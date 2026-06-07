@@ -798,13 +798,14 @@ export class RenderSystem {
 
     /** Reconcile station feeds with the current stations: set each camera's overhead pose (post →
      *  worktop centre) and dispose feeds whose station is gone. */
-    syncStationCameras(stations: Array<{ id: string; x: number; y: number; yaw?: number; postX: number; postY: number; postHeight: number; camPose?: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number } }>) {
+    syncStationCameras(stations: Array<{ id: string; x: number; y: number; yaw?: number; postX: number; postY: number; postHeight: number; camPose?: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }; camFovDeg?: number }>) {
         const keep = new Set(stations.map((s) => s.id));
         for (const [id, cam] of this.stationCameras) {
             if (!keep.has(id)) { cam.dispose(); this.stationCameras.delete(id); }
         }
         for (const s of stations) {
             const cam = this.ensureStationCamera(s.id);
+            if (s.camFovDeg) cam.setFovHoriz(s.camFovDeg);
             if (s.camPose) { cam.setPoseEuler(s.camPose.x, s.camPose.y, s.camPose.z, s.camPose.rotX, s.camPose.rotY, s.camPose.rotZ); continue; }
             // Default: overhead, post → worktop centre (rotate the post offset by the station yaw).
             const c = Math.cos(s.yaw ?? 0), sn = Math.sin(s.yaw ?? 0);
@@ -827,13 +828,17 @@ export class RenderSystem {
     }
     getExtraCamera(id: string): StationCamera | undefined { return this.extraCameras.get(id); }
 
-    /** Reconcile the extra overhead cameras with config: position (x,y,z) + euler aim (rotX/Y/Z). */
-    syncExtraCameras(cams: Array<{ id: string; x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }>) {
+    /** Reconcile the extra overhead cameras with config: position (x,y,z) + euler aim (rotX/Y/Z) + FOV. */
+    syncExtraCameras(cams: Array<{ id: string; x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg?: number }>) {
         const keep = new Set(cams.map((c) => c.id));
         for (const [id, cam] of this.extraCameras) {
             if (!keep.has(id)) { cam.dispose(); this.extraCameras.delete(id); }
         }
-        for (const c of cams) this.ensureExtraCamera(c.id).setPoseEuler(c.x, c.y, c.z, c.rotX, c.rotY, c.rotZ);
+        for (const c of cams) {
+            const cam = this.ensureExtraCamera(c.id);
+            if (c.fovDeg) cam.setFovHoriz(c.fovDeg);
+            cam.setPoseEuler(c.x, c.y, c.z, c.rotX, c.rotY, c.rotZ);
+        }
     }
 
     /** Dispose wrist feeds whose arm no longer exists (called when arms are added/removed). */

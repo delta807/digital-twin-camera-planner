@@ -9,7 +9,7 @@ import loadMujoco from 'mujoco_wasm';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import * as THREE from 'three';
 import { v4 as uuidv4 } from 'uuid';
-import { MujocoSim } from './MujocoSim';
+import { MujocoSim, type TaskStateSnap } from './MujocoSim';
 import { WorkspaceDock } from './components/WorkspaceDock';
 import { Measurement } from './MeasureTool';
 import { RobotSelector } from './components/RobotSelector';
@@ -575,7 +575,7 @@ export function App() {
     handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).filter((c) => c.id !== id) });
   };
   // Move/aim an extra camera (from its viewport gizmo or the inspector) — live, no reload.
-  const handleExtraCameraChange = (id: string, patch: Partial<{ x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }>) => {
+  const handleExtraCameraChange = (id: string, patch: Partial<{ x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg: number }>) => {
     const wc = workcellConfigRef.current;
     handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
@@ -594,6 +594,10 @@ export function App() {
     const base = stationCamPose(sid); if (!base) return;
     const next = { ...base, ...patch };
     handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === sid ? { ...s, camPose: next } : s)) });
+  };
+  const handleStationCamFov = (sid: string, fovDeg: number) => {
+    const wc = workcellConfigRef.current;
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === sid ? { ...s, camFovDeg: fovDeg } : s)) });
   };
 
   // Wrist-cam mount (gripper-local offset + tilt). A saved tuning (localStorage) overrides the
@@ -772,7 +776,7 @@ export function App() {
     if (kind === 'object' && id === 'delete') {
       const bid = selection?.bodyId;
       if (bid !== undefined) {
-        if (simRef.current?.despawnBlock(bid)) { sel?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); }
+        if (simRef.current?.despawnBlock(bid)) { sel?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); pushHistoryRef.current(); }
         else toggleVisible({ key: `obj:${bid}`, kind: 'object', bodyId: bid });
       }
       return;
@@ -937,7 +941,7 @@ export function App() {
     else if (k === 'post' && sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
     else if (k === 'object' && sel.bodyId !== undefined) {
       // Pool cubes despawn live; baked task objects hide (re-showable via the tree eye).
-      if (simRef.current?.despawnBlock(sel.bodyId)) { simRef.current?.renderSys.selection?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); }
+      if (simRef.current?.despawnBlock(sel.bodyId)) { simRef.current?.renderSys.selection?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); pushHistoryRef.current(); }
       else toggleVisible({ key: `obj:${sel.bodyId}`, kind: 'object', bodyId: sel.bodyId });
     }
   };
@@ -1018,8 +1022,8 @@ export function App() {
     sel.onWristMove = (armId, world) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const o = c.worldToLocalOffset(world); setWristMount((m) => ({ ...m, posX: o.posX, posY: o.posY, posZ: o.posZ })); } };
     sel.onWristAim = (armId, quat) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(quat); setWristMount((m) => ({ ...m, tilt: c.worldDirToTilt(dir) })); } };
     // Task objects (boxes): viewport move/aim gizmo → teleport / yaw the freejoint block.
-    sel.onObjectMove = (bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z);
-    sel.onObjectRotate = (bodyId, yaw) => simRef.current?.setTaskBodyYaw(bodyId, yaw);
+    sel.onObjectMove = (bodyId, x, y, z) => { simRef.current?.setTaskBodyPosition(bodyId, x, y, z); pushHistoryRef.current(); };
+    sel.onObjectRotate = (bodyId, yaw) => { simRef.current?.setTaskBodyYaw(bodyId, yaw); pushHistoryRef.current(); };
     // Decoupled props (Three.js cubes): gizmo move/aim → edit the config (live rebuild, no physics).
     sel.getPropPose = (id) => { const p = workcellConfigRef.current.props?.find((x) => x.id === id); return p ? { x: p.x, y: p.y, z: p.z, yaw: p.yaw } : null; };
     sel.onPropMove = (id, x, y, z) => handlePropChange(id, { x, y, z });
@@ -1109,7 +1113,7 @@ export function App() {
   // ── Undo / redo: a timeline of layout snapshots (workcell + arms). Rapid edits (a slider drag)
   // coalesce into one step; discrete actions (add/move/delete) are their own steps. (Task-block
   // physics positions live in mjData, not React state, so those moves aren't tracked yet.)
-  type LayoutSnap = { workcell: WorkcellConfig; arms: ArmInstance[] };
+  type LayoutSnap = { workcell: WorkcellConfig; arms: ArmInstance[]; task: TaskStateSnap | null };
   const historyRef = useRef<{ stack: LayoutSnap[]; idx: number; lastTs: number }>({ stack: [], idx: -1, lastTs: 0 });
   const restoringRef = useRef(false);
   const [histVer, setHistVer] = useState(0);
@@ -1121,23 +1125,27 @@ export function App() {
     const h = historyRef.current; const u = h.idx > 0, r = h.idx < h.stack.length - 1;
     if (u !== availRef.current.u || r !== availRef.current.r) { availRef.current = { u, r }; setHistVer((v) => v + 1); }
   };
-  useEffect(() => {
-    if (isLoading) return;
+  // Push a snapshot (workcell + arms from refs + the cube/task physics state). Shared by the
+  // workcell/arms effect AND imperative cube ops (spawn/despawn/move) which don't touch React state.
+  const pushHistory = () => {
+    if (isLoading || restoringRef.current) return;
     const h = historyRef.current;
-    const snap: LayoutSnap = { workcell: workcellConfig, arms: armInstances };
-    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = performance.now(); return; }
-    if (restoringRef.current) return; // an undo/redo restore shouldn't be recorded as a new edit
+    const snap: LayoutSnap = { workcell: workcellConfigRef.current, arms: armInstancesRef.current, task: simRef.current?.snapshotTaskState() ?? null };
     const now = performance.now();
+    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = now; return; }
     if (h.idx < h.stack.length - 1) h.stack = h.stack.slice(0, h.idx + 1); // a fresh edit clears the redo branch
     if (now - h.lastTs < 350 && h.idx > 0) { h.stack[h.idx] = snap; } // coalesce a gesture into one step
     else { h.stack.push(snap); h.idx = h.stack.length - 1; if (h.stack.length > 60) { h.stack.shift(); h.idx--; } }
     h.lastTs = now;
     refreshHistButtons();
-  }, [workcellConfig, armInstances, isLoading]);
+  };
+  const pushHistoryRef = useRef(pushHistory); pushHistoryRef.current = pushHistory; // stable handle for imperative callers
+  useEffect(() => { pushHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [workcellConfig, armInstances, isLoading]);
   const applyLayoutSnap = (s: LayoutSnap) => {
     restoringRef.current = true;
     setWorkcellConfig(s.workcell); simRef.current?.setWorkcell(s.workcell);
     setArmInstances(s.arms); simRef.current?.setArmInstances(s.arms);
+    simRef.current?.restoreTaskState(s.task); setTaskBodies(simRef.current?.getTaskBodies() ?? []); // cube poses/spawns
     const primary = s.arms.find((a) => a.primary);
     // Defer the (potentially heavy) reachability recompute off the undo's critical path.
     if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => requestAnimationFrame(() => applyPlannerState()));
@@ -1321,6 +1329,7 @@ export function App() {
     if (id == null) { console.warn('[blocks] pool exhausted — delete a block to free a slot'); return; }
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // show the new cube in the object tree
     applyPlannerState();
+    pushHistoryRef.current(); // record the spawn on the undo timeline
   };
   const handleAddBlock = () => {
     const wc = workcellConfigRef.current;
@@ -1940,10 +1949,17 @@ export function App() {
                 workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
                 extraCamera={(() => {
                   const id = selection?.cameraId; if (!id) return null;
-                  if (id.startsWith('stationcam:')) { const sp = stationCamPose(id.slice(11)); return sp ? { x: sp.x, y: sp.y, z: sp.z } : null; }
-                  const c = workcellConfig.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z } : null;
+                  if (id.startsWith('stationcam:')) { const sid = id.slice(11); const sp = stationCamPose(sid); if (!sp) return null; const st = workcellConfig.stations?.find((x) => x.id === sid); return { x: sp.x, y: sp.y, z: sp.z, fovDeg: st?.camFovDeg ?? D435I_PRESET.hFovDeg }; }
+                  const c = workcellConfig.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, fovDeg: c.fovDeg ?? D435I_PRESET.hFovDeg } : null;
                 })()}
-                onExtraCamera={(patch) => { const id = selection?.cameraId; if (!id) return; if (id.startsWith('stationcam:')) handleStationCamPose(id.slice(11), patch); else handleExtraCameraChange(id, patch); }}
+                onExtraCamera={(patch) => {
+                  const id = selection?.cameraId; if (!id) return;
+                  if (id.startsWith('stationcam:')) {
+                    const sid = id.slice(11);
+                    if (patch.fovDeg !== undefined) handleStationCamFov(sid, patch.fovDeg);
+                    const { fovDeg, ...pose } = patch; void fovDeg; if (Object.keys(pose).length) handleStationCamPose(sid, pose);
+                  } else handleExtraCameraChange(id, patch);
+                }}
                 prop={(() => { const pr = workcellConfig.props?.find((x) => x.id === selection?.propId); return pr ? { x: pr.x, y: pr.y, z: pr.z, yaw: pr.yaw, size: pr.size, color: pr.color } : null; })()}
                 onProp={(patch) => { if (selection?.propId) handlePropChange(selection.propId, patch); }}
                 onCloneProp={() => { if (selection?.propId) handleCloneProp(selection.propId); }}
