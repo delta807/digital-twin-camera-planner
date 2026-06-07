@@ -170,3 +170,21 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
       add/remove needs a model recompile + reload. Options written up for the user.
 - [ ] 5. (researched) Online sync for shared arrangements — git-as-DB (Decap/TinaCMS style) vs
       Netlify Blobs/DB vs Supabase. Written up for the user.
+
+## HUD refinement pass 6 (review)
+- [x] Bodies/Objects renames; custom SO-101 + mount-post insert SVGs.
+- [x] BUG: hiding a non-primary arm no longer hides the primary (id-checked).
+- [x] BUG: double-click opens the radial in jog mode (only measure excluded).
+- [x] Clearer save: inline name+Save in the dock with a confirmation + scope note.
+- [x] Decouple future props from physics: Three.js cube "props" (add/dup/delete/move/recolour
+      live, no recompile); persist in WorkcellConfig.props (saved with profiles).
+- [x] Netlify Blobs team sync scaffolded (function + soft-failing client + publish UI); needs deploy.
+- [research] Collaborative digital twins: OpenUSD/Omniverse Nucleus; CRDT (Yjs/Liveblocks) web
+      multiplayer; commit-based (git) for non-live. See response.
+
+## Regression-avoidance plan (per user request)
+- Commit after every working, verified change (done: small per-chunk commits this session).
+- Always run `node_modules/.bin/tsc --noEmit` + reload + check console (0 errors) before commit.
+- For risky UI, verify the specific behaviour in-browser (preview_eval) not just a screenshot.
+- Suggested next: a Playwright smoke test (load → no console errors → key controls present) run in
+  CI on each push; and `npm run build` in CI to catch bundling breaks.
