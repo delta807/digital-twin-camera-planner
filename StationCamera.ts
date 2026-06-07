@@ -50,27 +50,40 @@ export class StationCamera {
 
   attachPip(container: HTMLElement) {
     if (this.pipContainer === container && this.pipRenderer) return;
-    this.detachPip();
-    this.pipRenderer = new THREE.WebGLRenderer({ antialias: true });
-    this.pipRenderer.setPixelRatio(window.devicePixelRatio);
-    this.resizePip(container);
+    // Reuse the one renderer/GL context across attach/detach — creating a new one per attach churns
+    // WebGL contexts (browsers cap them) and never frees fast enough under repeated cell switching.
+    if (!this.pipRenderer) {
+      this.pipRenderer = new THREE.WebGLRenderer({ antialias: true });
+      this.pipRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    } else {
+      this.pipRenderer.domElement.remove();
+    }
     container.appendChild(this.pipRenderer.domElement);
+    const c = this.pipRenderer.domElement.style; c.width = '100%'; c.height = '100%'; c.display = 'block';
+    this.resizePip(container);
     this.pipContainer = container;
   }
 
   detachPip() {
-    if (this.pipRenderer) {
-      this.pipRenderer.domElement.remove();
-      this.pipRenderer.dispose();
-      this.pipRenderer = null;
-    }
+    // Keep the renderer/context for reuse; just unmount its canvas (dispose only in dispose()).
+    if (this.pipRenderer) this.pipRenderer.domElement.remove();
     this.pipContainer = null;
+  }
+
+  /** Ensure THIS camera's PIP canvas is the sole one mounted in `el` (idempotent + self-healing):
+   *  strips any other camera's orphaned canvas from the host, then attaches. Used by the Compare
+   *  slot effect so swapping which cell a pane frames never leaves a stolen/blank feed. */
+  mountPip(el: HTMLElement) {
+    el.querySelectorAll('canvas').forEach((c) => { if (c !== this.pipRenderer?.domElement) c.remove(); });
+    this.attachPip(el);
   }
 
   private resizePip(container: HTMLElement) {
     if (!this.pipRenderer) return;
-    const w = container.clientWidth || 320;
-    const h = container.clientHeight || Math.round(w / this.camera.aspect);
+    const MAX = 1280; // clamp: a percentage-sized host can report a runaway clientHeight → OOM
+    const w = Math.min(container.clientWidth || 320, MAX);
+    const h = Math.min(container.clientHeight || Math.round(w / this.camera.aspect), MAX);
+    if (w < 2 || h < 2) return; // host not laid out yet — don't allocate a degenerate buffer
     this.pipRenderer.setSize(w, h, false);
   }
 
@@ -85,5 +98,9 @@ export class StationCamera {
     hide.forEach((o, i) => (o.visible = prev[i]));
   }
 
-  dispose() { this.detachPip(); this.scene.remove(this.glyph); disposeGlyph(this.glyph); }
+  dispose() {
+    if (this.pipRenderer) { this.pipRenderer.domElement.remove(); this.pipRenderer.dispose(); this.pipRenderer = null; }
+    this.pipContainer = null;
+    this.scene.remove(this.glyph); disposeGlyph(this.glyph);
+  }
 }

@@ -526,13 +526,27 @@ export function App() {
     }
     return cb;
   };
-  // Stable attach callback for the overhead D435i rig into a Compare-pane feed tile (so the canvas
-  // isn't torn down each render). Wrist/station feeds reuse wristRefCb/stationRefCb above.
-  const cmpRigCbRef = useRef<((el: HTMLDivElement | null) => void) | null>(null);
-  const cmpRigCb = () => (cmpRigCbRef.current ??= (el: HTMLDivElement | null) => {
-    const r = rig(); if (!r) return;
-    if (el) r.attachPip(el); else r.detachPip();
-  });
+  // Compare feed slots: four FIXED host divs (A/B × overhead/wrist). Attachment is driven by an
+  // effect (not React refs) so swapping which cell a pane frames always re-mounts the right camera
+  // and self-heals — a ref-based approach can't, because a singleton camera's canvas gets moved to
+  // the other pane and React never re-fires the stable ref to bring it back.
+  const compareSlotEls = useRef<{ aOver: HTMLDivElement | null; aWrist: HTMLDivElement | null; bOver: HTMLDivElement | null; bWrist: HTMLDivElement | null }>({ aOver: null, aWrist: null, bOver: null, bWrist: null });
+  const slotRefCbsRef = useRef<Record<string, (el: HTMLDivElement | null) => void> | null>(null);
+  if (!slotRefCbsRef.current) {
+    const mk = (k: 'aOver' | 'aWrist' | 'bOver' | 'bWrist') => (el: HTMLDivElement | null) => { compareSlotEls.current[k] = el; };
+    slotRefCbsRef.current = { aOver: mk('aOver'), aWrist: mk('aWrist'), bOver: mk('bOver'), bWrist: mk('bWrist') };
+  }
+  const overheadCamFor = (cellId: string) => {
+    const rs = simRef.current?.renderSys; if (!rs) return null;
+    return cellId === 'primary' ? rig() : rs.ensureStationCamera(cellId);
+  };
+  const wristCamFor = (cellId: string) => {
+    const rs = simRef.current?.renderSys; if (!rs) return null;
+    const armId = cellId === 'primary'
+      ? armInstancesRef.current.find((a) => a.primary)?.id
+      : armInstancesRef.current.find((a) => a.stationId === cellId)?.id;
+    return armId ? rs.ensureWristCamera(armId) : null;
+  };
 
   const nextExtraCamRef = useRef(2);
   const handleAddExtraCamera = () => {
@@ -1326,6 +1340,27 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, isLoading, cmpCellA, cmpCellB, workcellConfig.stations, workcellConfig.originX, workcellConfig.originY]);
 
+  // Mount each pane's overhead + wrist camera into its fixed slot host. Runs on every cell/arm change
+  // so it re-points (and self-heals) the singleton cameras between panes. mountPip strips orphans.
+  useEffect(() => {
+    if (mode !== 'compare' || isLoading || !simRef.current) return;
+    const stations = workcellConfigRef.current.stations ?? [];
+    const valid = (id: string) => id === 'primary' || stations.some((s) => s.id === id);
+    const aId = valid(cmpCellA) ? cmpCellA : 'primary';
+    const bId = valid(cmpCellB) ? cmpCellB : (stations[0]?.id ?? 'primary');
+    const els = compareSlotEls.current;
+    const mount = (el: HTMLDivElement | null, cam: { mountPip: (e: HTMLElement) => void } | null | undefined) => { if (el && cam) cam.mountPip(el); };
+    // rAF so the slot host divs are laid out (non-zero size) before the PIP measures them.
+    const id = requestAnimationFrame(() => {
+      mount(els.aOver, overheadCamFor(aId));
+      mount(els.aWrist, wristCamFor(aId));
+      mount(els.bOver, overheadCamFor(bId));
+      mount(els.bWrist, wristCamFor(bId));
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isLoading, cmpCellA, cmpCellB, armInstances, workcellConfig.stations]);
+
   const handleApplyArmPose = () => {
     const selected = armInstances.find((arm) => arm.id === selectedArmId);
     const sim = simRef.current;
@@ -1547,7 +1582,9 @@ export function App() {
   return (
     <div className={`w-full h-full relative overflow-hidden font-sans transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* 3D Container */}
-      <div ref={containerRef} onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} className="w-full h-full absolute inset-0 bg-slate-200" />
+      {/* Inline-size the sim viewport so the 3D NEVER collapses to 0-height if the Tailwind runtime
+          hiccups — the canvas + MuJoCo are the critical surface and must survive any styling glitch. */}
+      <div ref={containerRef} onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} className="bg-slate-200" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       
       {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
@@ -1647,21 +1684,17 @@ export function App() {
                 const valid = (id: string) => id === 'primary' || stations.some((s) => s.id === id);
                 const aId = valid(cmpCellA) ? cmpCellA : 'primary';
                 const bId = valid(cmpCellB) ? cmpCellB : (stations[0]?.id ?? 'primary');
-                const tile = (label: string, refCb: (el: HTMLDivElement | null) => void) => (
-                  <div className="relative w-52 rounded-lg overflow-hidden border border-white/15 shadow-lg bg-slate-950" style={{ aspectRatio: '4 / 3' }}>
-                    <div ref={refCb} className="w-full h-full [&>canvas]:w-full [&>canvas]:h-full [&>canvas]:block" />
+                // Fully INLINE-sized PIP host (no Tailwind w-full/h-full): a percentage host that
+                // depends on Tailwind can, the moment a freshly-mounted tile renders before the CDN
+                // JIT catches up, inherit the canvas's own buffer height → feedback → runaway px that
+                // OOMs the page and kills the Tailwind runtime. Fixed inline px is immune to all that.
+                const slot = (label: string, refCb: (el: HTMLDivElement | null) => void) => (
+                  <div className="relative rounded-lg overflow-hidden border border-white/15 shadow-lg bg-slate-950" style={{ width: 208, height: 156 }}>
+                    <div ref={refCb} style={{ width: '100%', height: '100%' }} />
                     <span className="absolute top-1 left-1.5 text-[9px] font-bold uppercase tracking-wide text-white/90 px-1.5 py-0.5 rounded bg-black/50">{label}</span>
                   </div>
                 );
-                // Build the overhead + wrist feed stack for whichever cell a pane frames.
-                const feedsForCell = (cellId: string) => {
-                  if (cellId === 'primary') {
-                    const primary = armInstances.find((a) => a.primary);
-                    return <>{tile('Overhead', cmpRigCb())}{primary && tile('Wrist', wristRefCb(primary.id))}</>;
-                  }
-                  const arm = armInstances.find((a) => a.stationId === cellId);
-                  return <>{tile('Overhead', stationRefCb(cellId))}{arm && tile('Wrist', wristRefCb(arm.id))}</>;
-                };
+                const cb = slotRefCbsRef.current!;
                 return (
                   <CompareView
                     isDarkMode={isDarkMode}
@@ -1672,8 +1705,8 @@ export function App() {
                     cellB={bId}
                     onCellA={setCmpCellA}
                     onCellB={setCmpCellB}
-                    feedsA={feedsForCell(aId)}
-                    feedsB={feedsForCell(bId)}
+                    feedsA={<>{slot('Overhead', cb.aOver)}{slot('Wrist', cb.aWrist)}</>}
+                    feedsB={<>{slot('Overhead', cb.bOver)}{slot('Wrist', cb.bWrist)}</>}
                   />
                 );
               })()}

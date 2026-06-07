@@ -94,6 +94,12 @@ export class RenderSystem {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
 
+        // Safety net: if the main GL context is ever lost (e.g. too many live contexts), preventDefault
+        // so the browser can RESTORE it instead of leaving the sim permanently blank. three.js re-uploads
+        // its GPU resources on 'webglcontextrestored', so the scene comes back on the next frame.
+        this.renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('[RenderSystem] WebGL context lost — awaiting restore'); }, false);
+        this.renderer.domElement.addEventListener('webglcontextrestored', () => console.warn('[RenderSystem] WebGL context restored'), false);
+
         // Tight near/far (the whole workcell is < 2 m) — a 10000:1 ratio crushed depth precision
         // near the ground and amplified Z-fighting/flicker on the table + overlays.
         this.camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.05, 50);

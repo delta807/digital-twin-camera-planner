@@ -125,27 +125,37 @@ export class WristCamera {
 
   attachPip(container: HTMLElement) {
     if (this.pipContainer === container && this.pipRenderer) return;
-    this.detachPip();
-    this.pipRenderer = new THREE.WebGLRenderer({ antialias: true });
-    this.pipRenderer.setPixelRatio(window.devicePixelRatio);
-    this.resizePip(container);
+    // Reuse the one renderer/GL context across attach/detach (see StationCamera) — avoids context
+    // churn under repeated Compare cell switching that would otherwise evict the main context.
+    if (!this.pipRenderer) {
+      this.pipRenderer = new THREE.WebGLRenderer({ antialias: true });
+      this.pipRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    } else {
+      this.pipRenderer.domElement.remove();
+    }
     container.appendChild(this.pipRenderer.domElement);
+    const c = this.pipRenderer.domElement.style; c.width = '100%'; c.height = '100%'; c.display = 'block';
+    this.resizePip(container);
     this.pipContainer = container;
   }
 
   detachPip() {
-    if (this.pipRenderer) {
-      this.pipRenderer.domElement.remove();
-      this.pipRenderer.dispose();
-      this.pipRenderer = null;
-    }
+    if (this.pipRenderer) this.pipRenderer.domElement.remove();
     this.pipContainer = null;
+  }
+
+  /** Ensure THIS camera's PIP canvas is the sole one mounted in `el` (idempotent + self-healing). */
+  mountPip(el: HTMLElement) {
+    el.querySelectorAll('canvas').forEach((c) => { if (c !== this.pipRenderer?.domElement) c.remove(); });
+    this.attachPip(el);
   }
 
   private resizePip(container: HTMLElement) {
     if (!this.pipRenderer) return;
-    const w = container.clientWidth || 320;
-    const h = container.clientHeight || Math.round(w / this.camera.aspect);
+    const MAX = 1280; // clamp against a runaway host clientHeight (percentage-sized PIP → OOM)
+    const w = Math.min(container.clientWidth || 320, MAX);
+    const h = Math.min(container.clientHeight || Math.round(w / this.camera.aspect), MAX);
+    if (w < 2 || h < 2) return;
     this.pipRenderer.setSize(w, h, false);
   }
 
@@ -160,5 +170,9 @@ export class WristCamera {
     hide.forEach((o, i) => (o.visible = prev[i]));
   }
 
-  dispose() { this.detachPip(); this.scene.remove(this.glyph); disposeGlyph(this.glyph); }
+  dispose() {
+    if (this.pipRenderer) { this.pipRenderer.domElement.remove(); this.pipRenderer.dispose(); this.pipRenderer = null; }
+    this.pipContainer = null;
+    this.scene.remove(this.glyph); disposeGlyph(this.glyph);
+  }
 }
