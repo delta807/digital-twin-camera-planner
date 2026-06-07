@@ -240,3 +240,12 @@ Radial audit (min Move/Aim/Duplicate/Delete):
   physics (drag still works). joints[] persists with profiles.
 - Verified: 2nd arm posed independently (extends+rotates) with its own wrist feed; tsc+smoke green.
 - Follow-up (optional): viewport click-drag jog for ghosts (articulated nodes) — slider jog covers it now.
+
+## #9 Synced 3D compare (done)
+- Compare A/B panes now use a rotatable orthographic projection (SceneMap.makeProj from camera
+  az/el) instead of a fixed isometric. CompareView mirrors the live camera angle into both panes
+  each frame, and dragging either pane orbits the shared camera (RenderSystem.orbit) — so the
+  NavCube OR a pane drag rotates both setups together, comparable from the same viewpoint.
+- Panes remain synced 3D *schematics* (SVG). Optional follow-up: full WebGL mesh fidelity (two
+  lightweight scenes sharing the orbit camera).
+- Verified: dragging one pane rotates both in sync; tsc + smoke green; 0 errors.
