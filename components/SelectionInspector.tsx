@@ -104,7 +104,7 @@ export function SelectionInspector(p: InspectorProps) {
     ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
     // Standalone floating panel ("its own sidebar"). Position/size come from floatClass (set by App
     // so it sits beside the main sidebar); default to top-right when none is given.
-    : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px]'} max-h-[calc(100vh-3rem)] overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+    : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-3rem)]'} overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
 
   return (
     <div className={rootClass}>

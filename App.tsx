@@ -26,7 +26,6 @@ import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
 import { LayoutProfiles } from './components/LayoutProfiles';
 import { OverlayLegend } from './components/OverlayLegend';
 import { TweaksPanel } from './components/TweaksPanel';
-import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
@@ -1772,9 +1771,6 @@ export function App() {
                 layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
                 isDarkMode={isDarkMode}
               />
-              {/* Status readout now lives in the sidebar header (MetricBar inline). When the panel is
-                  closed, show the floating pill as a fallback so the sim state stays visible. */}
-              {!showSidebar && mode !== 'compare' && <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />}
               {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
@@ -1861,7 +1857,7 @@ export function App() {
             const inspectorEl = (inline: boolean) => (
               <SelectionInspector
                 inline={inline}
-                floatClass={inline ? undefined : 'absolute top-6 right-6 z-50 w-[20rem]'}
+                floatClass={inline ? undefined : 'relative w-full shrink-0 max-h-[45vh]'}
                 selection={selection}
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
@@ -1997,7 +1993,15 @@ export function App() {
             const overlaysEl = <OverlayLegend inline camera={cameraToggles} planner={plannerToggles} isDarkMode={isDarkMode} dockOpen={dockOpen} />;
             return (
               <>
+                {/* Right-side stacked column: Selection card on top, the main sidebar below — they
+                    share the column so they never overlap (like the stacked panels in Claude desktop). */}
+                {/* The NavCube (incl. its ISO crosshair) sits top-right down to ~128px. When a Selection
+                    card is shown it's the column's top item, so start the column BELOW the cube so it's
+                    never covered. With no card, the sidebar can start at the top as before. */}
+                <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
+                {selection && inspectorEl(false)}
                 <UnifiedSidebar
+                  embedded
                   isOpen={showSidebar}
                   onClose={() => setShowSidebar(false)}
                   onSend={handleErSend}
@@ -2025,8 +2029,7 @@ export function App() {
                   toolbar={null /* Controls is now its own standalone floating toolbar (below) */}
                   overlays={!sceneIsFranka ? overlaysEl : null}
                 />
-                {/* Selection — its own standalone floating panel (beside the sidebar when open). */}
-                {selection && inspectorEl(false)}
+                </div>
                 {/* Controls — its own standalone floating pill toolbar, bottom-centre. */}
                 <div data-toolbar className={toolbarPos ? 'fixed z-40' : `absolute bottom-6 left-1/2 -translate-x-1/2 z-40 ${showSidebar ? 'min-[660px]:left-[calc(50%-10.5rem)]' : ''}`} style={toolbarPos ? { left: toolbarPos.x, top: toolbarPos.y } : undefined}>{toolbarEl}</div>
               </>

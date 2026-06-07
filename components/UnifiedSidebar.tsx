@@ -29,6 +29,9 @@ interface UnifiedSidebarProps {
   feeds?: ReactNode;
   toolbar?: ReactNode;
   overlays?: ReactNode;
+  /** Render as a flex-fill child of a stacked column (no own absolute positioning) instead of a
+   *  standalone floating panel — so it can sit below the Selection card without overlapping it. */
+  embedded?: boolean;
 }
 
 /** A labelled section in the stacked sidebar dashboard. */
@@ -63,7 +66,8 @@ export function UnifiedSidebar({
   headerContent = null,
   feeds = null,
   toolbar = null,
-  overlays = null
+  overlays = null,
+  embedded = false,
 }: UnifiedSidebarProps) {
   // Default scene is the SO-101 twin, whose pickable task props are orange blocks.
   const [prompt, setPrompt] = useState('orange blocks');
@@ -84,8 +88,11 @@ export function UnifiedSidebar({
   const detectDisabled = isLoading || !prompt.trim() || !geminiEnabled;
 
   return (
-    // Changed positioning: centered on mobile (left-4 right-4), positioned right on desktop (min-[660px]:right-10 min-[660px]:w-96)
-    <div className={`absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-6 min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] glass-panel rounded-3xl flex flex-col z-40 overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
+    // Embedded: a flex-fill child of the right-side column (stacks below the Selection card, no
+    // overlap). Standalone: centered on mobile, pinned right on desktop.
+    <div className={`${embedded
+      ? 'relative w-full flex-1 min-h-0'
+      : 'absolute top-4 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:top-6 min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] z-40'} glass-panel rounded-3xl flex flex-col overflow-hidden shadow-2xl transition-all border border-white/20 ${panelBase}`}>
 
       {/* Slim header bar — shows the live status readout (MetricBar) in place of a static title. */}
       <div className={`px-4 py-2.5 border-b flex justify-between items-center gap-2 shrink-0 ${headerBorder}`}>
