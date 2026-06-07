@@ -55,8 +55,8 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
         <div className="space-y-0.5">
           <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
           <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
-          {toggles.station && <Check label="Station cams" v={toggles.station.on} on={toggles.station.onToggle} />}
-          {toggles.extraCam && <Check label="Extra overhead cams" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
+          {toggles.station && <Check label="Workstation D435i" v={toggles.station.on} on={toggles.station.onToggle} />}
+          {toggles.extraCam && <Check label="Extra D435i" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
         </div>
         <div className="space-y-2">
           {children}
@@ -89,8 +89,8 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
           <div className="px-2 py-1.5 border-b border-black/5 shrink-0">
             <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
             <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
-            {toggles.station && <Check label="Station cams" v={toggles.station.on} on={toggles.station.onToggle} />}
-            {toggles.extraCam && <Check label="Extra overhead cams" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
+            {toggles.station && <Check label="Workstation D435i" v={toggles.station.on} on={toggles.station.onToggle} />}
+            {toggles.extraCam && <Check label="Extra D435i" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
           </div>
           <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
             {children}

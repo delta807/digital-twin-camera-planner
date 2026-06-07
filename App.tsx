@@ -1984,10 +1984,10 @@ export function App() {
                     compare={arm.primary ? { src: wristStreamUrl, fallbackSrc: '/fallback-wrist.jpg', onSrc: updateWristStream, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
                 ))}
                 {stationView && (workcellConfig.stations ?? []).map((st, i) => (
-                  <SensorView inline key={st.id} canvasHostRef={stationRefCb(st.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Station ${i + 2} · overhead`} onClose={() => setStationView(false)} />
+                  <SensorView inline key={st.id} canvasHostRef={stationRefCb(st.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={intrinsics.aspect} title={`Overhead D435i · WS ${i + 2}`} onClose={() => setStationView(false)} />
                 ))}
                 {extraCamView && (workcellConfig.extraCameras ?? []).map((c, i) => (
-                  <SensorView inline key={c.id} canvasHostRef={extraCamRefCb(c.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Overhead D435i ${i + 2}`} onClose={() => setExtraCamView(false)} />
+                  <SensorView inline key={c.id} canvasHostRef={extraCamRefCb(c.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={intrinsics.aspect} title={`Overhead D435i ${i + 2}`} onClose={() => setExtraCamView(false)} />
                 ))}
               </FeedsDock>
             );
@@ -2034,10 +2034,10 @@ export function App() {
               <>
                 {/* Right-side stacked column: Selection card on top, the main sidebar below — they
                     share the column so they never overlap (like the stacked panels in Claude desktop). */}
-                {/* The NavCube (incl. its ISO crosshair) sits top-right down to ~128px. When a Selection
-                    card is shown it's the column's top item, so start the column BELOW the cube so it's
-                    never covered. With no card, the sidebar can start at the top as before. */}
-                <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
+                {/* Only when the panel is CLOSED does the NavCube sit at the top-right (over the column);
+                    then start the column below it so the Selection card never covers the cube. When the
+                    panel is open the cube sits to the LEFT of the column, so the column starts at the top. */}
+                <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${!showSidebar && selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
                 {selection && inspectorEl(false)}
                 <UnifiedSidebar
                   embedded

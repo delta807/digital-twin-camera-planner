@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { makeD435iGlyph, disposeGlyph } from './cameraGlyph';
 import { CameraFovOverlay } from './CameraFovOverlay';
+import { D435I_PRESET } from './types';
 
 /**
  * StationCamera — a fixed overhead feed for a satellite workstation (#6). It sits on the station's
@@ -22,8 +23,10 @@ export class StationCamera {
   private readonly fov: CameraFovOverlay;
 
   constructor(private readonly scene: THREE.Scene) {
-    // ~62° V, 4:3 — a generic overhead lens; the worktop's +Y reads as "up" in the image.
-    this.camera = new THREE.PerspectiveCamera(62, 4 / 3, 0.05, 12);
+    // Same optics as the primary D435i (real intrinsics) — these ARE D435i cameras, just overhead at
+    // a station. PerspectiveCamera.fov is VERTICAL; derive it from the D435i H-FOV + aspect.
+    const vFov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(D435I_PRESET.hFovDeg) / 2) / D435I_PRESET.aspect));
+    this.camera = new THREE.PerspectiveCamera(vFov, D435I_PRESET.aspect, 0.05, 12);
     this.camera.up.set(0, 1, 0);
     this.glyph.visible = false;
     this.scene.add(this.glyph);
