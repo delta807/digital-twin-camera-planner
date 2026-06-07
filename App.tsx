@@ -1822,6 +1822,7 @@ export function App() {
             const inspectorEl = (inline: boolean) => (
               <SelectionInspector
                 inline={inline}
+                floatClass={inline ? undefined : `absolute top-6 z-40 w-[20rem] ${showSidebar ? 'right-[23.5rem]' : 'right-4'}`}
                 selection={selection}
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
@@ -1965,7 +1966,7 @@ export function App() {
                   isPickingUp={isPickingUp}
                   playbackSpeed={playbackSpeed}
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
-                  inspector={selection ? inspectorEl(true) : null}
+                  inspector={null /* Selection is now its own standalone floating panel (below) */}
                   headerContent={!sceneIsFranka ? (
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={`text-[9px] font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Units</span>
@@ -1977,10 +1978,13 @@ export function App() {
                     </div>
                   ) : null}
                   feeds={!sceneIsFranka ? feedsEl : null}
-                  toolbar={toolbarEl}
+                  toolbar={null /* Controls is now its own standalone floating toolbar (below) */}
                   overlays={!sceneIsFranka ? overlaysEl : null}
                 />
-                {selection && !showSidebar && inspectorEl(false)}
+                {/* Selection — its own standalone floating panel (beside the sidebar when open). */}
+                {selection && inspectorEl(false)}
+                {/* Controls — its own standalone floating pill toolbar, bottom-centre. */}
+                <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-40 ${showSidebar ? 'min-[660px]:left-[calc(50%-10.5rem)]' : ''}`}>{toolbarEl}</div>
               </>
             );
           })()}

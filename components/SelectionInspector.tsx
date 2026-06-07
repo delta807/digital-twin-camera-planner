@@ -68,6 +68,8 @@ export interface InspectorProps {
   workcell?: { config: WorkcellConfig; onChange: (next: WorkcellConfig) => void }; // primary table rail/post
   /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
   inline?: boolean;
+  /** Override the floating-panel position/size classes (used when it's its own standalone sidebar). */
+  floatClass?: string;
 }
 
 const CAMERA_TOGGLE_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
@@ -100,8 +102,9 @@ export function SelectionInspector(p: InspectorProps) {
 
   const rootClass = p.inline
     ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
-    // Floats top-right BELOW the nav cube (which sits beside the drawer toggle) when panels are closed (#1, #4).
-    : `absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-10.5rem)] overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+    // Standalone floating panel ("its own sidebar"). Position/size come from floatClass (set by App
+    // so it sits beside the main sidebar); default to top-right when none is given.
+    : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px]'} max-h-[calc(100vh-3rem)] overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
 
   return (
     <div className={rootClass}>
