@@ -220,6 +220,10 @@ export function App() {
   const [measureActive, setMeasureActive] = useState(false);
   const [measureMode, setMeasureMode] = useState<'point' | 'gap'>('point');
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  // Right-column resize "drawer": how tall the Selection card may grow (vh), so when several panels
+  // stack (selection + feeds + reasoning) the user can rebalance the space. Drag the divider below it.
+  const [selMaxVh, setSelMaxVh] = useState(45);
+  const selResize = useRef<{ y: number; vh: number } | null>(null);
   // Pan tool (Fusion-style hand): left-drag pans the camera while on.
   const [panMode, setPanMode] = useState(false);
   useEffect(() => { if (!isLoading) simRef.current?.renderSys.setPanMode(panMode); }, [isLoading, panMode]);
@@ -1921,7 +1925,8 @@ export function App() {
             const inspectorEl = (inline: boolean) => (
               <SelectionInspector
                 inline={inline}
-                floatClass={inline ? undefined : 'relative w-full shrink-0 max-h-[45vh]'}
+                floatClass={inline ? undefined : 'relative w-full shrink-0'}
+                floatStyle={inline ? undefined : { maxHeight: `${selMaxVh}vh` }}
                 selection={selection}
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
@@ -2082,6 +2087,19 @@ export function App() {
                     panel is open the cube sits to the LEFT of the column, so the column starts at the top. */}
                 <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${!showSidebar && selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
                 {selection && inspectorEl(false)}
+                {/* Resize drawer: drag to rebalance the Selection card vs the panels below it. */}
+                {selection && showSidebar && (
+                  <div
+                    onPointerDown={(e) => { selResize.current = { y: e.clientY, vh: selMaxVh }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); }}
+                    onPointerMove={(e) => { const r = selResize.current; if (!r) return; const dvh = ((e.clientY - r.y) / window.innerHeight) * 100; setSelMaxVh(Math.max(18, Math.min(80, r.vh + dvh))); }}
+                    onPointerUp={(e) => { selResize.current = null; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); }}
+                    title="Drag to resize the panels"
+                    className="shrink-0 -my-1.5 h-3 flex items-center justify-center group"
+                    style={{ cursor: 'row-resize', touchAction: 'none' }}
+                  >
+                    <div className={`w-10 h-1 rounded-full transition-colors ${isDarkMode ? 'bg-white/20 group-hover:bg-indigo-400' : 'bg-black/15 group-hover:bg-indigo-500'}`} />
+                  </div>
+                )}
                 <UnifiedSidebar
                   embedded
                   isOpen={showSidebar}

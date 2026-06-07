@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useState } from 'react';
-import { ChevronDown, Crosshair, Trash2, X } from 'lucide-react';
+import { ChevronDown, Crosshair, RotateCcw, Trash2, X } from 'lucide-react';
 import type { SelectionInfo } from '../SelectionController';
 import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 import type { PlannerToggles } from '../WorkspacePlanner';
@@ -71,6 +71,8 @@ export interface InspectorProps {
   inline?: boolean;
   /** Override the floating-panel position/size classes (used when it's its own standalone sidebar). */
   floatClass?: string;
+  /** Inline style for the floating root (e.g. a draggable max-height for the resize drawer). */
+  floatStyle?: import('react').CSSProperties;
 }
 
 const CAMERA_TOGGLE_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
@@ -108,7 +110,7 @@ export function SelectionInspector(p: InspectorProps) {
     : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-3rem)]'} overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
 
   return (
-    <div className={rootClass}>
+    <div className={rootClass} style={p.inline ? undefined : p.floatStyle}>
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
@@ -335,21 +337,27 @@ export function SelectionInspector(p: InspectorProps) {
 const AXIS_HUE: Record<string, string> = { X: 'text-rose-500', Y: 'text-emerald-500', Z: 'text-sky-500', Yaw: 'text-amber-500' };
 
 /** Drag sliders per axis, each with a big editable value box (auto-precision by range) + optional unit. */
-function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; unit?: string; on: (v: number) => void }[]; subtle: string }) {
+function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; unit?: string; def?: number; on: (v: number) => void }[]; subtle: string }) {
   return (
     <div className="space-y-1">
-      {fields.map(({ k, v, min, max, unit, on }) => {
+      {fields.map(({ k, v, min, max, unit, def, on }) => {
         const range = max - min;
         const digits = range >= 100 ? 0 : range >= 10 ? 1 : 2;
+        // OrcaSlicer-style: a value that differs from its default shows an orange reset arrow.
+        const changed = def !== undefined && Math.abs(v - def) > Math.max(0.5, range * 0.001);
         return (
           <div key={k} className="flex items-center gap-2">
-            <span className={`text-[10px] font-bold uppercase w-10 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+            <span className={`text-[10px] font-bold uppercase w-10 shrink-0 ${changed ? 'text-orange-500' : (AXIS_HUE[k] ?? subtle)}`}>{k}</span>
             <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
               onChange={(e) => on(parseFloat(e.target.value))}
               className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
+            <button type="button" onClick={() => def !== undefined && on(def)} title={changed ? `Reset to default (${Number(def!.toFixed(digits))})` : 'Default value'}
+              className={`shrink-0 w-4 h-4 grid place-items-center ${changed ? 'text-orange-500 hover:text-orange-600' : 'opacity-0 pointer-events-none'}`}>
+              <RotateCcw className="w-3 h-3" />
+            </button>
             <input type="number" value={Number(v.toFixed(digits))} step={range >= 100 ? 1 : range >= 10 ? 0.1 : 0.01}
               onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(d); }}
-              className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+              className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${changed ? 'border-orange-300' : 'border-black/10'}`} />
             <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>{unit ?? ''}</span>
           </div>
         );
@@ -386,10 +394,10 @@ function RailSizers({ station, subtle, onStation }: {
     return {
       label: 'Worktop · per side (from centre)',
       fields: [
-        { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(0, v) },
-        { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(1, v) },
-        { k: 'Front', v: e[2] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(2, v) },
-        { k: 'Back', v: e[3] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(3, v) },
+        { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', def: hx * 1000, on: (v: number) => set(0, v) },
+        { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', def: hx * 1000, on: (v: number) => set(1, v) },
+        { k: 'Front', v: e[2] * 1000, min: 50, max: 900, unit: 'mm', def: hy * 1000, on: (v: number) => set(2, v) },
+        { k: 'Back', v: e[3] * 1000, min: 50, max: 900, unit: 'mm', def: hy * 1000, on: (v: number) => set(3, v) },
       ],
     };
   })() : (() => {
@@ -397,7 +405,7 @@ function RailSizers({ station, subtle, onStation }: {
     const set = (i: number, v: number) => { const n = [...r]; n[i] = v / 1000; onStation({ cornerRadii: n }); };
     return {
       label: 'Worktop · corner from centre',
-      fields: r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) })),
+      fields: r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', def: hx * 1000, on: (v: number) => set(i, v) })),
     };
   })();
 
@@ -411,7 +419,7 @@ function RailSizers({ station, subtle, onStation }: {
     <>
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
         <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · bar length</span>
-        <Sliders subtle={subtle} fields={rl.map((rv, i) => ({ k: `R${i + 1}`, v: rv * 1000, min: 50, max: 1600, unit: 'mm', on: (v: number) => setRail(i, v) }))} />
+        <Sliders subtle={subtle} fields={rl.map((rv, i) => ({ k: `R${i + 1}`, v: rv * 1000, min: 50, max: 1600, unit: 'mm', def: edgeSpan(i) * 1000, on: (v: number) => setRail(i, v) }))} />
       </div>
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
         <button type="button" onClick={() => setPerSideOpen((v) => !v)}
