@@ -526,6 +526,14 @@ export function App() {
     }
     return cb;
   };
+  // Stable attach callback for the overhead D435i rig into a Compare-pane feed tile (so the canvas
+  // isn't torn down each render). Wrist/station feeds reuse wristRefCb/stationRefCb above.
+  const cmpRigCbRef = useRef<((el: HTMLDivElement | null) => void) | null>(null);
+  const cmpRigCb = () => (cmpRigCbRef.current ??= (el: HTMLDivElement | null) => {
+    const r = rig(); if (!r) return;
+    if (el) r.attachPip(el); else r.detachPip();
+  });
+
   const nextExtraCamRef = useRef(2);
   const handleAddExtraCamera = () => {
     const wc = workcellConfigRef.current;
@@ -1264,8 +1272,13 @@ export function App() {
     if (mode === 'compare') {
       const { a, b } = cellCentroids();
       sim.setCompareSplit(a, b);
+      // Per-pane feeds need the wrist + station PIP loops live (the rig PIP runs whenever attached).
+      sim.renderSys.wristEnabled = true;
+      sim.renderSys.stationEnabled = true;
     } else {
       sim.clearCompareSplit();
+      sim.renderSys.wristEnabled = wristView;
+      sim.renderSys.stationEnabled = stationView;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, isLoading, workcellConfig.stations, workcellConfig.originX, workcellConfig.originY]);
@@ -1586,15 +1599,28 @@ export function App() {
                   return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
                 }}
               />
-              {mode === 'compare' && (
-                <CompareView
-                  isDarkMode={isDarkMode}
-                  sidebarOpen={showSidebar}
-                  onExit={() => setMode('edit')}
-                  labelA="Workcell"
-                  labelB="Workstation 2"
-                />
-              )}
+              {mode === 'compare' && (() => {
+                const primary = armInstances.find((a) => a.primary);
+                const station = (workcellConfig.stations ?? [])[0];
+                const stationArm = station ? armInstances.find((a) => a.stationId === station.id) : undefined;
+                const tile = (label: string, refCb: (el: HTMLDivElement | null) => void) => (
+                  <div className="relative w-52 rounded-lg overflow-hidden border border-white/15 shadow-lg bg-slate-950" style={{ aspectRatio: '4 / 3' }}>
+                    <div ref={refCb} className="w-full h-full [&>canvas]:w-full [&>canvas]:h-full [&>canvas]:block" />
+                    <span className="absolute top-1 left-1.5 text-[9px] font-bold uppercase tracking-wide text-white/90 px-1.5 py-0.5 rounded bg-black/50">{label}</span>
+                  </div>
+                );
+                return (
+                  <CompareView
+                    isDarkMode={isDarkMode}
+                    sidebarOpen={showSidebar}
+                    onExit={() => setMode('edit')}
+                    labelA="Workcell"
+                    labelB="Workstation 2"
+                    feedsA={<>{tile('Overhead', cmpRigCb())}{primary && tile('Wrist', wristRefCb(primary.id))}</>}
+                    feedsB={station ? <>{tile('Overhead', stationRefCb(station.id))}{stationArm && tile('Wrist', wristRefCb(stationArm.id))}</> : undefined}
+                  />
+                );
+              })()}
             </>
           )}
           <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} open={tweaksOpen} onClose={() => setTweaksOpen(false)} sidebarOpen={showSidebar} />

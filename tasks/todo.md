@@ -34,13 +34,16 @@
 - [x] NavCube already mounts in compare; transparent HUD no longer covers it. OrbitControls drive both.
 - [x] Verified: drag → both panes rotate in sync (NavCube flips faces).
 
-### Phase 4 — Per-pane stacked feeds (overhead + wrist)
-- [ ] Each pane overlays its cell's overhead (station/extra cam) + that arm's wrist PIP, stacked.
-- [ ] Verify: left = cell-A overhead+wrist, right = cell-B's.
+### Phase 4 — Per-pane stacked feeds (overhead + wrist) ✓ DONE
+- [x] Cell A: rig overhead + primary wrist; Cell B: station overhead + station-arm wrist. Stacked
+      tiles in the HUD, reusing wristRefCb/stationRefCb + a stable rig attach cb. Compare forces
+      wrist/station PIP loops on; restores on exit.
+- [x] Verified: 5 canvases (main + 4 feeds), all render, 0 console errors.
 
-### Phase 5 — Drop metrics + cleanup
-- [ ] Remove MiniMetric bar + metricsFor + verdict math. Retire CompareScene3D. Slim footer.
-- [ ] tsc clean, smoke green, commit + push.
+### Phase 5 — Drop metrics + cleanup ✓ DONE
+- [x] Metrics removed (CompareView rewritten as transparent HUD).
+- [x] Retired CompareScene3D.tsx + SceneMap.tsx (orphaned). tsc clean.
+- [x] Verified exit restores single full view (1 canvas) cleanly.
 
 ## Constraints
 - Never commit `.env.local`. Always `git -C .../digital-twin-camera-planner`.
