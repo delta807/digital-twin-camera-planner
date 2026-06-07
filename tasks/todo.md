@@ -188,3 +188,16 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
 - For risky UI, verify the specific behaviour in-browser (preview_eval) not just a screenshot.
 - Suggested next: a Playwright smoke test (load → no console errors → key controls present) run in
   CI on each push; and `npm run build` in CI to catch bundling breaks.
+
+## HUD refinement pass 7 (review)
+- [x] 1. Selection card floats top-right (under the right drawer toggle) when panels closed.
+- [x] 2. NavCube → top-right beside the drawer toggle (closed) / left of panel (open).
+- [x] 3. Layout Profiles panel relocated to centre-top (no longer covered by the status bar).
+- [x] 4. Worktop edge-snap on move — workcells/arms piece together flush within 5cm.
+- [x] 5. Removed the 2 bottom ModeRail toggles (drawer toggles own that).
+- [x] 6. Stripped title/Arms from the sidebar header (units toggle only).
+- [x] 7. Per-type counts on Bodies group headers (right-aligned).
+- [x] 9. CI smoke test (Playwright + GitHub Actions): boot + no-console-errors guard.
+- [ ] 8. Jog additional SO-101s — NOT done: extra arms are non-physics visual clones that mirror
+      the single physics arm. Independent jog needs per-arm joint state + an FK pose-drag (or
+      multiple physics arms in the model). Proposed as a focused follow-up. See response.
