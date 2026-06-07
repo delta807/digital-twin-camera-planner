@@ -1654,12 +1654,12 @@ export function App() {
               >
                 {cameraToggles.sensorPip && (
                   <SensorView inline canvasHostRef={sensorViewRef} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={intrinsics.aspect} onClose={() => handleCameraToggle('sensorPip', false)}
-                    compare={{ src: sceneStreamUrl, onSrc: updateSceneStream, on: sceneOverlayOn, onToggle: setSceneOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend }}
+                    compare={{ src: sceneStreamUrl, fallbackSrc: '/fallback-overhead.jpg', onSrc: updateSceneStream, on: sceneOverlayOn, onToggle: setSceneOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend }}
                     depth={{ on: depthView, onToggle: setDepthView }} />
                 )}
                 {wristView && armInstances.map((arm) => (
                   <SensorView inline key={arm.id} canvasHostRef={wristRefCb(arm.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={16 / 9} title={`Wrist Cam · ${arm.label}`} onClose={() => setWristView(false)}
-                    compare={arm.primary ? { src: wristStreamUrl, onSrc: updateWristStream, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
+                    compare={arm.primary ? { src: wristStreamUrl, fallbackSrc: '/fallback-wrist.jpg', onSrc: updateWristStream, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
                 ))}
                 {stationView && (workcellConfig.stations ?? []).map((st, i) => (
                   <SensorView inline key={st.id} canvasHostRef={stationRefCb(st.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Station ${i + 2} · overhead`} onClose={() => setStationView(false)} />

@@ -9,6 +9,7 @@ import { Ref, useState } from 'react';
 /** Superimpose a real reference frame (e.g. the live Jetson overhead feed) over the sim PIP. */
 export interface CompareOverlay {
   src: string;                       // image/MJPEG URL of the real camera
+  fallbackSrc?: string;              // committed still shown when the live stream can't load (#6)
   onSrc?: (v: string) => void;       // edit the stream URL (so it works off the original tailnet)
   on: boolean; onToggle: (v: boolean) => void;
   opacity: number; onOpacity: (v: number) => void;
@@ -102,7 +103,12 @@ export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onC
             style={{ objectFit: 'fill', opacity: compare.opacity, mixBlendMode: compare.blend === 'difference' ? 'difference' : 'normal' }}
           />
         )}
-        {compare?.on && streamError && (
+        {/* Stream down → show the committed backup still if provided, else an explainer. */}
+        {compare?.on && streamError && compare.fallbackSrc && (
+          <img src={compare.fallbackSrc} alt="backup real frame" className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ objectFit: 'fill', opacity: compare.opacity, mixBlendMode: compare.blend === 'difference' ? 'difference' : 'normal' }} />
+        )}
+        {compare?.on && streamError && !compare.fallbackSrc && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none p-3 text-center">
             <span className="text-[10px] font-medium text-white/90 bg-black/55 rounded-lg px-2.5 py-1.5 leading-snug">Real stream unreachable.<br />Check the URL / network below.<br />(Netlify https blocks http streams.)</span>
           </div>
