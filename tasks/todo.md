@@ -249,3 +249,13 @@ Radial audit (min Move/Aim/Duplicate/Delete):
 - Panes remain synced 3D *schematics* (SVG). Optional follow-up: full WebGL mesh fidelity (two
   lightweight scenes sharing the orbit camera).
 - Verified: dragging one pane rotates both in sync; tsc + smoke green; 0 errors.
+
+## Drag-jog polish + fallback images (done) + compare-fidelity note
+- #1 (jpgs): public/fallback-overhead.jpg + fallback-wrist.jpg in place + referenced — overlay shows
+  them when the live stream fails.
+- Drag-jog polish: the URDF jog engine now raycasts the whole scene + tags ghost joints, so dragging
+  a link of ANY arm jogs it (onGhostJoint → poseGhostJoint → in-place FK re-pose → persist). tsc +
+  smoke green; precise 3D drag best verified by hand.
+- WebGL-compare fidelity (answer): the current panes are rotatable SVG *schematics* (stylized arm/
+  worktop). A WebGL upgrade would render the real meshes (same geometry/materials as the workcell
+  page) → panes would visually MATCH the main 3D view. Offered as a follow-up.
