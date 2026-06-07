@@ -6,7 +6,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AlertCircle, Loader2, Sparkles, X } from 'lucide-react';
 import loadMujoco from 'mujoco_wasm';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import * as THREE from 'three';
 import { v4 as uuidv4 } from 'uuid';
 import { MujocoSim } from './MujocoSim';
@@ -215,6 +215,22 @@ export function App() {
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  // Pan tool (Fusion-style hand): left-drag pans the camera while on.
+  const [panMode, setPanMode] = useState(false);
+  useEffect(() => { if (!isLoading) simRef.current?.renderSys.setPanMode(panMode); }, [isLoading, panMode]);
+  // Draggable floating toolbar position (null = default bottom-centre).
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
+  const onToolbarDragStart = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const wrapper = (e.currentTarget as HTMLElement).closest('[data-toolbar]') as HTMLElement | null;
+    if (!wrapper) return;
+    const rect = wrapper.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY, bx = rect.left, by = rect.top;
+    const move = (ev: PointerEvent) => setToolbarPos({ x: bx + (ev.clientX - sx), y: by + (ev.clientY - sy) });
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   // --- Sensor-camera planner state ---
   const [cameraToggles, setCameraToggles] = useState<CameraViewToggles>({ ...DEFAULT_CAMERA_TOGGLES });
@@ -1844,7 +1860,7 @@ export function App() {
             const inspectorEl = (inline: boolean) => (
               <SelectionInspector
                 inline={inline}
-                floatClass={inline ? undefined : `absolute top-6 z-40 w-[20rem] ${showSidebar ? 'right-[23.5rem]' : 'right-4'}`}
+                floatClass={inline ? undefined : 'absolute top-6 right-6 z-50 w-[20rem]'}
                 selection={selection}
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
@@ -1943,7 +1959,7 @@ export function App() {
                 <Toolbar inline isPaused={isPaused} togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} onReset={handleReset}
                   showSidebar={showSidebar} toggleSidebar={() => setShowSidebar(!showSidebar)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode}
                   onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)}
-                  jogActive={poseMode} onToggleJog={togglePoseMode}
+                  panActive={panMode} onTogglePan={() => setPanMode((v) => !v)} onDragHandle={onToolbarDragStart}
                   measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)} />
                 {poseMode && (
                   <div className="flex flex-wrap items-center gap-2 px-0.5">
@@ -2006,7 +2022,7 @@ export function App() {
                 {/* Selection — its own standalone floating panel (beside the sidebar when open). */}
                 {selection && inspectorEl(false)}
                 {/* Controls — its own standalone floating pill toolbar, bottom-centre. */}
-                <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-40 ${showSidebar ? 'min-[660px]:left-[calc(50%-10.5rem)]' : ''}`}>{toolbarEl}</div>
+                <div data-toolbar className={toolbarPos ? 'fixed z-40' : `absolute bottom-6 left-1/2 -translate-x-1/2 z-40 ${showSidebar ? 'min-[660px]:left-[calc(50%-10.5rem)]' : ''}`} style={toolbarPos ? { left: toolbarPos.x, top: toolbarPos.y } : undefined}>{toolbarEl}</div>
               </>
             );
           })()}

@@ -4,8 +4,9 @@
 */
 
 
-import { Focus, Hand, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
-import { IconToolbar, ToolbarButton, ToolbarDivider } from './ui/toolbar';
+import { Focus, GripVertical, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import { IconToolbar, PanIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -20,11 +21,13 @@ interface ToolbarProps {
   tweaksOpen: boolean;
   onToggleTweaks: () => void;    // appearance tweaks (theme/accent) panel
   inline?: boolean;             // render as a compact wrap-row inside the sidebar dashboard
-  // Jog joints + Measure are surfaced here as toggles (instead of their own dock sections).
-  jogActive?: boolean;
-  onToggleJog?: () => void;
+  // Pan (Fusion-style hand) + Measure are surfaced here as toggles.
+  panActive?: boolean;
+  onTogglePan?: () => void;
   measureActive?: boolean;
   onToggleMeasure?: () => void;
+  /** Pointer-down handler for the drag grip (lets the user reposition the floating toolbar). */
+  onDragHandle?: (e: ReactPointerEvent) => void;
 }
 
 /**
@@ -44,10 +47,11 @@ export function Toolbar({
   tweaksOpen,
   onToggleTweaks,
   inline,
-  jogActive = false,
-  onToggleJog,
+  panActive = false,
+  onTogglePan,
   measureActive = false,
-  onToggleMeasure
+  onToggleMeasure,
+  onDragHandle,
 }: ToolbarProps) {
   const panelStyle = isDarkMode ? "bg-slate-900/80 border-white/10 text-slate-100" : "bg-white/70 border-white/80 text-slate-800";
   const activeStyle = isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white';
@@ -58,13 +62,19 @@ export function Toolbar({
     return (
       <div className="flex justify-center">
         <IconToolbar isDarkMode={isDarkMode} className="flex-wrap">
+          {onDragHandle && (
+            <div onPointerDown={onDragHandle} title="Drag to move the toolbar"
+              className={`h-8 w-5 -ml-0.5 flex items-center justify-center cursor-grab active:cursor-grabbing rounded-md ${isDarkMode ? 'text-slate-500 hover:bg-white/10' : 'text-slate-400 hover:bg-black/10'}`}>
+              <GripVertical className="h-4 w-4" />
+            </div>
+          )}
           <ToolbarButton label={isPaused ? 'Resume' : 'Pause'} icon={isPaused ? Play : Pause} onClick={togglePause} isDarkMode={isDarkMode} />
           <ToolbarButton label="Reset simulation" icon={RotateCcw} onClick={onReset} isDarkMode={isDarkMode} />
           <ToolbarDivider isDarkMode={isDarkMode} />
           <ToolbarButton label="Reset view (Home)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
           <ToolbarButton label="Frame selection (F)" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
-          {(onToggleJog || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
-          {onToggleJog && <ToolbarButton label="Jog joints — drag a link to rotate" icon={Hand} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
+          {(onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
+          {onTogglePan && <ToolbarButton label="Pan view — drag to move the camera" icon={PanIcon} isActive={panActive} onClick={onTogglePan} isDarkMode={isDarkMode} />}
           {onToggleMeasure && <ToolbarButton label="Measure — click two points" icon={Ruler} isActive={measureActive} onClick={onToggleMeasure} isDarkMode={isDarkMode} />}
           <ToolbarDivider isDarkMode={isDarkMode} />
           <ToolbarButton label={isDarkMode ? 'Light mode' : 'Dark mode'} icon={isDarkMode ? Sun : Moon} onClick={toggleDarkMode} isDarkMode={isDarkMode} />
@@ -114,14 +124,14 @@ export function Toolbar({
         <Focus className="w-6 h-6" />
       </button>
 
-      {/* Jog joints — drag a link to rotate it about its joint (was its own dock section) */}
-      {onToggleJog && (
+      {/* Pan view — Fusion-style hand: drag to move the camera (was the jog button) */}
+      {onTogglePan && (
         <button
-          onClick={onToggleJog}
-          className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${jogActive ? activeStyle : panelStyle}`}
-          title="Jog joints — click a link, drag to rotate"
+          onClick={onTogglePan}
+          className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panActive ? activeStyle : panelStyle}`}
+          title="Pan view — drag to move the camera"
         >
-          <Hand className="w-6 h-6" />
+          <PanIcon className="w-6 h-6" />
         </button>
       )}
 

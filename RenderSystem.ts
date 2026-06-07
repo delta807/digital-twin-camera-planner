@@ -569,6 +569,12 @@ export class RenderSystem {
         this.renderer.setScissor(0, 0, w, h);
     }
 
+    /** Pan tool (Fusion-style hand): when on, a LEFT-drag pans the camera instead of orbiting. */
+    setPanMode(on: boolean) {
+        this.controls.enablePan = true;
+        this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    }
+
     /** Orbit the camera by (dAz, dEl) radians around the target — for dragging the NavCube to rotate
      *  the view (Z-up spherical, matching the cube's az=atan2(x,y) / el=atan2(z,·) convention). */
     orbit(dAz: number, dEl: number) {
