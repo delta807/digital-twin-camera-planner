@@ -37,4 +37,6 @@ export default async (req: Request): Promise<Response> => {
   return json({ error: 'method not allowed' }, 405);
 };
 
-export const config = { path: '/.netlify/functions/layouts' };
+// No custom `config.path` — the function is served at the default /.netlify/functions/layouts
+// (which the client calls). A custom path inside the reserved /.netlify/functions/* namespace is
+// rejected ("cannot be invoked").

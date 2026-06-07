@@ -6,6 +6,15 @@
 [functions]
   directory = "netlify/functions"
 
+# `netlify dev`: run our Vite (port 3000) and proxy it + the functions on :8888.
+# Without this, netlify dev assumes Vite's default 5173 and times out.
+[dev]
+  command = "npm run dev"
+  framework = "#custom"
+  targetPort = 3000
+  port = 8888
+  autoLaunch = false
+
 [build.environment]
   NODE_VERSION = "20"
 
