@@ -10,9 +10,12 @@ interface Props {
   isDarkMode: boolean;
   sidebarOpen: boolean;
   onExit: () => void;
-  /** Pane (cell) labels. */
-  labelA?: string;
-  labelB?: string;
+  /** All cells the panes can frame, and which each pane currently shows (repointable). */
+  cells: { id: string; label: string }[];
+  cellA: string;
+  cellB: string;
+  onCellA: (id: string) => void;
+  onCellB: (id: string) => void;
   /** Per-pane feed stacks (overhead + wrist), rendered top-right of each half. */
   feedsA?: ReactNode;
   feedsB?: ReactNode;
@@ -25,11 +28,15 @@ interface Props {
  * It is pointer-events-none over the scene, so dragging rotates BOTH cells via OrbitControls and the
  * scene stays fully live/editable (move objects, jog arms) underneath.
  */
-export function CompareView({ isDarkMode, onExit, labelA = 'Cell A', labelB = 'Cell B', feedsA, feedsB }: Props) {
-  const badge = (tag: string, label: string, accent: string, side: 'l' | 'r') => (
-    <div className={`absolute top-3 ${side === 'l' ? 'left-[4.75rem]' : 'left-[calc(50%+0.75rem)]'} z-10 flex items-center gap-2 pointer-events-none`}>
+export function CompareView({ isDarkMode, onExit, cells, cellA, cellB, onCellA, onCellB, feedsA, feedsB }: Props) {
+  // Pane header: A/B chip + a dropdown to repoint the pane at any cell (compare with Workstation 3, etc.).
+  const badge = (tag: string, value: string, onChange: (id: string) => void, accent: string, side: 'l' | 'r') => (
+    <div className={`absolute top-3 ${side === 'l' ? 'left-[4.75rem]' : 'left-[calc(50%+0.75rem)]'} z-20 flex items-center gap-2 pointer-events-auto`}>
       <span className="w-6 h-6 rounded-md grid place-items-center text-white text-[12px] font-bold shadow" style={{ background: accent }}>{tag}</span>
-      <span className={`font-mono text-[10px] px-2 py-1 rounded-md border ${isDarkMode ? 'bg-slate-900/70 border-white/10 text-slate-300' : 'bg-white/80 border-black/10 text-slate-600'}`}>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className={`text-[10px] font-semibold px-2 py-1 rounded-md border outline-none cursor-pointer shadow ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-200' : 'bg-white/85 border-black/10 text-slate-700'}`}>
+        {cells.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+      </select>
     </div>
   );
 
@@ -38,8 +45,8 @@ export function CompareView({ isDarkMode, onExit, labelA = 'Cell A', labelB = 'C
       {/* centre seam between the two scissor halves */}
       <span className={`absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px ${isDarkMode ? 'bg-white/15' : 'bg-black/15'}`} />
 
-      {badge('A', labelA, 'oklch(0.655 0.155 262)', 'l')}
-      {badge('B', labelB, 'oklch(0.70 0.13 292)', 'r')}
+      {badge('A', cellA, onCellA, 'oklch(0.655 0.155 262)', 'l')}
+      {badge('B', cellB, onCellB, 'oklch(0.70 0.13 292)', 'r')}
 
       {/* per-pane feed stacks (overhead + wrist) */}
       {feedsA && <div className="absolute top-3 left-[calc(50%-13.5rem)] z-10 flex flex-col gap-2 pointer-events-auto">{feedsA}</div>}

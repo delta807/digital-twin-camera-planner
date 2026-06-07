@@ -1124,7 +1124,13 @@ export function App() {
     const rightmost = existing.reduce((mx, s) => Math.max(mx, s.x + s.length / 2), wc.length / 2);
     const sx = pos?.x ?? rightmost + 0.2 + src.length / 2;
     const sy = pos?.y ?? 0;
-    handleWorkcellChange({ ...wc, stations: [...existing, { id, x: sx, y: sy, yaw: 0, ...src }] });
+    // Seed the new cell with its own decoupled prop cubes (no physics, instant) so it isn't empty in
+    // Compare — they ride this worktop (cell === id) when it's moved.
+    const sz = 0.05;
+    const seeded = [
+      { dx: -0.10, dy: 0.06, c: '#e0772f' }, { dx: 0.02, dy: 0.10, c: '#3aa6a0' }, { dx: 0.10, dy: -0.02, c: '#e0772f' },
+    ].map(({ dx, dy, c }) => ({ id: `prop-${nextPropRef.current++}`, x: sx + dx, y: sy + dy, z: sz / 2, yaw: 0, size: sz, color: c, cell: id }));
+    handleWorkcellChange({ ...wc, stations: [...existing, { id, x: sx, y: sy, yaw: 0, ...src }], props: [...(wc.props ?? []), ...seeded] });
     // Read the counter OUTSIDE the updater so React 18 StrictMode's double-invoke can't skip a number.
     const armNumber = nextArmNumberRef.current++;
     const armId = `so101-${armNumber}`;
@@ -1146,9 +1152,16 @@ export function App() {
   };
   // ── Decoupled props (Three.js cubes; no physics) — add/duplicate/delete/move live, no reload ──
   const nextPropRef = useRef(1);
+  // Which cell a world point falls in (nearest worktop centroid) — so a dropped prop rides that cell.
+  const nearestCell = (x: number, y: number): string => {
+    const wc = workcellConfigRef.current;
+    let best = 'primary', bestD = Math.hypot(x - (wc.originX ?? 0), y - (wc.originY ?? 0));
+    for (const s of wc.stations ?? []) { const d = Math.hypot(x - s.x, y - s.y); if (d < bestD) { bestD = d; best = s.id; } }
+    return best;
+  };
   const handleAddPropAt = (x: number, y: number) => {
     const wc = workcellConfigRef.current; const n = nextPropRef.current++; const size = 0.05;
-    handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { id: `prop-${n}`, x, y, z: size / 2, yaw: 0, size, color: '#e0772f' }] });
+    handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { id: `prop-${n}`, x, y, z: size / 2, yaw: 0, size, color: '#e0772f', cell: nearestCell(x, y) }] });
   };
   const handleAddProp = () => handleAddPropAt(0, 0);
   const handleRemoveProp = (id: string) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).filter((p) => p.id !== id) }); };
@@ -1209,13 +1222,16 @@ export function App() {
     if (id === 'primary') {
       const prevOX = wc.originX ?? 0, prevOY = wc.originY ?? 0, prevYaw = wc.yaw ?? 0;
       const nextOX = patch.x ?? prevOX, nextOY = patch.y ?? prevOY, nextYaw = patch.yaw ?? prevYaw;
+      const dx = nextOX - prevOX, dy = nextOY - prevOY, dyaw = nextYaw - prevYaw;
       handleWorkcellChange({
         ...wc, originX: nextOX, originY: nextOY, yaw: nextYaw,
+        props: rigidProps(wc.props, 'primary', dx, dy, dyaw, prevOX, prevOY),
         ...(patch.shapeSides !== undefined ? { shapeSides: patch.shapeSides } : {}),
         ...(patch.length !== undefined ? { length: patch.length } : {}),
         ...(patch.width !== undefined ? { width: patch.width } : {}),
       });
-      const dx = nextOX - prevOX, dy = nextOY - prevOY, dyaw = nextYaw - prevYaw;
+      // Task blocks (real physics cubes) ride the worktop too — live, no reload.
+      if (dx || dy || dyaw) simRef.current?.transformTaskBodies(dx, dy, dyaw, prevOX, prevOY);
       const arm = armInstancesRef.current.find((a) => a.primary);
       if (arm && (dx || dy || dyaw)) {
         const ox = arm.x - prevOX, oy = arm.y - prevOY;
@@ -1227,14 +1243,29 @@ export function App() {
     const prev = (wc.stations ?? []).find((s) => s.id === id);
     if (!prev) return;
     const next = { ...prev, ...patch };
-    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === id ? next : s)) });
     const dx = next.x - prev.x, dy = next.y - prev.y, dyaw = next.yaw - prev.yaw;
+    handleWorkcellChange({
+      ...wc,
+      stations: (wc.stations ?? []).map((s) => (s.id === id ? next : s)),
+      props: rigidProps(wc.props, id, dx, dy, dyaw, prev.x, prev.y),
+    });
     const arm = armInstancesRef.current.find((a) => a.stationId === id);
     if (arm && (dx || dy || dyaw)) {
       const ox = arm.x - prev.x, oy = arm.y - prev.y;
       const c = Math.cos(dyaw), s = Math.sin(dyaw);
       handleArmChange(arm.id, { x: prev.x + (ox * c - oy * s) + dx, y: prev.y + (ox * s + oy * c) + dy, yaw: arm.yaw + dyaw });
     }
+  };
+
+  // Rigidly carry a cell's decoupled props with its worktop (translate + rotate about the pivot).
+  const rigidProps = (props: WorkcellConfig['props'], cell: string, dx: number, dy: number, dyaw: number, px: number, py: number): WorkcellConfig['props'] => {
+    if (!props || (!dx && !dy && !dyaw)) return props;
+    const c = Math.cos(dyaw), s = Math.sin(dyaw);
+    return props.map((p) => {
+      if ((p.cell ?? 'primary') !== cell) return p;
+      const ox = p.x - px, oy = p.y - py;
+      return { ...p, x: px + (ox * c - oy * s) + dx, y: py + (ox * s + oy * c) + dy, yaw: p.yaw + dyaw };
+    });
   };
 
   const handleRemoveStation = (id: string) => {
@@ -1252,12 +1283,20 @@ export function App() {
   // the single main renderer (no extra WebGL contexts → no lag). Cell A = primary workcell; Cell B
   // = the first satellite station. The whole scene stays live & editable; the NavCube/drag orbits
   // both cells together (each scissor cam shares the orbit az/el+radius, looks at its own centroid).
-  const cellCentroids = () => {
+  // Which two cells the A / B panes frame (cell id = 'primary' or a station id). The user can repoint
+  // either pane (e.g. compare with Workstation 3 instead of 2) via the pickers in the Compare HUD.
+  const [cmpCellA, setCmpCellA] = useState('primary');
+  const [cmpCellB, setCmpCellB] = useState('');
+  // All cells as {id,label} for the pane pickers.
+  const compareCells = (workcellConfig.stations ?? []).reduce(
+    (acc, s, i) => [...acc, { id: s.id, label: `Workstation ${i + 2}` }],
+    [{ id: 'primary', label: 'Workcell' }] as { id: string; label: string }[],
+  );
+  const cellCentroidById = (id: string) => {
     const wc = workcellConfigRef.current;
-    const a = { x: wc.originX ?? 0, y: wc.originY ?? 0, z: 0.12 };
-    const st = (wc.stations ?? [])[0];
-    const b = st ? { x: st.x, y: st.y, z: 0.12 } : { x: a.x + 0.9, y: a.y, z: 0.12 };
-    return { a, b };
+    if (id === 'primary') return { x: wc.originX ?? 0, y: wc.originY ?? 0, z: 0.12 };
+    const s = (wc.stations ?? []).find((x) => x.id === id);
+    return s ? { x: s.x, y: s.y, z: 0.12 } : { x: wc.originX ?? 0, y: wc.originY ?? 0, z: 0.12 };
   };
   const enterCompare = () => {
     // Need two cells: clone the primary worktop into a satellite station if none exists yet.
@@ -1265,13 +1304,17 @@ export function App() {
     setShowSidebar(false); // give the split the full window
     setMode('compare');
   };
-  // Drive the renderer's split on/off + keep the cell centroids fresh as cells move.
+  // Drive the renderer's split on/off + keep the cell centroids fresh as cells move / panes repoint.
   useEffect(() => {
     const sim = simRef.current;
     if (!sim || isLoading) return;
     if (mode === 'compare') {
-      const { a, b } = cellCentroids();
-      sim.setCompareSplit(a, b);
+      const stations = workcellConfigRef.current.stations ?? [];
+      const valid = (id: string) => id === 'primary' || stations.some((s) => s.id === id);
+      const aId = valid(cmpCellA) ? cmpCellA : 'primary';
+      const bId = valid(cmpCellB) ? cmpCellB : (stations[0]?.id ?? 'primary');
+      if (bId !== cmpCellB) setCmpCellB(bId); // settle the default once a station exists
+      sim.setCompareSplit(cellCentroidById(aId), cellCentroidById(bId));
       // Per-pane feeds need the wrist + station PIP loops live (the rig PIP runs whenever attached).
       sim.renderSys.wristEnabled = true;
       sim.renderSys.stationEnabled = true;
@@ -1281,7 +1324,7 @@ export function App() {
       sim.renderSys.stationEnabled = stationView;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, isLoading, workcellConfig.stations, workcellConfig.originX, workcellConfig.originY]);
+  }, [mode, isLoading, cmpCellA, cmpCellB, workcellConfig.stations, workcellConfig.originX, workcellConfig.originY]);
 
   const handleApplyArmPose = () => {
     const selected = armInstances.find((arm) => arm.id === selectedArmId);
@@ -1600,24 +1643,37 @@ export function App() {
                 }}
               />
               {mode === 'compare' && (() => {
-                const primary = armInstances.find((a) => a.primary);
-                const station = (workcellConfig.stations ?? [])[0];
-                const stationArm = station ? armInstances.find((a) => a.stationId === station.id) : undefined;
+                const stations = workcellConfig.stations ?? [];
+                const valid = (id: string) => id === 'primary' || stations.some((s) => s.id === id);
+                const aId = valid(cmpCellA) ? cmpCellA : 'primary';
+                const bId = valid(cmpCellB) ? cmpCellB : (stations[0]?.id ?? 'primary');
                 const tile = (label: string, refCb: (el: HTMLDivElement | null) => void) => (
                   <div className="relative w-52 rounded-lg overflow-hidden border border-white/15 shadow-lg bg-slate-950" style={{ aspectRatio: '4 / 3' }}>
                     <div ref={refCb} className="w-full h-full [&>canvas]:w-full [&>canvas]:h-full [&>canvas]:block" />
                     <span className="absolute top-1 left-1.5 text-[9px] font-bold uppercase tracking-wide text-white/90 px-1.5 py-0.5 rounded bg-black/50">{label}</span>
                   </div>
                 );
+                // Build the overhead + wrist feed stack for whichever cell a pane frames.
+                const feedsForCell = (cellId: string) => {
+                  if (cellId === 'primary') {
+                    const primary = armInstances.find((a) => a.primary);
+                    return <>{tile('Overhead', cmpRigCb())}{primary && tile('Wrist', wristRefCb(primary.id))}</>;
+                  }
+                  const arm = armInstances.find((a) => a.stationId === cellId);
+                  return <>{tile('Overhead', stationRefCb(cellId))}{arm && tile('Wrist', wristRefCb(arm.id))}</>;
+                };
                 return (
                   <CompareView
                     isDarkMode={isDarkMode}
                     sidebarOpen={showSidebar}
                     onExit={() => setMode('edit')}
-                    labelA="Workcell"
-                    labelB="Workstation 2"
-                    feedsA={<>{tile('Overhead', cmpRigCb())}{primary && tile('Wrist', wristRefCb(primary.id))}</>}
-                    feedsB={station ? <>{tile('Overhead', stationRefCb(station.id))}{stationArm && tile('Wrist', wristRefCb(stationArm.id))}</> : undefined}
+                    cells={compareCells}
+                    cellA={aId}
+                    cellB={bId}
+                    onCellA={setCmpCellA}
+                    onCellB={setCmpCellB}
+                    feedsA={feedsForCell(aId)}
+                    feedsB={feedsForCell(bId)}
                   />
                 );
               })()}

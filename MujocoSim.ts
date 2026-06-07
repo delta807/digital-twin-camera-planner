@@ -402,6 +402,32 @@ export class MujocoSim {
         this.mujoco.mj_forward(m, d);
     }
 
+    /** Rigidly carry every task block with a worktop move: translate by (dx,dy) and rotate dyaw about
+     *  the pivot (the worktop's previous origin). Lets blocks ride along when the workcell is dragged
+     *  — live, no reload. Orientation is composed so a block keeps its own yaw. */
+    transformTaskBodies(dx: number, dy: number, dyaw: number, pivotX: number, pivotY: number) {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return;
+        const c = Math.cos(dyaw), s = Math.sin(dyaw);
+        const rh = dyaw / 2, rw = Math.cos(rh), rz = Math.sin(rh); // half-angle quat for the Z rotation
+        for (const { bodyId } of this.getTaskBodies()) {
+            const jadr = m.body_jntadr[bodyId];
+            if (jadr < 0 || m.jnt_type[jadr] !== 0) continue; // freejoint blocks only
+            const a = m.jnt_qposadr[jadr];
+            const ox = d.qpos[a] - pivotX, oy = d.qpos[a + 1] - pivotY;
+            d.qpos[a] = pivotX + (ox * c - oy * s) + dx;
+            d.qpos[a + 1] = pivotY + (ox * s + oy * c) + dy;
+            if (dyaw) {
+                const qw = d.qpos[a + 3], qx = d.qpos[a + 4], qy = d.qpos[a + 5], qz = d.qpos[a + 6];
+                d.qpos[a + 3] = rw * qw - rz * qz; d.qpos[a + 4] = rw * qx - rz * qy;
+                d.qpos[a + 5] = rw * qy + rz * qx; d.qpos[a + 6] = rw * qz + rz * qw;
+            }
+            const dof = m.jnt_dofadr[jadr];
+            for (let k = 0; k < 6; k++) d.qvel[dof + k] = 0;
+        }
+        this.mujoco.mj_forward(m, d);
+    }
+
     /** Rotate a freejoint task block about Z (yaw, radians), keeping its position. */
     setTaskBodyYaw(bodyId: number, yaw: number) {
         const m = this.mjModel, d = this.mjData;

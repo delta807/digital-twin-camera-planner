@@ -121,16 +121,16 @@ export function SelectionInspector(p: InspectorProps) {
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.station.yaw * 180 / Math.PI} on={(d) => p.onStation({ yaw: d * Math.PI / 180 })} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.station.x, min: -2, max: 2, on: (v) => p.onStation({ x: v }) },
-            { k: 'Y', v: p.station.y, min: -2, max: 2, on: (v) => p.onStation({ y: v }) },
-            { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
+            { k: 'X', v: p.station.x, min: -2, max: 2, unit: 'm', on: (v) => p.onStation({ x: v }) },
+            { k: 'Y', v: p.station.y, min: -2, max: 2, unit: 'm', on: (v) => p.onStation({ y: v }) },
+            { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
           ]} />
           <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
             <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Shape &amp; size</span>
             <Sliders subtle={subtle} fields={[
               { k: 'Sides', v: p.station.shapeSides, min: 3, max: 8, on: (v) => p.onStation({ shapeSides: Math.round(v) }) },
-              { k: 'Length', v: p.station.length * 1000, min: 400, max: 1400, on: (v) => p.onStation({ length: v / 1000 }) },
-              { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, on: (v) => p.onStation({ width: v / 1000 }) },
+              { k: 'Length', v: p.station.length * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ length: v / 1000 }) },
+              { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ width: v / 1000 }) },
             ]} />
           </div>
           {sel.stationId === 'primary' && p.workcell && (
@@ -157,9 +157,9 @@ export function SelectionInspector(p: InspectorProps) {
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.arm.x, min: -0.6, max: 0.6, on: (v) => p.onArm({ x: v }) },
-            { k: 'Y', v: p.arm.y, min: -0.6, max: 0.6, on: (v) => p.onArm({ y: v }) },
-            { k: 'Yaw', v: p.arm.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onArm({ yaw: v * Math.PI / 180 }) },
+            { k: 'X', v: p.arm.x, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onArm({ x: v }) },
+            { k: 'Y', v: p.arm.y, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onArm({ y: v }) },
+            { k: 'Yaw', v: p.arm.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onArm({ yaw: v * Math.PI / 180 }) },
           ]} />
           <div className="flex gap-2">
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
@@ -200,9 +200,9 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
             ]} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.extraCamera.x, min: -2, max: 2, on: (v) => p.onExtraCamera({ x: v }) },
-            { k: 'Y', v: p.extraCamera.y, min: -2, max: 2, on: (v) => p.onExtraCamera({ y: v }) },
-            { k: 'Z', v: p.extraCamera.z, min: 0, max: 2, on: (v) => p.onExtraCamera({ z: v }) },
+            { k: 'X', v: p.extraCamera.x, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ x: v }) },
+            { k: 'Y', v: p.extraCamera.y, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ y: v }) },
+            { k: 'Z', v: p.extraCamera.z, min: 0, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ z: v }) },
           ]} />
           <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
           <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>
@@ -218,9 +218,9 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.cameraPos.z, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
             ]} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.cameraPos.x, min: -0.6, max: 0.6, on: (v) => p.onCamera(v, p.cameraPos!.y, p.cameraPos!.z) },
-            { k: 'Y', v: p.cameraPos.y, min: -0.6, max: 0.6, on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
-            { k: 'Z', v: p.cameraPos.z, min: 0, max: 1.4, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
+            { k: 'X', v: p.cameraPos.x, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onCamera(v, p.cameraPos!.y, p.cameraPos!.z) },
+            { k: 'Y', v: p.cameraPos.y, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
+            { k: 'Z', v: p.cameraPos.z, min: 0, max: 1.4, unit: 'm', on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
           ]} />
           <div className="flex gap-2">
             <button onClick={p.onSnapToPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to post</button>
@@ -256,10 +256,10 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.prop.z, on: (v) => p.onProp!({ z: v }) },
             ]} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.prop.x, min: -1, max: 1, on: (v) => p.onProp!({ x: v }) },
-            { k: 'Y', v: p.prop.y, min: -1, max: 1, on: (v) => p.onProp!({ y: v }) },
-            { k: 'Z', v: p.prop.z, min: 0, max: 1, on: (v) => p.onProp!({ z: v }) },
-            { k: 'Yaw', v: p.prop.yaw * 180 / Math.PI, min: -180, max: 180, on: (v) => p.onProp!({ yaw: v * Math.PI / 180 }) },
+            { k: 'X', v: p.prop.x, min: -1, max: 1, unit: 'm', on: (v) => p.onProp!({ x: v }) },
+            { k: 'Y', v: p.prop.y, min: -1, max: 1, unit: 'm', on: (v) => p.onProp!({ y: v }) },
+            { k: 'Z', v: p.prop.z, min: 0, max: 1, unit: 'm', on: (v) => p.onProp!({ z: v }) },
+            { k: 'Yaw', v: p.prop.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onProp!({ yaw: v * Math.PI / 180 }) },
           ]} />
           <WMSlider label="Size" min={10} max={300} step={5} value={p.prop.size * 1000} on={(v) => p.onProp!({ size: v / 1000 })} subtle={subtle} unit="mm" />
           <label className="flex items-center justify-between gap-2 text-[10px] font-medium">
@@ -306,8 +306,8 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.extraPost.y, on: (v) => p.onExtraPost!({ y: v }) },
             ]} />
           <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.extraPost.x, min: -2, max: 2, on: (v) => p.onExtraPost!({ x: v }) },
-            { k: 'Y', v: p.extraPost.y, min: -2, max: 2, on: (v) => p.onExtraPost!({ y: v }) },
+            { k: 'X', v: p.extraPost.x, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraPost!({ x: v }) },
+            { k: 'Y', v: p.extraPost.y, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraPost!({ y: v }) },
           ]} />
           <WMSlider label="Height" min={100} max={1400} step={20} value={p.extraPost.height * 1000} on={(v) => p.onExtraPost!({ height: v / 1000 })} subtle={subtle} unit="mm" />
           <div className="flex gap-2">
@@ -350,18 +350,23 @@ export function SelectionInspector(p: InspectorProps) {
 
 const AXIS_HUE: Record<string, string> = { X: 'text-rose-500', Y: 'text-emerald-500', Z: 'text-sky-500', Yaw: 'text-amber-500' };
 
-/** Drag sliders per axis (in addition to the typeable numbers above). */
-function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; on: (v: number) => void }[]; subtle: string }) {
+/** Drag sliders per axis, each with a live value readout (auto-precision by range) + optional unit. */
+function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; unit?: string; on: (v: number) => void }[]; subtle: string }) {
   return (
     <div className="space-y-0.5">
-      {fields.map(({ k, v, min, max, on }) => (
-        <div key={k} className="flex items-center gap-2">
-          <span className={`text-[9px] font-bold uppercase w-11 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
-          <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
-            onChange={(e) => on(parseFloat(e.target.value))}
-            className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
-        </div>
-      ))}
+      {fields.map(({ k, v, min, max, unit, on }) => {
+        const range = max - min;
+        const digits = range >= 100 ? 0 : range >= 10 ? 1 : 2;
+        return (
+          <div key={k} className="flex items-center gap-2">
+            <span className={`text-[9px] font-bold uppercase w-11 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+            <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
+              onChange={(e) => on(parseFloat(e.target.value))}
+              className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+            <span className={`text-[9px] tabular-nums w-12 text-right shrink-0 ${subtle}`}>{Number(v.toFixed(digits))}{unit ? ` ${unit}` : ''}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

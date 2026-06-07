@@ -128,7 +128,7 @@ export interface WorkcellConfig {
   /** Decoupled scene props — pure Three.js cubes (NOT MuJoCo bodies), so they can be added /
    *  duplicated / deleted / moved live with no model recompile or sim reset. `z` is the centre
    *  height; `size` is the cube edge (m); `yaw` radians about Z. */
-  props?: Array<{ id: string; x: number; y: number; z: number; yaw: number; size: number; color: string }>;
+  props?: Array<{ id: string; x: number; y: number; z: number; yaw: number; size: number; color: string; cell?: string }>;
 }
 
 export const DEFAULT_WORKCELL_CONFIG: WorkcellConfig = {
