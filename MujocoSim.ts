@@ -342,13 +342,13 @@ export class MujocoSim {
             this.jointDrag.onPosed = () => this.refreshGhostArms();
             this.jointDrag.onGhostJoint = (armId, index, angle) => this.poseGhostJoint(armId, index, angle);
             tagGhostJoints(rs.planningArmsGroup, this.ghostJointDescByBody(), (id) => this.ghostJoints(id));
-            rs.selection.setEnabled(false); // clicks drive joints, not selection
+            rs.selection.setSkipArm(true); // arm-link clicks drive joints; other objects still select
         } else {
             this.jointDrag?.dispose();
             this.jointDrag = null;
             untagArmJoints(rs.bodies, this.armJointDescs);
             untagGhostJoints(rs.planningArmsGroup);
-            rs.selection.setEnabled(true);
+            rs.selection.setSkipArm(false);
             onJointLabel?.(null);
         }
     }

@@ -1870,7 +1870,6 @@ export function App() {
                   <CompareView
                     isDarkMode={isDarkMode}
                     sidebarOpen={showSidebar}
-                    onExit={() => setMode('edit')}
                     cells={compareCells}
                     cellA={aId}
                     cellB={bId}

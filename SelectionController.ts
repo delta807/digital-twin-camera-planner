@@ -59,6 +59,7 @@ export class SelectionController {
   private readonly vSize = new THREE.Vector3();
   private readonly vCenter = new THREE.Vector3();
   private enabled = true;
+  private skipArm = false;
   private pointerDown: { x: number; y: number } | null = null;
 
   onChange?: (sel: SelectionInfo | null) => void;
@@ -264,6 +265,23 @@ export class SelectionController {
     if (!on) this.deselect();
   }
 
+  /** Jog/pose mode: keep selection live for everything EXCEPT the arm (whose link clicks drive
+   *  joints via MujocoJointDrag). Lets you still click cameras / stations / posts / objects while
+   *  jogging, instead of selection being globally off. */
+  setSkipArm(on: boolean) {
+    this.skipArm = on;
+    if (on && this.selected?.kind === 'arm') this.deselect();
+  }
+
+  /** First selectable kind on the ancestor chain of a hit object (null if none). */
+  private kindOfHit(obj: THREE.Object3D): string | null {
+    for (let n: THREE.Object3D | null = obj; n; n = n.parent) {
+      const s = n.userData?.selectable as string | undefined;
+      if (s) return s;
+    }
+    return null;
+  }
+
   /**
    * Keep the selection synced each frame: the post rebuilds on edits, and task objects have
    * freejoints so physics (or the pickup sequence) can shove them around — the outline + HUD
@@ -367,6 +385,9 @@ export class SelectionController {
     };
     const hit = hits.find((h) => hasSelectable(h.object));
     if (!hit) { this.deselect(); return; }
+    // In jog mode, an arm-link click is a joint drag (handled by MujocoJointDrag) — don't let it
+    // select (or deselect) anything; everything else still selects normally.
+    if (this.skipArm && this.kindOfHit(hit.object) === 'arm') return;
     this.selectFromHit(hit.object);
   };
 

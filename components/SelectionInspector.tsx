@@ -2,7 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { Crosshair, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Crosshair, Trash2, X } from 'lucide-react';
 import type { SelectionInfo } from '../SelectionController';
 import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 import type { PlannerToggles } from '../WorkspacePlanner';
@@ -378,41 +379,47 @@ function RailSizers({ station, subtle, onStation }: {
   }
   const edgeSpan = (i: number) => { const [x1, y1] = corners[i], [x2, y2] = corners[(i + 1) % corners.length]; return Math.hypot(x2 - x1, y2 - y1); };
 
-  const cornerUI = sides === 4 ? (() => {
+  // "Per side / per corner" fields (the secondary control, collapsed by default).
+  const perSide = sides === 4 ? (() => {
     const e = station.sideExtents ?? [hx, hx, hy, hy];
     const set = (i: number, v: number) => { const n = [...e] as [number, number, number, number]; n[i] = v / 1000; onStation({ sideExtents: n }); };
-    return (
-      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
-        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Worktop · per side (from centre)</span>
-        <Sliders subtle={subtle} fields={[
-          { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(0, v) },
-          { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(1, v) },
-          { k: 'Front', v: e[2] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(2, v) },
-          { k: 'Back', v: e[3] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(3, v) },
-        ]} />
-      </div>
-    );
+    return {
+      label: 'Worktop · per side (from centre)',
+      fields: [
+        { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(0, v) },
+        { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(1, v) },
+        { k: 'Front', v: e[2] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(2, v) },
+        { k: 'Back', v: e[3] * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(3, v) },
+      ],
+    };
   })() : (() => {
     const r = station.cornerRadii && station.cornerRadii.length === sides ? station.cornerRadii : Array.from({ length: sides }, () => hx);
     const set = (i: number, v: number) => { const n = [...r]; n[i] = v / 1000; onStation({ cornerRadii: n }); };
-    return (
-      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
-        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Worktop · corner from centre</span>
-        <Sliders subtle={subtle} fields={r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) }))} />
-      </div>
-    );
+    return {
+      label: 'Worktop · corner from centre',
+      fields: r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) })),
+    };
   })();
 
   // Independent rail-bar lengths (need not meet the corners). Default = the edge span.
   const rl = Array.from({ length: corners.length }, (_, i) => (station.railLengths?.[i] && station.railLengths[i] > 0 ? station.railLengths[i] : edgeSpan(i)));
   const setRail = (i: number, v: number) => { const n = [...rl]; n[i] = v / 1000; onStation({ railLengths: n }); };
 
+  // Bar length is the primary control (on top); per-side is secondary + collapsed by default.
+  const [perSideOpen, setPerSideOpen] = useState(false);
   return (
     <>
-      {cornerUI}
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
         <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · bar length</span>
         <Sliders subtle={subtle} fields={rl.map((rv, i) => ({ k: `R${i + 1}`, v: rv * 1000, min: 50, max: 1600, unit: 'mm', on: (v: number) => setRail(i, v) }))} />
+      </div>
+      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
+        <button type="button" onClick={() => setPerSideOpen((v) => !v)}
+          className={`w-full flex items-center justify-between text-[9px] font-bold uppercase tracking-widest ${subtle}`}>
+          <span>{perSide.label}</span>
+          <ChevronDown className={`w-3 h-3 transition-transform ${perSideOpen ? '' : '-rotate-90'}`} />
+        </button>
+        {perSideOpen && <Sliders subtle={subtle} fields={perSide.fields} />}
       </div>
     </>
   );

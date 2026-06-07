@@ -3,13 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Columns2, X, MousePointer2 } from 'lucide-react';
+import { MousePointer2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 interface Props {
   isDarkMode: boolean;
   sidebarOpen: boolean;
-  onExit: () => void;
   /** All cells the panes can frame, and which each pane currently shows (repointable). */
   cells: { id: string; label: string }[];
   cellA: string;
@@ -28,7 +27,7 @@ interface Props {
  * It is pointer-events-none over the scene, so dragging rotates BOTH cells via OrbitControls and the
  * scene stays fully live/editable (move objects, jog arms) underneath.
  */
-export function CompareView({ isDarkMode, onExit, cells, cellA, cellB, onCellA, onCellB, feedsA, feedsB }: Props) {
+export function CompareView({ isDarkMode, cells, cellA, cellB, onCellA, onCellB, feedsA, feedsB }: Props) {
   // Pane header: A/B chip + a dropdown to repoint the pane at any cell (compare with Workstation 3, etc.).
   const badge = (tag: string, value: string, onChange: (id: string) => void, accent: string, side: 'l' | 'r') => (
     <div className={`absolute top-3 ${side === 'l' ? 'left-[4.75rem]' : 'left-[calc(50%+0.75rem)]'} z-20 flex items-center gap-2 pointer-events-auto`}>
@@ -53,15 +52,11 @@ export function CompareView({ isDarkMode, onExit, cells, cellA, cellB, onCellA, 
       {feedsA && <div className="absolute bottom-4 left-[4.75rem] z-10 flex flex-col gap-2 pointer-events-auto">{feedsA}</div>}
       {feedsB && <div className="absolute bottom-4 right-3 z-10 flex flex-col gap-2 pointer-events-auto">{feedsB}</div>}
 
-      {/* exit */}
-      <button onClick={onExit} aria-label="Exit compare"
-        className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide shadow pointer-events-auto ${isDarkMode ? 'bg-slate-900/85 border border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border border-black/10 text-slate-700 hover:bg-white'}`}>
-        <Columns2 className="w-3.5 h-3.5 text-indigo-500" /> Compare <X className="w-3.5 h-3.5 opacity-70" />
-      </button>
-
-      {/* hint footer */}
-      <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium shadow pointer-events-none ${isDarkMode ? 'bg-slate-900/80 border border-white/10 text-slate-300' : 'bg-white/85 border border-black/10 text-slate-600'}`}>
-        <MousePointer2 className="w-3.5 h-3.5 text-indigo-500" /> Drag to orbit both · objects stay live &amp; editable
+      {/* No exit pill here — leave Compare via the left sidebar's mode menu (Edit).
+          Hint sits at TOP-centre (where the exit pill used to be) so it never collides with the
+          bottom-centre edit toolbar that renders over this overlay. */}
+      <div className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium shadow pointer-events-none ${isDarkMode ? 'bg-slate-900/80 border border-white/10 text-slate-300' : 'bg-white/85 border border-black/10 text-slate-600'}`}>
+        <MousePointer2 className="w-3.5 h-3.5 text-indigo-500" /> Drag to orbit both
       </div>
     </div>
   );
