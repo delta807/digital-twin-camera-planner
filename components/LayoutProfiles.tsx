@@ -28,7 +28,6 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const inputCls = isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-500' : 'bg-black/5 border-black/10 placeholder:text-slate-400';
 
-  const [copied, setCopied] = useState(false);
   const commitSave = () => {
     const n = name.trim();
     if (!n) return;
@@ -36,9 +35,25 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
     setName('');
   };
   // Copy every profile as JSON so it can be pasted into presets.ts (BUILTIN_PROFILES) and committed,
-  // making the layouts available to teammates who clone the repo / open the hosted site (#6).
-  const exportJson = () => {
-    navigator.clipboard?.writeText(JSON.stringify(profiles, null, 2)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => { /* clipboard blocked */ });
+  // making the layouts available to teammates. Clipboard is blocked in sandboxed iframes (the
+  // preview), so fall back to downloading a .json file. (#7)
+  const [exported, setExported] = useState<'idle' | 'copied' | 'downloaded'>('idle');
+  const exportJson = async () => {
+    const json = JSON.stringify(profiles, null, 2);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(json);
+      setExported('copied');
+    } catch {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'layout-profiles.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setExported('downloaded');
+    }
+    setTimeout(() => setExported('idle'), 2000);
   };
   // Publish to the team's shared store (Netlify Blobs). Reports status (it's a no-op locally).
   const [pub, setPub] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
@@ -108,9 +123,9 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
                   <CloudUpload className="w-3 h-3" /> {pub === 'busy' ? 'Publishing…' : pub === 'ok' ? 'Published to team ✓' : pub === 'fail' ? 'Sync unavailable (deploy first)' : 'Publish to team'}
                 </button>
               )}
-              <button onClick={exportJson} title="Copy all profiles as JSON — paste into presets.ts to ship them to teammates"
+              <button onClick={exportJson} title="Copy all profiles as JSON (or download if the clipboard is blocked) — paste into presets.ts to ship them"
                 className={`w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`}>
-                <ClipboardCopy className="w-3 h-3" /> {copied ? 'Copied JSON ✓' : 'Export JSON (for repo)'}
+                <ClipboardCopy className="w-3 h-3" /> {exported === 'copied' ? 'Copied JSON ✓' : exported === 'downloaded' ? 'Downloaded .json ✓' : 'Export JSON (for repo)'}
               </button>
             </div>
           )}

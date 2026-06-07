@@ -93,8 +93,8 @@ export function SelectionInspector(p: InspectorProps) {
 
   const rootClass = p.inline
     ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
-    // Floats top-right under the right-panel drawer toggle when the panels are closed (#1).
-    : `absolute top-[3.75rem] right-3 z-30 w-[300px] max-h-[calc(100vh-5rem)] overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+    // Floats top-right BELOW the nav cube (which sits beside the drawer toggle) when panels are closed (#1, #4).
+    : `absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-10.5rem)] overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
 
   return (
     <div className={rootClass}>

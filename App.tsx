@@ -539,7 +539,9 @@ export function App() {
 
   // Wrist-cam mount (gripper-local offset + tilt). A saved tuning (localStorage) overrides the
   // factory default, so you adjust it once and it sticks across reloads.
-  const WRIST_FACTORY = { posX: 0, posY: 0.14, posZ: 0.02, fov: 58, tilt: 25 };
+  // Baked from the tuned in-app mount (#8) so a fresh clone / hosted visitor gets the wrist cam at
+  // the right spot on the wrist_roll gripper without re-adjusting. localStorage still overrides.
+  const WRIST_FACTORY = { posX: -0.001, posY: 0.064, posZ: 0.05, fov: 58, tilt: 340 };
   const [wristMount, setWristMount] = useState(() => {
     try { const s = JSON.parse(localStorage.getItem('so101-wrist-mount') || 'null'); if (s && typeof s.posY === 'number') return { ...WRIST_FACTORY, ...s }; } catch { /* factory */ }
     return WRIST_FACTORY;
