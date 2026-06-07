@@ -1113,29 +1113,38 @@ export function App() {
   const historyRef = useRef<{ stack: LayoutSnap[]; idx: number; lastTs: number }>({ stack: [], idx: -1, lastTs: 0 });
   const restoringRef = useRef(false);
   const [histVer, setHistVer] = useState(0);
+  // Re-render ONLY when undo/redo availability flips — recording itself never forces a render (the
+  // edit that triggered it already re-renders App). Avoids the per-edit "double render" amplification
+  // (history-recording effect that setStates on every change) that made editing feel laggy.
+  const availRef = useRef({ u: false, r: false });
+  const refreshHistButtons = () => {
+    const h = historyRef.current; const u = h.idx > 0, r = h.idx < h.stack.length - 1;
+    if (u !== availRef.current.u || r !== availRef.current.r) { availRef.current = { u, r }; setHistVer((v) => v + 1); }
+  };
   useEffect(() => {
     if (isLoading) return;
     const h = historyRef.current;
     const snap: LayoutSnap = { workcell: workcellConfig, arms: armInstances };
-    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = performance.now(); setHistVer((v) => v + 1); return; }
+    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = performance.now(); return; }
     if (restoringRef.current) return; // an undo/redo restore shouldn't be recorded as a new edit
     const now = performance.now();
     if (h.idx < h.stack.length - 1) h.stack = h.stack.slice(0, h.idx + 1); // a fresh edit clears the redo branch
     if (now - h.lastTs < 350 && h.idx > 0) { h.stack[h.idx] = snap; } // coalesce a gesture into one step
     else { h.stack.push(snap); h.idx = h.stack.length - 1; if (h.stack.length > 60) { h.stack.shift(); h.idx--; } }
     h.lastTs = now;
-    setHistVer((v) => v + 1);
+    refreshHistButtons();
   }, [workcellConfig, armInstances, isLoading]);
   const applyLayoutSnap = (s: LayoutSnap) => {
     restoringRef.current = true;
     setWorkcellConfig(s.workcell); simRef.current?.setWorkcell(s.workcell);
     setArmInstances(s.arms); simRef.current?.setArmInstances(s.arms);
     const primary = s.arms.find((a) => a.primary);
-    if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => applyPlannerState());
+    // Defer the (potentially heavy) reachability recompute off the undo's critical path.
+    if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => requestAnimationFrame(() => applyPlannerState()));
     setTimeout(() => { restoringRef.current = false; }, 0);
   };
-  const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); setHistVer((v) => v + 1); } };
-  const redo = () => { const h = historyRef.current; if (h.idx < h.stack.length - 1) { h.idx++; applyLayoutSnap(h.stack[h.idx]); setHistVer((v) => v + 1); } };
+  const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); } };
+  const redo = () => { const h = historyRef.current; if (h.idx < h.stack.length - 1) { h.idx++; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); } };
   void histVer; // histVer just forces re-render so the undo/redo button enabled state stays fresh
   const canUndo = historyRef.current.idx > 0;
   const canRedo = historyRef.current.idx < historyRef.current.stack.length - 1;
