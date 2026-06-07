@@ -565,6 +565,22 @@ export function App() {
     handleWorkcellChange({ ...wc, extraCameras: (wc.extraCameras ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
 
+  // A station's overhead camera is movable/aimable like an extra cam: its pose is the camPose
+  // override, or the auto overhead pose (post → worktop centre) until the user first moves it.
+  const stationCamPose = (sid: string) => {
+    const st = (workcellConfigRef.current.stations ?? []).find((s) => s.id === sid);
+    if (!st) return null;
+    if (st.camPose) return st.camPose;
+    const c = Math.cos(st.yaw ?? 0), sn = Math.sin(st.yaw ?? 0);
+    return { x: st.x + st.postX * c - st.postY * sn, y: st.y + st.postX * sn + st.postY * c, z: st.postHeight, rotX: 0, rotY: 0, rotZ: 0 };
+  };
+  const handleStationCamPose = (sid: string, patch: Partial<{ x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number }>) => {
+    const wc = workcellConfigRef.current;
+    const base = stationCamPose(sid); if (!base) return;
+    const next = { ...base, ...patch };
+    handleWorkcellChange({ ...wc, stations: (wc.stations ?? []).map((s) => (s.id === sid ? { ...s, camPose: next } : s)) });
+  };
+
   // Wrist-cam mount (gripper-local offset + tilt). A saved tuning (localStorage) overrides the
   // factory default, so you adjust it once and it sticks across reloads.
   // Baked from the tuned in-app mount (#8) so a fresh clone / hosted visitor gets the wrist cam at
@@ -969,10 +985,15 @@ export function App() {
     };
     sel.onStationMove = (id, x, y) => handleStationChange(id, { x, y });
     sel.onStationRotate = (id, yaw) => handleStationChange(id, { yaw });
-    // Extra overhead cameras: move (translate) + aim (rotate) via the same proxy gizmo.
-    sel.getCameraPose = (id) => { const c = workcellConfigRef.current.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ } : null; };
-    sel.onCameraMove = (id, x, y, z) => handleExtraCameraChange(id, { x, y, z });
-    sel.onCameraAim = (id, rx, ry, rz) => handleExtraCameraChange(id, { rotX: rx, rotY: ry, rotZ: rz });
+    // Overhead cameras: move (translate) + aim (rotate) via the same proxy gizmo. `stationcam:<id>`
+    // routes to that station's camPose override; everything else is a placeable extra camera.
+    sel.getCameraPose = (id) => {
+      if (id.startsWith('stationcam:')) return stationCamPose(id.slice(11));
+      const c = workcellConfigRef.current.extraCameras?.find((x) => x.id === id);
+      return c ? { x: c.x, y: c.y, z: c.z, rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ } : null;
+    };
+    sel.onCameraMove = (id, x, y, z) => id.startsWith('stationcam:') ? handleStationCamPose(id.slice(11), { x, y, z }) : handleExtraCameraChange(id, { x, y, z });
+    sel.onCameraAim = (id, rx, ry, rz) => id.startsWith('stationcam:') ? handleStationCamPose(id.slice(11), { rotX: rx, rotY: ry, rotZ: rz }) : handleExtraCameraChange(id, { rotX: rx, rotY: ry, rotZ: rz });
     // Wrist camera move/aim gizmo (gripper-relative): MOVE → local offset; AIM → tilt.
     sel.getWristPose = (armId) => { const c = simRef.current?.renderSys.getWristCamera(armId); return c ? { pos: c.getWorldPos(), quat: c.getWorldQuat() } : null; };
     sel.onWristMove = (armId, world) => { const c = simRef.current?.renderSys.getWristCamera(armId); if (c) { const o = c.worldToLocalOffset(world); setWristMount((m) => ({ ...m, posX: o.posX, posY: o.posY, posZ: o.posZ })); } };

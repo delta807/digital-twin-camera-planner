@@ -143,6 +143,7 @@ export class RenderSystem {
             this.scene, this.camera, this.renderer.domElement, this.controls,
             () => [this.simGroup, this.baseBuilder.group, this.cameraRig.gizmo, this.planningArmsGroup,
                    ...Array.from(this.extraCameras.values()).map((c) => c.glyph),
+                   ...Array.from(this.stationCameras.values()).map((c) => c.glyph),
                    ...Array.from(this.wristCameras.values()).map((c) => c.glyph)],
             () => this.baseBuilder.postAxis);
 
@@ -759,10 +760,18 @@ export class RenderSystem {
         return this.wristCameras.get(armId);
     }
 
-    /** Get-or-create a station's overhead feed. */
+    /** Get-or-create a station's overhead feed. Its glyph is selectable (move/aim) just like the
+     *  placeable extra cameras — tagged with id `stationcam:<stationId>` so App routes its pose to
+     *  the station's camPose override. */
     ensureStationCamera(id: string): StationCamera {
         let cam = this.stationCameras.get(id);
-        if (!cam) { cam = new StationCamera(this.scene); this.stationCameras.set(id, cam); }
+        if (!cam) {
+            cam = new StationCamera(this.scene);
+            const camId = `stationcam:${id}`;
+            cam.glyph.userData.selectable = 'camera'; cam.glyph.userData.cameraId = camId;
+            cam.glyph.traverse((o) => { o.userData.selectable = 'camera'; o.userData.cameraId = camId; });
+            this.stationCameras.set(id, cam);
+        }
         return cam;
     }
     getStationCamera(id: string): StationCamera | undefined {
@@ -771,17 +780,19 @@ export class RenderSystem {
 
     /** Reconcile station feeds with the current stations: set each camera's overhead pose (post →
      *  worktop centre) and dispose feeds whose station is gone. */
-    syncStationCameras(stations: Array<{ id: string; x: number; y: number; yaw?: number; postX: number; postY: number; postHeight: number }>) {
+    syncStationCameras(stations: Array<{ id: string; x: number; y: number; yaw?: number; postX: number; postY: number; postHeight: number; camPose?: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number } }>) {
         const keep = new Set(stations.map((s) => s.id));
         for (const [id, cam] of this.stationCameras) {
             if (!keep.has(id)) { cam.dispose(); this.stationCameras.delete(id); }
         }
         for (const s of stations) {
-            // rotate the post offset by the station yaw so the overhead cam stays over the real post.
+            const cam = this.ensureStationCamera(s.id);
+            if (s.camPose) { cam.setPoseEuler(s.camPose.x, s.camPose.y, s.camPose.z, s.camPose.rotX, s.camPose.rotY, s.camPose.rotZ); continue; }
+            // Default: overhead, post → worktop centre (rotate the post offset by the station yaw).
             const c = Math.cos(s.yaw ?? 0), sn = Math.sin(s.yaw ?? 0);
             const px = s.x + s.postX * c - s.postY * sn;
             const py = s.y + s.postX * sn + s.postY * c;
-            this.ensureStationCamera(s.id).setPose(px, py, s.postHeight, s.x, s.y);
+            cam.setPose(px, py, s.postHeight, s.x, s.y);
         }
     }
 
