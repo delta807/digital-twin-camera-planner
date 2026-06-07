@@ -439,7 +439,7 @@ export function App() {
 
   // Wrist cameras: one gripper-mounted feed PER arm (primary = live; ghost arms = static mount
   // preview). The master toggle enables them all; each arm's PIP attaches via a stable callback ref.
-  const [wristView, setWristView] = useState(false);
+  const [wristView, setWristView] = useState(true);
   useEffect(() => {
     if (!isLoading && simRef.current) simRef.current.renderSys.wristEnabled = wristView;
   }, [isLoading, wristView]);
@@ -1667,6 +1667,7 @@ export function App() {
               isDarkMode={isDarkMode}
               onSaveWorkspace={() => setLayoutsOpen(true)}
               onClose={() => setDockOpen(false)}
+              templates={{ profiles, onLoad: handleLoadProfile }}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,

@@ -157,3 +157,16 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
       Layout profiles gained an "Export JSON (for repo)" button to copy all profiles for pasting
       into presets.ts and committing. Built-ins show a badge + no delete.
 - [ ] 2. (suggestion only) Left panel is now mostly "add" controls — see response for 3 directions.
+
+## HUD refinement pass 5 (review)
+- [x] 1. Panel toggle consolidated: removed the Controls-toolbar panel button; the sidebar header
+      close is now PanelRightClose (right-pointing), matching the dock's PanelLeftClose (left).
+- [x] 2. Wrist cameras on by default (wristView initial = true).
+- [x] 3. Left dock redesigned into Insert (click-to-add palette) · Outliner (objects grouped by
+      Arms/Workcells/Cameras/Wrist cams/Posts/Tasks, select + hide) · Scene & templates (axes,
+      coord readout, load saved/built-in layouts, reachability compute). Old Workcell/Arms/Scene
+      sections + the dock search removed.
+- [ ] 4. (explained, not built) Boxes are static MuJoCo bodies compiled into the model at load —
+      add/remove needs a model recompile + reload. Options written up for the user.
+- [ ] 5. (researched) Online sync for shared arrangements — git-as-DB (Decap/TinaCMS style) vs
+      Netlify Blobs/DB vs Supabase. Written up for the user.

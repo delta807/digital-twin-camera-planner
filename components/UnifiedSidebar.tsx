@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { BoxSelect, ChevronDown, FastForward, Grab, History, Info, Loader2, MousePointer2, RotateCcw, Send, Settings2, Thermometer, X } from 'lucide-react';
+import { BoxSelect, ChevronDown, FastForward, Grab, History, Info, Loader2, MousePointer2, PanelRightClose, RotateCcw, Send, Settings2, Thermometer } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { LogOverlay } from '../App';
 import { DetectedItem, DetectType, LogEntry } from '../types';
@@ -90,8 +90,8 @@ export function UnifiedSidebar({
       {/* Slim header bar — shows the live status readout (MetricBar) in place of a static title. */}
       <div className={`px-4 py-2.5 border-b flex justify-between items-center gap-2 shrink-0 ${headerBorder}`}>
         {headerContent ?? <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>}
-        <button onClick={onClose} className="p-1.5 hover:bg-slate-200/20 rounded-full transition-colors text-slate-400 shrink-0">
-          <X className="w-4 h-4" />
+        <button onClick={onClose} title="Collapse panel" aria-label="Collapse panel" className="p-1.5 hover:bg-slate-200/20 rounded-lg transition-colors text-slate-400 shrink-0">
+          <PanelRightClose className="w-4 h-4" />
         </button>
       </div>
 

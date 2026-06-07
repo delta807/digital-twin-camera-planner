@@ -4,7 +4,7 @@
 */
 
 
-import { Focus, Hand, House, Moon, PanelRight, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
+import { Focus, Hand, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -134,15 +134,7 @@ export function Toolbar({
       >
         <Sliders className="w-6 h-6" />
       </button>
-
-      {/* Sidebar Toggle */}
-      <button
-        onClick={toggleSidebar}
-        className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${showSidebar ? (isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white') : panelStyle}`}
-        title="Toggle Analysis Panel"
-      >
-        <PanelRight className="w-6 h-6" />
-      </button>
+      {/* The panel open/close toggle now lives in the panel header (PanelRightClose) — see #1. */}
     </div>
   );
 }
