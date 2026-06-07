@@ -259,3 +259,14 @@ Radial audit (min Move/Aim/Duplicate/Delete):
 - WebGL-compare fidelity (answer): the current panes are rotatable SVG *schematics* (stylized arm/
   worktop). A WebGL upgrade would render the real meshes (same geometry/materials as the workcell
   page) → panes would visually MATCH the main 3D view. Offered as a follow-up.
+
+## Jog regression fix + dock/templates UX (done, verified)
+- #1 ROOT CAUSE: rescoping the jog raycast to the whole scene made it hit fat-line overlays
+  (LineSegments2) which THROW without raycaster.camera → the raycast aborted → no joint grabbed
+  (primary + ghost). FIX: set raycaster.camera on the URDF drag engine + keep occluder-skip.
+  VERIFIED in-browser: hover detects "Elbow"; dragging the link visibly moves the arm; 0 errors.
+- #2 "IRL-layout" profile auto-loads once on startup. #3 Templates section moved to top of dock.
+  #4 placeholder "Name this layout to save it" + Save disabled until typed (dock + floating panel).
+  #5 removed redundant dock-header Save button.
+- Note: a blank preview earlier was the preview MCP browser wedging after many reloads — the app is
+  healthy (smoke test green, fresh-browser boot, 0 console errors).
