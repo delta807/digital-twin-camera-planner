@@ -32,6 +32,41 @@ interface JointGroup extends THREE.Object3D {
   __jointName?: string;
   __qadr?: number; __dofadr?: number; __actId?: number;
   __range?: [number, number];
+  // Set on a GHOST arm's joint clones (non-physics) so updateJoint routes to per-arm angles, not qpos.
+  __ghostArmId?: string; __jointIndex?: number;
+}
+
+/** One actuated joint's static info, keyed by the body it drives — for tagging ghost joints. */
+export interface GhostJointDesc { index: number; axis: [number, number, number]; lo: number; hi: number; name: string }
+
+/** Tag a GHOST arm group's joint-clones (RenderSystem.planningArmsGroup children) as draggable URDF
+ *  joints, so the SAME drag engine jogs them — updateJoint routes to per-arm angles via __ghostArmId. */
+export function tagGhostJoints(group: THREE.Object3D, byBody: Map<number, GhostJointDesc>, getJoints: (armId: string) => number[]) {
+  for (const clone of group.children) {
+    const armId = clone.userData.armId as string | undefined;
+    if (!armId) continue;
+    for (const child of clone.children) {
+      const bid = child.userData.__bodyId as number | undefined;
+      const d = bid !== undefined ? byBody.get(bid) : undefined;
+      if (!d) continue;
+      const g = child as JointGroup;
+      g.isURDFJoint = true; g.jointType = 'revolute';
+      g.axis = new THREE.Vector3(d.axis[0], d.axis[1], d.axis[2]);
+      g.__jointName = d.name; g.__range = [d.lo, d.hi];
+      g.__ghostArmId = armId; g.__jointIndex = d.index;
+      Object.defineProperty(g, 'angle', { configurable: true, get: () => getJoints(armId)[d.index] ?? 0 });
+    }
+  }
+}
+
+export function untagGhostJoints(group: THREE.Object3D) {
+  for (const clone of group.children) for (const child of clone.children) {
+    const g = child as JointGroup;
+    if (!g.isURDFJoint) continue;
+    setEmissive(g, null);
+    delete g.isURDFJoint; delete g.jointType; delete g.axis; delete g.__jointName; delete g.__range;
+    delete g.__ghostArmId; delete g.__jointIndex; delete (g as Record<string, unknown>).angle;
+  }
 }
 
 const HILITE = 0xff33aa; // leLab-style pink hover highlight
@@ -112,6 +147,8 @@ export class MujocoJointDrag extends Base {
   onJointLabel?: (name: string | null) => void;
   /** Fired when a joint drag finishes — lets ghost arms re-mirror the newly-posed primary. */
   onPosed?: () => void;
+  /** Drag on a GHOST arm joint → set that arm's stored joint angle (no physics) + re-pose it. */
+  onGhostJoint?: (armId: string, index: number, angle: number) => void;
 
   static create(
     scene: THREE.Object3D, camera: THREE.Camera, dom: HTMLElement,
@@ -147,6 +184,8 @@ export class MujocoJointDrag extends Base {
   updateJoint(joint: JointGroup, angle: number) {
     const [lo, hi] = joint.__range ?? [-Math.PI, Math.PI];
     const a = Math.min(hi, Math.max(lo, angle));
+    // Ghost arm joint → no physics; route to the per-arm angle store + an in-place re-pose.
+    if (joint.__ghostArmId !== undefined) { this.onGhostJoint?.(joint.__ghostArmId, joint.__jointIndex ?? 0, a); return; }
     this.data.qpos[joint.__qadr!] = a;
     (this.data as unknown as { qvel: Float64Array }).qvel[joint.__dofadr!] = 0;
     if ((joint.__actId ?? -1) >= 0) this.data.ctrl[joint.__actId!] = a;

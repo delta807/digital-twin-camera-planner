@@ -389,6 +389,19 @@ export class RenderSystem {
         }
     }
 
+    /** Re-pose one existing ghost clone in place (no re-clone) from FK-oracle transforms — used by
+     *  the live drag-jog so the held joint node isn't replaced mid-drag. */
+    poseGhost(armId: string, t: { bodies: Map<number, THREE.Matrix4>; tcp: THREE.Matrix4 | null } | null) {
+        if (!t) return;
+        const clone = this.planningArmsGroup.children.find((c) => c.userData.armId === armId);
+        if (!clone) return;
+        clone.children.forEach((c) => {
+            const bid = c.userData.__bodyId as number | undefined;
+            if (typeof bid === 'number' && t.bodies.has(bid)) t.bodies.get(bid)!.decompose(c.position, c.quaternion, c.scale);
+            else if (c.userData.isTcp && t.tcp) t.tcp.decompose(c.position, c.quaternion, c.scale);
+        });
+    }
+
     private clonePlanningMaterial(material: THREE.Material): THREE.Material {
         const clone = material.clone();
         clone.transparent = true;

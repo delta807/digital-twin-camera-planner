@@ -907,6 +907,8 @@ export function App() {
     sel.onPropRotate = (id, yaw) => handlePropChange(id, { yaw });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
     setArmJointInfo(simRef.current?.getArmJointInfo() ?? []); // joint names + limits for per-arm jog sliders
+    // Persist drag-jogged ghost poses back to React state (so they save with layout profiles).
+    if (simRef.current) simRef.current.onGhostPosed = (armId, joints) => setArmInstances((prev) => prev.map((a) => (a.id === armId ? { ...a, joints } : a)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 

@@ -15,7 +15,7 @@ import { ArmInstance, DEFAULT_WORKCELL_CONFIG, MujocoData, MujocoModel, MujocoMo
 import { getName } from './utils/StringUtils';
 import { SweptJoint, WorkspacePlanner } from './WorkspacePlanner';
 import { NumericIk } from './NumericIk';
-import { ArmJointDesc, MujocoJointDrag, tagArmJoints, untagArmJoints } from './MujocoJointDrag';
+import { ArmJointDesc, GhostJointDesc, MujocoJointDrag, tagArmJoints, tagGhostJoints, untagArmJoints, untagGhostJoints } from './MujocoJointDrag';
 
 /**
  * MujocoSim: The Central Orchestrator.
@@ -320,18 +320,21 @@ export class MujocoSim {
         const rs = this.renderSys;
         if (on) {
             tagArmJoints(rs.bodies, this.mjData, this.armJointDescs);
+            // Raycast the whole SCENE (not just simGroup) so the SAME engine can grab GHOST joints,
+            // which live in planningArmsGroup (a sibling of simGroup).
             this.jointDrag = MujocoJointDrag.create(
-                rs.simGroup, rs.camera, rs.renderer.domElement,
+                rs.scene, rs.camera, rs.renderer.domElement,
                 this.mujoco, this.mjModel, this.mjData, rs.controls, onJointLabel,
             );
-            // When the primary is re-posed, ghost arms re-mirror it (so their wrist cams frame the
-            // same way the primary does, instead of staring at the horizon from the home pose).
             this.jointDrag.onPosed = () => this.refreshGhostArms();
+            this.jointDrag.onGhostJoint = (armId, index, angle) => this.poseGhostJoint(armId, index, angle);
+            tagGhostJoints(rs.planningArmsGroup, this.ghostJointDescByBody(), (id) => this.ghostJoints(id));
             rs.selection.setEnabled(false); // clicks drive joints, not selection
         } else {
             this.jointDrag?.dispose();
             this.jointDrag = null;
             untagArmJoints(rs.bodies, this.armJointDescs);
+            untagGhostJoints(rs.planningArmsGroup);
             rs.selection.setEnabled(true);
             onJointLabel?.(null);
         }
@@ -422,6 +425,29 @@ export class MujocoSim {
         this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));
         // Ghost arms moving doesn't need a recompute — just re-transform the reach outlines.
         this.planner?.setArms(this.armInstances, this.basePose?.yaw ?? 0);
+        // Ghosts were re-cloned → if we're jogging, re-tag them so drag still grabs their joints.
+        if (this.poseMode) tagGhostJoints(this.renderSys.planningArmsGroup, this.ghostJointDescByBody(), (id) => this.ghostJoints(id));
+    }
+
+    /** Fired when a ghost arm is drag-jogged, so React can persist the new per-arm joint angles. */
+    onGhostPosed: ((armId: string, joints: number[]) => void) | null = null;
+    private ghostJointDescByBody(): Map<number, GhostJointDesc> {
+        const m = new Map<number, GhostJointDesc>();
+        this.armJointDescs.forEach((j, index) => m.set(j.bodyId, { index, axis: j.axis, lo: j.lo, hi: j.hi, name: j.name }));
+        return m;
+    }
+    /** A ghost arm's current joint angles (its stored pose, else the home rest pose). */
+    private ghostJoints(armId: string): number[] {
+        const a = this.armInstances.find((x) => x.id === armId);
+        return a?.joints ?? (this.isFranka ? [] : MujocoSim.SO101_FACTORY_REST.slice());
+    }
+    /** Drag-jog a ghost joint: store the angle, re-pose that ghost in place, notify React. */
+    private poseGhostJoint(armId: string, index: number, angle: number) {
+        const seed = this.ghostJoints(armId);
+        const joints = seed.slice(); joints[index] = angle;
+        const a = this.armInstances.find((x) => x.id === armId); if (a) a.joints = joints;
+        this.renderSys.poseGhost(armId, this.armPoseTransforms(joints));
+        this.onGhostPosed?.(armId, joints);
     }
 
     /** The actuated joints' display info (name + limits) for per-arm jog sliders. */
