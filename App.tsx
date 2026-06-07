@@ -1256,6 +1256,12 @@ export function App() {
       camera: { x: cam.x, y: cam.y, z: cam.z, fovH: intrinsics.hFovDeg },
       arm: arm ? { x: arm.x, y: arm.y, yawDeg: (arm.yaw * 180) / Math.PI } : { x: 0, y: 0, yawDeg: 0 },
       blocks: pts.map((p, i) => ({ id: `task${i}`, x: p.x, y: p.y, color: 'orange' as const })),
+      // Rich payload for the WebGL panes: full workcell + every arm (posed) + block positions.
+      scene3d: {
+        workcell: { ...wc },
+        arms: armInstancesRef.current.map((a) => ({ x: a.x, y: a.y, yaw: a.yaw, joints: a.joints ?? (a.primary ? simRef.current?.getArmJointPositions() : undefined) })),
+        blocks: pts.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+      },
     };
   };
   const handleSnapshot = (slot: 'A' | 'B') => {
@@ -1598,6 +1604,7 @@ export function App() {
                     return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
                   }}
                   onOrbit={(dAz, dEl) => simRef.current?.renderSys.orbit(dAz, dEl)}
+                  makeArmClone={(a) => simRef.current?.posedArmClone(a.x, a.y, a.yaw, a.joints) ?? null}
                 />
               )}
             </>

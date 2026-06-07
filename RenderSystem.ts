@@ -389,6 +389,21 @@ export class RenderSystem {
         }
     }
 
+    /** A standalone, posed clone of the real arm geometry — for the WebGL compare scenes (so they
+     *  show the actual SO-101 meshes, matching the workcell page). Geometry is shared with the
+     *  template (do NOT dispose it). */
+    makePosedArmClone(x: number, y: number, yaw: number, t: { bodies: Map<number, THREE.Matrix4>; tcp: THREE.Matrix4 | null } | null): THREE.Group | null {
+        if (!this.planningArmTemplate) return null;
+        const clone = this.planningArmTemplate.clone(true);
+        clone.position.set(x, y, 0); clone.rotation.z = yaw;
+        clone.userData.armId = undefined; clone.userData.selectable = undefined;
+        if (t) clone.children.forEach((c) => {
+            const bid = c.userData.__bodyId as number | undefined;
+            if (typeof bid === 'number' && t.bodies.has(bid)) t.bodies.get(bid)!.decompose(c.position, c.quaternion, c.scale);
+        });
+        return clone;
+    }
+
     /** Re-pose one existing ghost clone in place (no re-clone) from FK-oracle transforms — used by
      *  the live drag-jog so the held joint node isn't replaced mid-drag. */
     poseGhost(armId: string, t: { bodies: Map<number, THREE.Matrix4>; tcp: THREE.Matrix4 | null } | null) {

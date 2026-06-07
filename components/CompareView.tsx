@@ -5,7 +5,11 @@
 
 import { Columns2, Info, Camera, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import type * as THREE from 'three';
 import { SceneMap, CompareSetup } from './SceneMap';
+import { CompareScene3D } from './CompareScene3D';
+
+type MakeArmClone = (a: { x: number; y: number; yaw: number; joints?: number[] }) => THREE.Group | null;
 
 interface Props {
   setupA: CompareSetup | null;
@@ -18,6 +22,8 @@ interface Props {
   getOrbit: () => { dx: number; dy: number; dz: number } | null;
   /** … and orbit it by (dAz, dEl) when a pane is dragged (drives both panes + the NavCube). */
   onOrbit: (dAz: number, dEl: number) => void;
+  /** Build a posed clone of the real arm geometry for the WebGL panes. */
+  makeArmClone: MakeArmClone;
 }
 
 interface Metrics { heightCm: number; footprintCm2: number; coveragePct: number; reachPct: number; inFp: number; reachable: number; total: number }
@@ -55,9 +61,9 @@ function MiniMetric({ label, value, unit, pct, good, isDarkMode }: { label: stri
   );
 }
 
-function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode, az, el, onOrbit }: {
+function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode, az, el, onOrbit, makeArmClone }: {
   tag: string; accent: string; setup: CompareSetup | null; slot: 'A' | 'B'; onSnapshot: (s: 'A' | 'B') => void; isDarkMode: boolean;
-  az: number; el: number; onOrbit: (dAz: number, dEl: number) => void;
+  az: number; el: number; onOrbit: (dAz: number, dEl: number) => void; makeArmClone: MakeArmClone;
 }) {
   const sub = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const m = setup ? metricsFor(setup) : null;
@@ -89,7 +95,9 @@ function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode, az, el, onOrbi
       <div className="flex-1 min-h-0" style={setup ? { cursor: 'grab', touchAction: 'none' } : undefined}
         onPointerDown={setup ? onDown : undefined} onPointerMove={setup ? onMove : undefined} onPointerUp={setup ? onUp : undefined}>
         {setup ? (
-          <SceneMap setup={setup} isDarkMode={isDarkMode} az={az} el={el} />
+          setup.scene3d
+            ? <CompareScene3D setup={setup} az={az} el={el} isDarkMode={isDarkMode} makeArmClone={makeArmClone} />
+            : <SceneMap setup={setup} isDarkMode={isDarkMode} az={az} el={el} />
         ) : (
           <div className={`h-full grid place-items-center text-center px-6 ${sub}`}>
             <div>
@@ -120,7 +128,7 @@ function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode, az, el, onOrbi
  * blocks, reach + footprint) with coverage/reach metrics; a verdict calls which setup frames /
  * reaches more of the task objects. "Snapshot" captures the current live layout into A or B.
  */
-export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapshot, onExit, getOrbit, onOrbit }: Props) {
+export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapshot, onExit, getOrbit, onOrbit, makeArmClone }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/90 border-white/10 text-slate-100' : 'bg-white/92 border-white/80 text-slate-800';
   // Mirror the live camera angle so both panes show the setups from the SAME orientation; updates
   // as the NavCube (or a pane drag) orbits — that's "move the cube, both setups move".
@@ -162,9 +170,9 @@ export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapsho
       </div>
 
       <div className="flex-1 min-h-0 flex">
-        <Pane tag="A" accent="oklch(0.655 0.155 262)" setup={setupA} slot="A" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} />
+        <Pane tag="A" accent="oklch(0.655 0.155 262)" setup={setupA} slot="A" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} makeArmClone={makeArmClone} />
         <span className={`w-px self-stretch ${isDarkMode ? 'bg-white/10' : 'bg-black/10'}`} />
-        <Pane tag="B" accent="oklch(0.70 0.13 292)" setup={setupB} slot="B" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} />
+        <Pane tag="B" accent="oklch(0.70 0.13 292)" setup={setupB} slot="B" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} makeArmClone={makeArmClone} />
       </div>
 
       <div className={`flex items-center gap-2 px-4 py-2.5 border-t shrink-0 ${isDarkMode ? 'border-white/10 bg-slate-900/50' : 'border-black/5 bg-black/[0.02]'}`}>

@@ -10,6 +10,7 @@
  * Used by the A/B compare view to render two setups side by side.
  */
 import type { JSX } from 'react';
+import type { WorkcellConfig } from '../types';
 
 export interface CompareSetup {
   table: { length: number; width: number; railH: number }; // metres; railH ~ 0.024
@@ -17,6 +18,12 @@ export interface CompareSetup {
   camera: { x: number; y: number; z: number; fovH: number }; // fovH = horizontal FOV degrees
   arm: { x: number; y: number; yawDeg: number }; // base pose; yaw in DEGREES
   blocks: Array<{ id: string; x: number; y: number; color: 'orange' | 'teal' }>;
+  /** Rich payload for the WebGL compare panes (real meshes). Falls back to the SVG schematic if absent. */
+  scene3d?: {
+    workcell: WorkcellConfig;
+    arms: Array<{ x: number; y: number; yaw: number; joints?: number[] }>;
+    blocks: Array<{ x: number; y: number; z: number }>;
+  };
 }
 
 type P = [number, number];

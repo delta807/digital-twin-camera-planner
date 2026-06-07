@@ -451,6 +451,12 @@ export class MujocoSim {
         this.onGhostPosed?.(armId, joints);
     }
 
+    /** A posed clone of the real arm geometry at the given base pose + joint angles — for the WebGL
+     *  compare panes (so each captured setup renders the actual SO-101 meshes). */
+    posedArmClone(x: number, y: number, yaw: number, joints?: number[]): THREE.Group | null {
+        return this.renderSys.makePosedArmClone(x, y, yaw, joints ? this.armPoseTransforms(joints) : null);
+    }
+
     /** The actuated joints' display info (name + limits) for per-arm jog sliders. */
     getArmJointInfo(): { name: string; lo: number; hi: number }[] {
         return this.armJointDescs.map((j) => ({ name: j.name, lo: j.lo, hi: j.hi }));
