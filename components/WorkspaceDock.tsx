@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Box, Boxes, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
+import { Box, Boxes, ChevronDown, Crosshair, Eye, EyeOff, Grid3x3, Loader2, PanelLeftClose, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { ArmInstance, LengthUnit, WorkcellConfig } from '../types';
@@ -59,6 +59,8 @@ interface WorkspaceDockProps {
   arms: DockArmsProps;
   /** Open the layout-profiles panel to save/load the whole workspace. */
   onSaveWorkspace?: () => void;
+  /** Collapse the dock (the matching open affordance is the top-left drawer button). */
+  onClose?: () => void;
 }
 
 /**
@@ -68,7 +70,7 @@ interface WorkspaceDockProps {
  * and live coordinates. Replaces the old scattered CameraControls / ReachabilityControls /
  * CoordinatesHud panels.
  */
-export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, onSaveWorkspace }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, onSaveWorkspace, onClose }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -95,12 +97,19 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, onSa
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
-          {onSaveWorkspace && (
-            <button onClick={onSaveWorkspace} title="Save / load this workspace layout"
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-              <Save className="w-3.5 h-3.5" /> Save
-            </button>
-          )}
+          <div className="flex items-center gap-1.5">
+            {onSaveWorkspace && (
+              <button onClick={onSaveWorkspace} title="Save / load this workspace layout"
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                <Save className="w-3.5 h-3.5" /> Save
+              </button>
+            )}
+            {onClose && (
+              <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
         <span className={`block text-[9px] ${subtle} mt-1`}>origin = table center · X→ Y↑ Z out</span>
         <div className={`mt-2 flex items-center gap-1.5 px-2 py-1 rounded-md border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>

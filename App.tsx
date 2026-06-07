@@ -31,7 +31,7 @@ import { CompareView } from './components/CompareView';
 import type { CompareSetup } from './components/SceneMap';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
-import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Pin, RotateCw, Trash2 } from 'lucide-react';
+import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
@@ -232,6 +232,12 @@ export function App() {
   const [wristOverlayOn, setWristOverlayOn] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const [overlayBlend, setOverlayBlend] = useState<'normal' | 'difference'>('normal');
+  // Real-camera stream URLs are editable + persisted (the baked-in defaults are a Tailscale Jetson,
+  // unreachable off that tailnet / blocked as mixed-content on https hosts — so let users repoint them).
+  const [sceneStreamUrl, setSceneStreamUrl] = useState(() => { try { return localStorage.getItem('so101-scene-stream') || JETSON_SCENE_STREAM; } catch { return JETSON_SCENE_STREAM; } });
+  const [wristStreamUrl, setWristStreamUrl] = useState(() => { try { return localStorage.getItem('so101-wrist-stream') || JETSON_WRIST_STREAM; } catch { return JETSON_WRIST_STREAM; } });
+  const updateSceneStream = (v: string) => { setSceneStreamUrl(v); try { localStorage.setItem('so101-scene-stream', v); } catch { /* ignore */ } };
+  const updateWristStream = (v: string) => { setWristStreamUrl(v); try { localStorage.setItem('so101-wrist-stream', v); } catch { /* ignore */ } };
   // Simulated D435i DEPTH stream toggle for the overhead PIP (depth colormap, 0.3–3 m range).
   const [depthView, setDepthView] = useState(false);
   useEffect(() => { simRef.current?.renderSys.cameraRig.setDepthMode(depthView); }, [depthView, isLoading]);
@@ -531,7 +537,14 @@ export function App() {
   useEffect(() => {
     simRef.current?.renderSys.setWristMount(wristMount);
   }, [wristMount, isLoading, wristView]);
-  const handleSaveWristMount = () => localStorage.setItem('so101-wrist-mount', JSON.stringify(wristMount));
+  const handleSaveWristMount = () => {
+    localStorage.setItem('so101-wrist-mount', JSON.stringify(wristMount));
+    // Also copy a paste-ready code line so the tuning can be baked into App.tsx (WRIST_FACTORY) and
+    // shipped to everyone who clones the repo / opens the hosted site — see "permanent save" (#5).
+    const m = wristMount;
+    const snip = `const WRIST_FACTORY = { posX: ${+m.posX.toFixed(3)}, posY: ${+m.posY.toFixed(3)}, posZ: ${+m.posZ.toFixed(3)}, fov: ${m.fov}, tilt: ${m.tilt} };`;
+    navigator.clipboard?.writeText(snip).catch(() => { /* clipboard blocked — localStorage save still applied */ });
+  };
 
   const handleCameraToggle = (key: keyof CameraViewToggles, value: boolean) => {
     setCameraToggles(prev => ({ ...prev, [key]: value }));
@@ -587,19 +600,22 @@ export function App() {
     rig()?.setDragMode(mode);
   };
 
-  // Right-click an item → mode/delete/duplicate radial; right-click empty space → a "create here" radial.
-  const handleContextMenu = (e: React.MouseEvent) => {
+  // Open the radial for whatever is under (clientX,clientY): an item → mode/delete/duplicate;
+  // empty space → "create here". Shared by right-click AND double-click.
+  const openRadialAt = (clientX: number, clientY: number) => {
     if (sceneIsFranka || isLoading) return;
     const sel = simRef.current?.renderSys.selection;
-    const k = sel?.selectAt(e.clientX, e.clientY);
-    e.preventDefault();
+    const k = sel?.selectAt(clientX, clientY);
     if (k === 'arm' || k === 'camera' || k === 'station' || k === 'wristcam' || k === 'object') {
-      setRadial({ x: e.clientX, y: e.clientY, kind: k });
+      setRadial({ x: clientX, y: clientY, kind: k });
     } else {
-      const g = sel?.groundPointAt(e.clientX, e.clientY) ?? { x: 0, y: 0 };
-      setRadial({ x: e.clientX, y: e.clientY, kind: 'create', gx: g.x, gy: g.y });
+      const g = sel?.groundPointAt(clientX, clientY) ?? { x: 0, y: 0 };
+      setRadial({ x: clientX, y: clientY, kind: 'create', gx: g.x, gy: g.y });
     }
   };
+  const handleContextMenu = (e: React.MouseEvent) => { if (sceneIsFranka || isLoading) return; e.preventDefault(); openRadialAt(e.clientX, e.clientY); };
+  // Double-click an object → same radial (a second, mouse-friendly way to reach it besides right-click).
+  const handleDoubleClick = (e: React.MouseEvent) => { if (sceneIsFranka || isLoading || poseMode || measureActive) return; openRadialAt(e.clientX, e.clientY); };
   // Build the radial items for the object under the cursor — reusing the existing add/remove/clone
   // handlers (DRY): Move / Aim live on the gizmo; Duplicate / Delete reuse the dock handlers.
   const radialItems = (kind: NonNullable<typeof radial>['kind']): RadialItem[] => {
@@ -1348,7 +1364,7 @@ export function App() {
   return (
     <div className={`w-full h-full relative overflow-hidden font-sans transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* 3D Container */}
-      <div ref={containerRef} onContextMenu={handleContextMenu} className="w-full h-full absolute inset-0 bg-slate-200" />
+      <div ref={containerRef} onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} className="w-full h-full absolute inset-0 bg-slate-200" />
       
       {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
@@ -1452,6 +1468,28 @@ export function App() {
             </>
           )}
           <TweaksPanel isDarkMode={isDarkMode} onToggleTheme={toggleDarkMode} open={tweaksOpen} onClose={() => setTweaksOpen(false)} sidebarOpen={showSidebar} />
+
+          {/* Drawer toggles at the top corners — obvious open affordance for each side panel. Each
+              panel closes from its own header (dock PanelLeftClose / sidebar X); these re-open it. */}
+          {(() => {
+            const drawerBtn = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white';
+            return (
+              <>
+                {!sceneIsFranka && !dockOpen && (
+                  <button onClick={() => setDockOpen(true)} title="Show workspace dock" aria-label="Show workspace dock"
+                    className={`absolute top-3 left-[4.25rem] z-40 w-9 h-9 rounded-xl glass-panel border shadow-lg grid place-items-center transition-colors ${drawerBtn}`}>
+                    <PanelLeft className="w-[18px] h-[18px]" />
+                  </button>
+                )}
+                {!showSidebar && (
+                  <button onClick={() => setShowSidebar(true)} title="Show panel" aria-label="Show panel"
+                    className={`absolute top-3 right-3 z-40 w-9 h-9 rounded-xl glass-panel border shadow-lg grid place-items-center transition-colors ${drawerBtn}`}>
+                    <PanelRight className="w-[18px] h-[18px]" />
+                  </button>
+                )}
+              </>
+            );
+          })()}
           {radial && (
             <RadialMenu
               x={radial.x} y={radial.y}
@@ -1530,12 +1568,12 @@ export function App() {
               >
                 {cameraToggles.sensorPip && (
                   <SensorView inline canvasHostRef={sensorViewRef} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={intrinsics.aspect} onClose={() => handleCameraToggle('sensorPip', false)}
-                    compare={{ src: JETSON_SCENE_STREAM, on: sceneOverlayOn, onToggle: setSceneOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend }}
+                    compare={{ src: sceneStreamUrl, onSrc: updateSceneStream, on: sceneOverlayOn, onToggle: setSceneOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend }}
                     depth={{ on: depthView, onToggle: setDepthView }} />
                 )}
                 {wristView && armInstances.map((arm) => (
                   <SensorView inline key={arm.id} canvasHostRef={wristRefCb(arm.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={16 / 9} title={`Wrist Cam · ${arm.label}`} onClose={() => setWristView(false)}
-                    compare={arm.primary ? { src: JETSON_WRIST_STREAM, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
+                    compare={arm.primary ? { src: wristStreamUrl, onSrc: updateWristStream, on: wristOverlayOn, onToggle: setWristOverlayOn, opacity: overlayOpacity, onOpacity: setOverlayOpacity, blend: overlayBlend, onBlend: setOverlayBlend } : undefined} />
                 ))}
                 {stationView && (workcellConfig.stations ?? []).map((st, i) => (
                   <SensorView inline key={st.id} canvasHostRef={stationRefCb(st.id)} isDarkMode={isDarkMode} sidebarOpen={showSidebar} aspect={4 / 3} title={`Station ${i + 2} · overhead`} onClose={() => setStationView(false)} />
@@ -1628,6 +1666,7 @@ export function App() {
             <WorkspaceDock
               isDarkMode={isDarkMode}
               onSaveWorkspace={() => setLayoutsOpen(true)}
+              onClose={() => setDockOpen(false)}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,

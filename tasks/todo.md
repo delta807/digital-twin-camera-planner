@@ -141,3 +141,19 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
       • Table card (primary): rail height/width, post height/X/Y (+ existing sides/length/width/yaw/X/Y).
       • Dock now: Objects, Scene, Workcell(add posts/stations/overhead cams), Arms(add + compute settings), Save. Units in header.
 - Box move/aim gizmo added (setObjectAim + setTaskBodyYaw). Verified in-browser; tsc clean; 0 console errors.
+
+## HUD refinement pass 4 (review)
+- [x] 1. Real-camera overlay was blank because the source is a hardcoded Jetson Tailscale IP
+      (unreachable off that tailnet; http blocked as mixed-content on https hosts). Stream URL is
+      now an editable, persisted field in the compare controls, with an on-error placeholder.
+- [x] 3. Obvious panel open/close: dock gained a PanelLeftClose in its header; sidebar keeps its X.
+      When a panel is closed a drawer-open button shows at that top corner (left = PanelLeft, right
+      = PanelRight).
+- [x] 4. Double-clicking an object opens the same radial as right-click.
+- [x] 5. "Save wrist cam position" now also copies a paste-ready `WRIST_FACTORY = {...}` code line to
+      the clipboard, so a tuning can be baked into App.tsx and shipped to everyone (the shipped
+      default already lives in that constant).
+- [x] 6. Bundled presets: new presets.ts (BUILTIN_PROFILES) loads as read-only built-in layouts;
+      Layout profiles gained an "Export JSON (for repo)" button to copy all profiles for pasting
+      into presets.ts and committing. Built-ins show a badge + no delete.
+- [ ] 2. (suggestion only) Left panel is now mostly "add" controls — see response for 3 directions.

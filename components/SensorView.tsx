@@ -4,11 +4,12 @@
  */
 
 import { Layers, Video, X } from 'lucide-react';
-import { Ref } from 'react';
+import { Ref, useState } from 'react';
 
 /** Superimpose a real reference frame (e.g. the live Jetson overhead feed) over the sim PIP. */
 export interface CompareOverlay {
   src: string;                       // image/MJPEG URL of the real camera
+  onSrc?: (v: string) => void;       // edit the stream URL (so it works off the original tailnet)
   on: boolean; onToggle: (v: boolean) => void;
   opacity: number; onOpacity: (v: number) => void;
   blend: 'normal' | 'difference'; onBlend: (b: 'normal' | 'difference') => void;
@@ -41,6 +42,7 @@ interface SensorViewProps {
  * The inner host div follows the selected camera stream profile aspect ratio.
  */
 export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onClose, title = 'Sensor View · D435i', secondary = false, topRem, compare, depth, inline = false }: SensorViewProps) {
+  const [streamError, setStreamError] = useState(false);
   const panelStyle = isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/70 border-white/80 text-slate-800';
   // Tuck the panel left of the analysis sidebar when it's open (desktop only).
   const rightClass = sidebarOpen ? 'min-[660px]:right-[25rem]' : 'min-[660px]:right-6';
@@ -91,17 +93,36 @@ export function SensorView({ canvasHostRef, isDarkMode, sidebarOpen, aspect, onC
         <div ref={canvasHostRef} className="absolute inset-0 bg-black/80 [&>canvas]:w-full [&>canvas]:h-full [&>canvas]:block" />
         {compare?.on && (
           <img
+            key={compare.src}
             src={compare.src}
             alt="real camera reference"
+            onError={() => setStreamError(true)}
+            onLoad={() => setStreamError(false)}
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{ objectFit: 'fill', opacity: compare.opacity, mixBlendMode: compare.blend === 'difference' ? 'difference' : 'normal' }}
           />
+        )}
+        {compare?.on && streamError && (
+          <div className="absolute inset-0 grid place-items-center pointer-events-none p-3 text-center">
+            <span className="text-[10px] font-medium text-white/90 bg-black/55 rounded-lg px-2.5 py-1.5 leading-snug">Real stream unreachable.<br />Check the URL / network below.<br />(Netlify https blocks http streams.)</span>
+          </div>
         )}
       </div>
 
       {/* Superimpose controls — opacity blend + difference mode (black where sim matches reality). */}
       {compare?.on && (
         <div className="px-3 py-2 border-t border-black/5 space-y-1.5">
+          {compare.onSrc && (
+            <div className="flex items-center gap-2">
+              <span className={`text-[9px] font-bold uppercase tracking-wide w-10 ${subtle}`}>URL</span>
+              <input
+                type="text" value={compare.src} onChange={(e) => compare.onSrc!(e.target.value)}
+                placeholder="http://host:8088/scene.mjpg"
+                spellCheck={false}
+                className={`flex-1 min-w-0 rounded-md px-2 py-1 text-[10px] font-mono outline-none border ${isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-600' : 'bg-black/5 border-black/10 placeholder:text-slate-400'} ${streamError ? 'border-red-400/60' : ''}`}
+              />
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className={`text-[9px] font-bold uppercase tracking-wide w-10 ${subtle}`}>Blend</span>
             <input
