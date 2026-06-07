@@ -1109,10 +1109,46 @@ export function App() {
     const s = (workcellConfigRef.current.stations ?? []).find((x) => x.id === id);
     if (s) spawnStation({ shapeSides: s.shapeSides, length: s.length, width: s.width, postX: s.postX, postY: s.postY, postHeight: s.postHeight });
   };
+  // Edge-snap worktops so they piece together flush (#4). Given a worktop's new centre, if one of
+  // its edges lands within SNAP of another worktop's facing edge (and they overlap on the other
+  // axis), snap it flush; also tidy-align the perpendicular axis when it's nearly aligned.
+  const snapWorktop = (movingId: string, x: number, y: number): { x: number; y: number } => {
+    const wc = workcellConfigRef.current;
+    const foot = (fid: string) => {
+      if (fid === 'primary') return { hx: wc.length / 2, hy: wc.width / 2 };
+      const s = (wc.stations ?? []).find((st) => st.id === fid);
+      return s ? { hx: s.length / 2, hy: s.width / 2 } : null;
+    };
+    const me = foot(movingId); if (!me) return { x, y };
+    const others = ['primary', ...(wc.stations ?? []).map((s) => s.id)]
+      .filter((oid) => oid !== movingId)
+      .map((oid) => { const f = foot(oid); const c = oid === 'primary' ? { x: wc.originX ?? 0, y: wc.originY ?? 0 } : (wc.stations ?? []).find((s) => s.id === oid)!; return f ? { cx: c.x, cy: c.y, hx: f.hx, hy: f.hy } : null; })
+      .filter(Boolean) as Array<{ cx: number; cy: number; hx: number; hy: number }>;
+    const SNAP = 0.05; // 5 cm
+    let nx = x, ny = y;
+    for (const o of others) {
+      // Abut along X (left/right edges touch) when the Y spans overlap.
+      if (Math.abs(y - o.cy) < me.hy + o.hy + SNAP) {
+        for (const t of [o.cx - o.hx - me.hx, o.cx + o.hx + me.hx]) if (Math.abs(x - t) <= SNAP) { nx = t; if (Math.abs(y - o.cy) <= SNAP) ny = o.cy; }
+      }
+      // Abut along Y (front/back edges touch) when the X spans overlap.
+      if (Math.abs(x - o.cx) < me.hx + o.hx + SNAP) {
+        for (const t of [o.cy - o.hy - me.hy, o.cy + o.hy + me.hy]) if (Math.abs(y - t) <= SNAP) { ny = t; if (Math.abs(x - o.cx) <= SNAP) nx = o.cx; }
+      }
+    }
+    return { x: nx, y: ny };
+  };
+
   // Edit a station like the arm — X/Y/Yaw + shape/size — live rebuild + station-cam re-sync. The
   // paired arm moves with the worktop as a unit (rotated about the centre).
   const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number }>) => {
     const wc = workcellConfigRef.current;
+    // Pure move → edge-snap against neighbouring worktops so they click together.
+    if ((patch.x !== undefined || patch.y !== undefined) && patch.yaw === undefined && patch.shapeSides === undefined && patch.length === undefined && patch.width === undefined) {
+      const cur = id === 'primary' ? { x: wc.originX ?? 0, y: wc.originY ?? 0 } : (wc.stations ?? []).find((s) => s.id === id) ?? { x: 0, y: 0 };
+      const snapped = snapWorktop(id, patch.x ?? cur.x, patch.y ?? cur.y);
+      patch = { ...patch, x: snapped.x, y: snapped.y };
+    }
     // The primary worktop maps onto the top-level config (originX/originY/yaw + shape/size). The
     // primary arm is bolted to it, so a move/rotate carries the arm along (rotated about the table
     // centre) — same rigid-body rule as a satellite station + its arm.
