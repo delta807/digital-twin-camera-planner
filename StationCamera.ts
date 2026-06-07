@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { makeD435iGlyph, disposeGlyph } from './cameraGlyph';
+import { CameraFovOverlay } from './CameraFovOverlay';
 
 /**
  * StationCamera — a fixed overhead feed for a satellite workstation (#6). It sits on the station's
@@ -17,6 +18,8 @@ export class StationCamera {
   readonly glyph = makeD435iGlyph(0.9);
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
+  /** FOV frustum + ground footprint overlays, like the primary D435i. */
+  private readonly fov: CameraFovOverlay;
 
   constructor(private readonly scene: THREE.Scene) {
     // ~62° V, 4:3 — a generic overhead lens; the worktop's +Y reads as "up" in the image.
@@ -24,9 +27,15 @@ export class StationCamera {
     this.camera.up.set(0, 1, 0);
     this.glyph.visible = false;
     this.scene.add(this.glyph);
+    this.fov = new CameraFovOverlay(scene);
   }
 
   setGlyphVisible(v: boolean) { this.glyph.visible = v && !this.glyph.userData.hiddenByUser; }
+
+  /** Refresh the FOV frustum + footprint overlays (call each frame). */
+  updateOverlay(showFrustum: boolean, showFootprint: boolean) { this.fov.update(this.camera, showFrustum, showFootprint); }
+  /** Overlay meshes — so PIP renders can hide them (a camera shouldn't see FOV lines). */
+  get overlays(): THREE.Object3D[] { return this.fov.objects; }
 
   /** Mount on the post (camX,camY,camZ) looking straight down at the worktop centre (lookX,lookY,0). */
   setPose(camX: number, camY: number, camZ: number, lookX: number, lookY: number) {
@@ -101,6 +110,7 @@ export class StationCamera {
   dispose() {
     if (this.pipRenderer) { this.pipRenderer.domElement.remove(); this.pipRenderer.dispose(); this.pipRenderer = null; }
     this.pipContainer = null;
+    this.fov.dispose();
     this.scene.remove(this.glyph); disposeGlyph(this.glyph);
   }
 }

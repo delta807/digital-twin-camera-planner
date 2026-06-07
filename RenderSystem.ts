@@ -249,6 +249,18 @@ export class RenderSystem {
         });
 
         this.selection.update();
+
+        // FOV frustum + ground footprint for the station/extra overheads — mirror the primary D435i's
+        // toggles (DRY), so every overhead camera shows the same overlays. Updated before the render;
+        // collected so the PIP feeds can hide them (a camera shouldn't see FOV lines).
+        const sf = this.cameraRig.showFrustum, sfp = this.cameraRig.showFootprint;
+        this.stationCameras.forEach((c) => c.updateOverlay(this.stationEnabled && sf, this.stationEnabled && sfp));
+        this.extraCameras.forEach((c) => c.updateOverlay(this.extraCamerasEnabled && sf, this.extraCamerasEnabled && sfp));
+        const camOverlays: THREE.Object3D[] = [
+            ...Array.from(this.stationCameras.values()).flatMap((c) => c.overlays),
+            ...Array.from(this.extraCameras.values()).flatMap((c) => c.overlays),
+        ];
+
         if (this.compareSplit) this.renderCompareSplit();
         else this.renderer.render(this.scene, this.camera);
 
@@ -256,7 +268,7 @@ export class RenderSystem {
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
         // Hide the camera post in every PIP: the real D435i is mounted ON the post, so its footage
         // never contains the post — the sim PIP should match that to represent reality faithfully.
-        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers];
+        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...camOverlays];
         this.cameraRig.update(this.simGroup, pipHide);
 
         // Visible camera-body glyphs follow each feed's enable toggle.
@@ -270,7 +282,7 @@ export class RenderSystem {
             // planningArmsGroup (the overhead D435i hides it; the wrist cams must NOT, or a ghost arm's
             // own wrist cam can't see its own gripper). We hide the OTHER ghosts per-camera below.
             const wristBase = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
-                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays, ...camOverlays];
             const ghosts = this.planningArmsGroup.children;
             this.wristCameras.forEach((cam, armId) => {
                 // A planning ghost with this id → track its TCP marker; otherwise it's the primary
@@ -295,13 +307,13 @@ export class RenderSystem {
         // same decorations the overhead D435i hides — but keep the arms (incl. ghosts) visible.
         if (this.stationEnabled && this.stationCameras.size > 0) {
             const sHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
-                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays, ...camOverlays];
             this.stationCameras.forEach((cam) => cam.renderPip(sHide));
         }
         // Extra placeable overhead D435i cameras — same clean hide-list.
         if (this.extraCamerasEnabled && this.extraCameras.size > 0) {
             const eHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group,
-                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays];
+                this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...this.cameraRig.overlays, ...camOverlays];
             this.extraCameras.forEach((cam) => cam.renderPip(eHide));
         }
 
