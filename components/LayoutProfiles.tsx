@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Bookmark, ClipboardCopy, CloudUpload, Save, Trash2 } from 'lucide-react';
+import { Bookmark, ClipboardCopy, CloudUpload, Save, Trash2, X } from 'lucide-react';
 import type { LayoutProfile } from '../profiles';
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   onDelete: (name: string) => void;
   /** Publish this device's layouts to the team's shared store (Netlify Blobs). Returns success. */
   onPublish?: () => Promise<boolean>;
+  /** Dismiss the floating panel entirely. */
+  onClose?: () => void;
   isDarkMode: boolean;
 }
 
@@ -21,7 +23,7 @@ interface Props {
  * LayoutProfiles — save/restore the workspace's positional config (worktop + arm bases + overhead
  * camera) as named profiles, so a layout mapped to the real rig can be stored and switched between.
  */
-export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, isDarkMode }: Props) {
+export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, onClose, isDarkMode }: Props) {
   const [name, setName] = useState('');
   const [open, setOpen] = useState(true); // open expanded when summoned (the old collapsed default hid the save UI)
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
@@ -67,11 +69,18 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
 
   return (
     <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-40 w-64 rounded-2xl glass-panel shadow-xl border ${panel}`}>
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 px-3 py-2">
-        <Bookmark className="w-3.5 h-3.5 text-indigo-500" />
-        <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">Layout profiles</span>
-        <span className={`text-[10px] ${subtle}`}>{profiles.length}</span>
-      </button>
+      <div className="w-full flex items-center gap-2 px-3 py-2">
+        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 flex-1 min-w-0">
+          <Bookmark className="w-3.5 h-3.5 text-indigo-500" />
+          <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">Layout profiles</span>
+          <span className={`text-[10px] ${subtle}`}>{profiles.length}</span>
+        </button>
+        {onClose && (
+          <button onClick={onClose} title="Close" aria-label="Close layout profiles" className={`p-1 rounded ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
       {open && (
         <div className="px-3 pb-3 space-y-2">

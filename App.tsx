@@ -1553,6 +1553,7 @@ export function App() {
               onLoad={handleLoadProfile}
               onDelete={handleDeleteProfile}
               onPublish={handlePublishProfiles}
+              onClose={() => setLayoutsOpen(false)}
               isDarkMode={isDarkMode}
             />
           )}

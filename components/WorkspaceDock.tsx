@@ -136,7 +136,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
 
       <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
         {/* ── Templates (saved layouts): load / save profiles — at the top so it's the first thing ── */}
-        <Section title="Templates (saved layouts)" icon={<Bookmark className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}
+        <Section title="Layouts" icon={<Bookmark className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}
           action={onSaveWorkspace ? <button onClick={onSaveWorkspace} className="text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Manage</button> : undefined}>
           <div className="flex items-center gap-1.5">
             <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveTpl()}
