@@ -98,8 +98,9 @@ export function UnifiedSidebar({
       {/* Stacked dashboard */}
       <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-2 pb-4 space-y-2.5">
 
-        {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
+        {/* Selection on top (above the camera footage), then feeds, then the controls toolbar. */}
         {inspector && <Sec title="Selection" isDarkMode={isDarkMode}>{inspector}</Sec>}
+        {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
         {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
 
         {/* ── Embodied Reasoning ── */}

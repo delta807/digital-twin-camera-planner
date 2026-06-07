@@ -892,12 +892,51 @@ export function App() {
     const sim = simRef.current; if (!sim) return;
     sim.renderSys.frameView(sim.renderSys.selection?.focusTarget ?? null, true);
   };
+
+  // ── Keyboard editing: Delete removes, Ctrl/Cmd+D (and C→V) duplicates the selection, Esc clears.
+  // Mirrors the radial Duplicate/Delete routing so every entity behaves the same from the keyboard.
+  const deleteSelection = (sel: SelectionInfo | null) => {
+    if (!sel) return;
+    const k = sel.kind;
+    if (k === 'arm' && (sel.armId ?? selectedArmId)) handleRemoveArm(sel.armId ?? selectedArmId);
+    else if (k === 'station' && sel.stationId && sel.stationId !== 'primary') handleRemoveStation(sel.stationId);
+    else if (k === 'camera' && sel.cameraId) handleRemoveExtraCamera(sel.cameraId);
+    else if (k === 'prop' && sel.propId) handleRemoveProp(sel.propId);
+    else if (k === 'post' && sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
+    else if (k === 'object' && sel.bodyId !== undefined) {
+      // Pool cubes despawn live; baked task objects hide (re-showable via the tree eye).
+      if (simRef.current?.despawnBlock(sel.bodyId)) { simRef.current?.renderSys.selection?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); }
+      else toggleVisible({ key: `obj:${sel.bodyId}`, kind: 'object', bodyId: sel.bodyId });
+    }
+  };
+  const duplicateSelection = (sel: SelectionInfo | null) => {
+    if (!sel) return;
+    const k = sel.kind, wc = workcellConfigRef.current;
+    if (k === 'arm') handleAddArm();
+    else if (k === 'station') { if (sel.stationId === 'primary') handleAddStation(); else if (sel.stationId) handleCloneStation(sel.stationId); }
+    else if (k === 'camera') handleAddExtraCamera();
+    else if (k === 'prop' && sel.propId) handleCloneProp(sel.propId);
+    else if (k === 'post') { if (sel.postIndex !== undefined) handleCloneExtraPost(sel.postIndex); else handleWorkcellChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: wc.postX, y: wc.postY, height: wc.postHeight }] }); }
+    else if (k === 'object' && sel.bodyId !== undefined) handleSpawnBlockAt(sel.x + 0.05, sel.y + 0.05); // copy a block from the pool
+  };
+  const clipboardRef = useRef<SelectionInfo | null>(null);
+  // Refs so the stable keydown listener always sees the latest selection + edit handlers.
+  const selectionRef = useRef<SelectionInfo | null>(null); selectionRef.current = selection;
+  const editFnsRef = useRef({ del: deleteSelection, dup: duplicateSelection }); editFnsRef.current = { del: deleteSelection, dup: duplicateSelection };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+      const mod = e.metaKey || e.ctrlKey;
+      const sel = selectionRef.current;
       if (e.key === 'Home') { e.preventDefault(); handleResetView(); }
-      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); handleFrameSelection(); }
+      else if (!mod && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); handleFrameSelection(); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { if (sel) { e.preventDefault(); editFnsRef.current.del(sel); } }
+      else if (e.key === 'Escape') { simRef.current?.renderSys.selection?.deselect(); }
+      else if (mod && (e.key === 'd' || e.key === 'D')) { if (sel) { e.preventDefault(); editFnsRef.current.dup(sel); } }
+      else if (mod && (e.key === 'c' || e.key === 'C')) { clipboardRef.current = sel; }
+      else if (mod && (e.key === 'v' || e.key === 'V')) { if (clipboardRef.current) { e.preventDefault(); editFnsRef.current.dup(clipboardRef.current); } }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

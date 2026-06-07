@@ -371,22 +371,24 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
   );
 }
 
+/** Boxed numeric inputs — one row per axis with a large, clearly-clickable field + unit (Orca-style),
+ *  so the value is easy to read and the input/steppers are a comfortable hit target. */
 function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void }[]; unit: LengthUnit; subtle: string }) {
   const mm = unit === 'mm';
   const toDisp = (v: number) => (mm ? v * 1000 : v);
   const fromDisp = (d: number) => (mm ? d / 1000 : d);
   const digits = mm ? 0 : 3;
   return (
-    <div className={`grid gap-1.5`} style={{ gridTemplateColumns: `repeat(${fields.length}, minmax(0,1fr))` }}>
+    <div className="space-y-1.5">
       {fields.map(({ k, v, on }) => (
-        <label key={k} className="flex items-center gap-1">
-          <span className={`text-[10px] font-bold uppercase ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+        <label key={k} className="flex items-center gap-2">
+          <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
           <input type="number" step={mm ? 1 : 0.005} value={Number(toDisp(v).toFixed(digits))}
             onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(fromDisp(d)); }}
-            className={`w-full bg-transparent text-right tabular-nums text-[11px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
+            className="flex-1 min-w-0 text-right tabular-nums text-[13px] px-2.5 py-1.5 rounded-lg border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+          <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>{mm ? 'mm' : 'm'}</span>
         </label>
       ))}
-      <span className={`text-[9px] self-center ${subtle}`}>{mm ? 'mm' : 'm'}</span>
     </div>
   );
 }
@@ -424,11 +426,11 @@ function WMSlider({ label, min, max, step, value, on, subtle, unit }: { label: s
 function Angle({ label, deg, on, subtle }: { label: string; deg: number; on: (d: number) => void; subtle: string }) {
   return (
     <label className="flex items-center gap-2">
-      <span className={`text-[10px] font-bold uppercase ${subtle}`}>{label}</span>
+      <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[label] ?? subtle}`}>{label}</span>
       <input type="number" step={1} value={Number(deg.toFixed(0))}
         onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(d); }}
-        className={`flex-1 bg-transparent text-right tabular-nums text-[11px] outline-none border-b border-transparent focus:border-indigo-400 ${subtle}`} />
-      <span className={`text-[9px] ${subtle}`}>°</span>
+        className="flex-1 min-w-0 text-right tabular-nums text-[13px] px-2.5 py-1.5 rounded-lg border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+      <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>°</span>
     </label>
   );
 }

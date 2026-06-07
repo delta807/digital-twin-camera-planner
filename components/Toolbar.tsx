@@ -5,6 +5,7 @@
 
 
 import { Focus, Hand, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
+import { IconToolbar, ToolbarButton, ToolbarDivider } from './ui/toolbar';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -52,13 +53,31 @@ export function Toolbar({
   const activeStyle = isDarkMode ? 'text-indigo-400 bg-slate-800' : 'text-indigo-600 bg-white';
   const iconFill = isDarkMode ? "fill-slate-100" : "fill-slate-800";
 
-  // Inline: a compact wrap-row inside the sidebar (child-selector overrides shrink the w-14 buttons).
-  // Otherwise: bottom-centre floating bar clearing the left dock.
+  // Inline: a clean horizontal pill toolbar (icon buttons + hover tooltips), grouped by divider.
+  if (inline) {
+    return (
+      <div className="flex justify-center">
+        <IconToolbar isDarkMode={isDarkMode} className="flex-wrap">
+          <ToolbarButton label={isPaused ? 'Resume' : 'Pause'} icon={isPaused ? Play : Pause} onClick={togglePause} isDarkMode={isDarkMode} />
+          <ToolbarButton label="Reset simulation" icon={RotateCcw} onClick={onReset} isDarkMode={isDarkMode} />
+          <ToolbarDivider isDarkMode={isDarkMode} />
+          <ToolbarButton label="Reset view (Home)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
+          <ToolbarButton label="Frame selection (F)" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
+          {(onToggleJog || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
+          {onToggleJog && <ToolbarButton label="Jog joints — drag a link to rotate" icon={Hand} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
+          {onToggleMeasure && <ToolbarButton label="Measure — click two points" icon={Ruler} isActive={measureActive} onClick={onToggleMeasure} isDarkMode={isDarkMode} />}
+          <ToolbarDivider isDarkMode={isDarkMode} />
+          <ToolbarButton label={isDarkMode ? 'Light mode' : 'Dark mode'} icon={isDarkMode ? Sun : Moon} onClick={toggleDarkMode} isDarkMode={isDarkMode} />
+          <ToolbarButton label="Appearance tweaks" icon={Sliders} isActive={tweaksOpen} onClick={onToggleTweaks} isDarkMode={isDarkMode} />
+        </IconToolbar>
+      </div>
+    );
+  }
+
+  // Floating (non-inline): bottom-centre bar of large buttons, clearing the left dock.
   return (
-    <div className={inline
-      ? 'flex flex-wrap items-center justify-center gap-1.5 [&_button]:w-9 [&_button]:h-9 [&_button]:rounded-xl [&_button]:shadow-none [&_svg]:w-4 [&_svg]:h-4'
-      : 'absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30'}>
-      
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30">
+
       {/* Play/Pause Button */}
       <button 
         onClick={togglePause} 
