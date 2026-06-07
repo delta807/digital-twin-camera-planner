@@ -270,3 +270,13 @@ Radial audit (min Move/Aim/Duplicate/Delete):
   #5 removed redundant dock-header Save button.
 - Note: a blank preview earlier was the preview MCP browser wedging after many reloads — the app is
   healthy (smoke test green, fresh-browser boot, 0 console errors).
+
+## Layouts rename + close-X + WebGL compare (done, pushed to master)
+- #1 Dock section "Templates (saved layouts)" → "Layouts".
+- #2 Floating Layout Profiles pill gained an X to dismiss it.
+- #3 WebGL compare upgrade: both A/B panes render the REAL worktop + SO-101 + block meshes
+  (CompareScene3D, own WebGL renderer; arms via RenderSystem.makePosedArmClone / sim.posedArmClone;
+  workcell via BaseBuilder), sharing the orbit so a pane drag / NavCube rotates BOTH. SVG schematic
+  kept as fallback. Verified: real meshes render, both panes rotate in sync; tsc + smoke green.
+- All changes committed + pushed to origin/master.
+- Minor follow-up: compare metrics read 0% when cameraPos was null at capture (camera.z=0) — pre-existing.
