@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import * as THREE from 'three';
-import { makeCameraGlyph, disposeGlyph } from './cameraGlyph';
+import { makeD435iGlyph, disposeGlyph } from './cameraGlyph';
 
 /**
  * StationCamera — a fixed overhead feed for a satellite workstation (#6). It sits on the station's
@@ -14,7 +14,7 @@ import { makeCameraGlyph, disposeGlyph } from './cameraGlyph';
 export class StationCamera {
   readonly camera: THREE.PerspectiveCamera;
   /** Visible D435i-style body so the overhead camera reads as a physical camera in the scene. */
-  readonly glyph = makeCameraGlyph(0.9);
+  readonly glyph = makeD435iGlyph(0.9);
   private pipRenderer: THREE.WebGLRenderer | null = null;
   private pipContainer: HTMLElement | null = null;
 
