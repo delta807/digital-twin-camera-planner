@@ -1,0 +1,53 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------------------------
+ * App chrome — migrated verbatim from the inline <style> that lived in index.html under the
+ * Tailwind Play CDN. Declared after the @tailwind layers so these win the cascade where they
+ * intentionally override utilities (e.g. .nav-face:hover uses !important).
+ * ------------------------------------------------------------------------------------------- */
+:root { --line: oklch(0.90 0.006 248); --line-dark: oklch(0.33 0.012 248); --accent-h: 262; }
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: oklch(0.985 0.003 248);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.font-mono, .mono, code, kbd { font-variant-numeric: tabular-nums; }
+
+/* Custom scrollbar — thin lab-instrument rail. */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: oklch(0.80 0.01 248); border-radius: 9px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: oklch(0.68 0.012 248); background-clip: padding-box; }
+
+/* Lab-instrument panel: crisp solid surface + hairline, not heavy glass. The bg/border color
+   comes from each panel's own Tailwind classes (now remapped); this adds the blur + shadow. */
+.glass-panel {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 1px 2px rgba(10,14,30,.06), 0 12px 32px -14px rgba(10,14,30,.22);
+}
+.glass-card {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+.animate-pulse-soft { animation: pulse-soft 3s infinite ease-in-out; }
+@keyframes pop-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+
+/* NavCube face hover — accent highlight (kept here since :hover can't be inline). */
+.nav-face:hover { background: oklch(0.655 0.155 var(--accent-h,262)) !important; color: #fff !important; border-color: transparent !important; }

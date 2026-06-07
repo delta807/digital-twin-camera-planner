@@ -4,93 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SO-101 Digital Twin · Lab Instrument</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lab-instrument typography: IBM Plex Sans / Mono. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-      // Full reskin → the "lab-instrument" palette from the design: remap Tailwind's neutral (slate)
-      // and accent (indigo) scales to OKLCH ramps so the whole app reskins at the token level, plus
-      // categorical overlay colors. `<alpha-value>` keeps opacity modifiers (e.g. bg-slate-900/85) working.
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
-              mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
-            },
-            backdropBlur: { 'xs': '2px' },
-            colors: {
-              slate: {
-                50:  'oklch(0.967 0.004 248 / <alpha-value>)',
-                100: 'oklch(0.925 0.006 248 / <alpha-value>)',
-                200: 'oklch(0.86 0.008 248 / <alpha-value>)',
-                300: 'oklch(0.75 0.01 248 / <alpha-value>)',
-                400: 'oklch(0.635 0.01 248 / <alpha-value>)',
-                500: 'oklch(0.505 0.011 248 / <alpha-value>)',
-                600: 'oklch(0.40 0.012 248 / <alpha-value>)',
-                700: 'oklch(0.315 0.012 248 / <alpha-value>)',
-                800: 'oklch(0.248 0.012 248 / <alpha-value>)',
-                900: 'oklch(0.212 0.012 248 / <alpha-value>)',
-                950: 'oklch(0.175 0.012 248 / <alpha-value>)',
-              },
-              indigo: {
-                300: 'oklch(0.82 0.085 var(--accent-h,262) / <alpha-value>)',
-                400: 'oklch(0.775 0.11 var(--accent-h,262) / <alpha-value>)',
-                500: 'oklch(0.72 0.13 var(--accent-h,262) / <alpha-value>)',
-                600: 'oklch(0.655 0.155 var(--accent-h,262) / <alpha-value>)',
-                700: 'oklch(0.575 0.16 var(--accent-h,262) / <alpha-value>)',
-              },
-              // categorical overlay legend colors (camera/reach/precision/task object)
-              cam:       'oklch(0.82 0.14 78 / <alpha-value>)',
-              reach:     'oklch(0.70 0.10 292 / <alpha-value>)',
-              precision: 'oklch(0.83 0.13 188 / <alpha-value>)',
-              object:    'oklch(0.78 0.10 35 / <alpha-value>)',
-            },
-          }
-        }
-      }
-    </script>
-    <style>
-        :root { --line: oklch(0.90 0.006 248); --line-dark: oklch(0.33 0.012 248); --accent-h: 262; }
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: oklch(0.985 0.003 248);
-            font-family: "IBM Plex Sans", system-ui, sans-serif;
-            -webkit-font-smoothing: antialiased;
-            text-rendering: optimizeLegibility;
-        }
-        .font-mono, .mono, code, kbd { font-variant-numeric: tabular-nums; }
-        /* Custom scrollbar — thin lab-instrument rail. */
-        ::-webkit-scrollbar { width: 9px; height: 9px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: oklch(0.80 0.01 248); border-radius: 9px; border: 3px solid transparent; background-clip: padding-box; }
-        ::-webkit-scrollbar-thumb:hover { background: oklch(0.68 0.012 248); background-clip: padding-box; }
-
-        /* Lab-instrument panel: crisp solid surface + hairline, not heavy glass. The bg/border color
-           comes from each panel's own Tailwind classes (now remapped); this adds the blur + shadow. */
-        .glass-panel {
-            backdrop-filter: blur(14px) saturate(140%);
-            -webkit-backdrop-filter: blur(14px) saturate(140%);
-            box-shadow: 0 1px 2px rgba(10,14,30,.06), 0 12px 32px -14px rgba(10,14,30,.22);
-        }
-        .glass-card {
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-        }
-
-        @keyframes pulse-soft {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-        }
-        .animate-pulse-soft { animation: pulse-soft 3s infinite ease-in-out; }
-        @keyframes pop-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
-        /* NavCube face hover — accent highlight (kept here since :hover can't be inline). */
-        .nav-face:hover { background: oklch(0.655 0.155 var(--accent-h,262)) !important; color: #fff !important; border-color: transparent !important; }
-    </style>
 <script type="importmap">
 {
   "imports": {
@@ -110,7 +27,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="h-full bg-slate-50">
     <div id="root" class="h-full"></div>
