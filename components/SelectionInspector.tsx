@@ -195,6 +195,12 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
             ]} />
           <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
+          {/* Same overhead D435i view toggles as the primary (these apply to every overhead camera). */}
+          {p.camera && (
+            <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
+              {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
+            </div>
+          )}
           <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>
         </div>
       )}

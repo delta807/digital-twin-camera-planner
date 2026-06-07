@@ -919,7 +919,8 @@ export function App() {
   useEffect(() => { simRef.current?.renderSys.measureTool?.setUnit(lengthUnit); }, [lengthUnit]);
 
   // Camera framing (OrcaSlicer/FreeCAD style): Home = reset to iso view, F = frame selection.
-  const handleResetView = () => simRef.current?.renderSys.frameView(null, false);
+  // Home = the NavCube ISO view (snap to the default isometric), matching the cube's ISO button.
+  const handleResetView = () => simRef.current?.renderSys.snapToView('iso');
   const handleFrameSelection = () => {
     const sim = simRef.current; if (!sim) return;
     sim.renderSys.frameView(sim.renderSys.selection?.focusTarget ?? null, true);
@@ -1894,8 +1895,12 @@ export function App() {
                   return { info: armJointInfo, values, onChange: (i: number, ang: number) => handleArmJoint(a.id, i, ang) };
                 })()}
                 workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
-                extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
-                onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
+                extraCamera={(() => {
+                  const id = selection?.cameraId; if (!id) return null;
+                  if (id.startsWith('stationcam:')) { const sp = stationCamPose(id.slice(11)); return sp ? { x: sp.x, y: sp.y, z: sp.z } : null; }
+                  const c = workcellConfig.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z } : null;
+                })()}
+                onExtraCamera={(patch) => { const id = selection?.cameraId; if (!id) return; if (id.startsWith('stationcam:')) handleStationCamPose(id.slice(11), patch); else handleExtraCameraChange(id, patch); }}
                 prop={(() => { const pr = workcellConfig.props?.find((x) => x.id === selection?.propId); return pr ? { x: pr.x, y: pr.y, z: pr.z, yaw: pr.yaw, size: pr.size, color: pr.color } : null; })()}
                 onProp={(patch) => { if (selection?.propId) handlePropChange(selection.propId, patch); }}
                 onCloneProp={() => { if (selection?.propId) handleCloneProp(selection.propId); }}
@@ -1959,6 +1964,7 @@ export function App() {
                 <Toolbar inline isPaused={isPaused} togglePause={() => setIsPaused(simRef.current?.togglePause() ?? false)} onReset={handleReset}
                   showSidebar={showSidebar} toggleSidebar={() => setShowSidebar(!showSidebar)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode}
                   onResetView={handleResetView} onFrameSelection={handleFrameSelection} tweaksOpen={tweaksOpen} onToggleTweaks={() => setTweaksOpen((v) => !v)}
+                  jogActive={poseMode} onToggleJog={togglePoseMode}
                   panActive={panMode} onTogglePan={() => setPanMode((v) => !v)} onDragHandle={onToolbarDragStart}
                   measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)} />
                 {poseMode && (

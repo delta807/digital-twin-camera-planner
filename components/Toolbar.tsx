@@ -4,9 +4,9 @@
 */
 
 
-import { Focus, GripVertical, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
+import { Focus, GripVertical, Hand, House, Moon, Pause, Play, RotateCcw, Ruler, Sliders, Sun } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { IconToolbar, PanIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
+import { IconToolbar, JogIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -21,7 +21,9 @@ interface ToolbarProps {
   tweaksOpen: boolean;
   onToggleTweaks: () => void;    // appearance tweaks (theme/accent) panel
   inline?: boolean;             // render as a compact wrap-row inside the sidebar dashboard
-  // Pan (Fusion-style hand) + Measure are surfaced here as toggles.
+  // Jog (drag a link to rotate), Pan (Fusion-style hand) + Measure are surfaced here as toggles.
+  jogActive?: boolean;
+  onToggleJog?: () => void;
   panActive?: boolean;
   onTogglePan?: () => void;
   measureActive?: boolean;
@@ -47,6 +49,8 @@ export function Toolbar({
   tweaksOpen,
   onToggleTweaks,
   inline,
+  jogActive = false,
+  onToggleJog,
   panActive = false,
   onTogglePan,
   measureActive = false,
@@ -68,13 +72,11 @@ export function Toolbar({
               <GripVertical className="h-4 w-4" />
             </div>
           )}
-          <ToolbarButton label={isPaused ? 'Resume' : 'Pause'} icon={isPaused ? Play : Pause} onClick={togglePause} isDarkMode={isDarkMode} />
-          <ToolbarButton label="Reset simulation" icon={RotateCcw} onClick={onReset} isDarkMode={isDarkMode} />
-          <ToolbarDivider isDarkMode={isDarkMode} />
-          <ToolbarButton label="Reset view (Home)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
-          <ToolbarButton label="Frame selection (F)" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
-          {(onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
-          {onTogglePan && <ToolbarButton label="Pan view — drag to move the camera" icon={PanIcon} isActive={panActive} onClick={onTogglePan} isDarkMode={isDarkMode} />}
+          <ToolbarButton label="Home view (ISO)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
+          <ToolbarButton label="Fit camera to selected object" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
+          {(onToggleJog || onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
+          {onToggleJog && <ToolbarButton label="Jog joints — drag a link to rotate" icon={JogIcon} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
+          {onTogglePan && <ToolbarButton label="Pan view — drag to move the camera" icon={Hand} isActive={panActive} onClick={onTogglePan} isDarkMode={isDarkMode} />}
           {onToggleMeasure && <ToolbarButton label="Measure — click two points" icon={Ruler} isActive={measureActive} onClick={onToggleMeasure} isDarkMode={isDarkMode} />}
           <ToolbarDivider isDarkMode={isDarkMode} />
           <ToolbarButton label={isDarkMode ? 'Light mode' : 'Dark mode'} icon={isDarkMode ? Sun : Moon} onClick={toggleDarkMode} isDarkMode={isDarkMode} />
@@ -131,7 +133,7 @@ export function Toolbar({
           className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panActive ? activeStyle : panelStyle}`}
           title="Pan view — drag to move the camera"
         >
-          <PanIcon className="w-6 h-6" />
+          <Hand className="w-6 h-6" />
         </button>
       )}
 
