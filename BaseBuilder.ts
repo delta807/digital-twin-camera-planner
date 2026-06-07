@@ -39,6 +39,28 @@ export class BaseBuilder {
   }
 
   /** Rebuild the worktop from config. Cheap — call on every slider change. */
+  /** Station-local rim corners. 4-sided: a rectangle from per-side extents [right,left,front,back]
+   *  (falls back to ±halfX/±halfY). N>4: a polygon with one circum-radius per corner (falls back to
+   *  the halfX/halfY ellipse). Lets each rail/corner be sized independently. */
+  private localRim(sides: number, halfX: number, halfY: number, sideExtents?: [number, number, number, number], cornerRadii?: number[]): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    if (sides === 4) {
+      const e = sideExtents;
+      const xMax = e ? Math.max(0.05, e[0]) : halfX, xMin = e ? -Math.max(0.05, e[1]) : -halfX;
+      const yMax = e ? Math.max(0.05, e[2]) : halfY, yMin = e ? -Math.max(0.05, e[3]) : -halfY;
+      out.push([xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]);
+    } else {
+      const useR = !!cornerRadii && cornerRadii.length === sides;
+      for (let i = 0; i < sides; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
+        const rx = useR ? Math.max(0.05, cornerRadii![i]) : halfX;
+        const ry = useR ? Math.max(0.05, cornerRadii![i]) : halfY;
+        out.push([Math.cos(a) * rx, Math.sin(a) * ry]);
+      }
+    }
+    return out;
+  }
+
   rebuild(config: WorkcellConfig) {
     this.clear();
     this.postMeshes = [];
@@ -60,15 +82,7 @@ export class BaseBuilder {
 
     // Corner points of the rim (rectangle or regular N-gon inscribed in the half-extents), in WORLD
     // coords after applying the primary placement transform.
-    const rim: Array<[number, number]> = [];
-    if (sides === 4) {
-      [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]].forEach(([x, y]) => rim.push(tf(x, y)));
-    } else {
-      for (let i = 0; i < sides; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
-        rim.push(tf(Math.cos(a) * halfX, Math.sin(a) * halfY));
-      }
-    }
+    const rim: Array<[number, number]> = this.localRim(sides, halfX, halfY, config.sideExtents, config.cornerRadii).map(([x, y]) => tf(x, y));
 
     // --- Slab: extrude the rim polygon downward, top face at z=0 ---
     const shape = new THREE.Shape();
@@ -136,7 +150,7 @@ export class BaseBuilder {
     (config.stations ?? []).forEach((st, si) => {
       this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(3, Math.min(8, Math.round(st.shapeSides ?? 4))),
         Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
-        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id);
+        barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id, st.sideExtents, st.cornerRadii);
     });
   }
 
@@ -145,21 +159,14 @@ export class BaseBuilder {
    *  toward the right table. (The primary worktop is built inline above to preserve its exact
    *  post-axis / shape-N-gon behaviour.) */
   private buildWorktop(cx: number, cy: number, yaw: number, sides: number, halfX: number, halfY: number, barW: number, barH: number,
-                       post: { x: number; y: number; height: number }, labelPrefix: string, stationId: string) {
+                       post: { x: number; y: number; height: number }, labelPrefix: string, stationId: string,
+                       sideExtents?: [number, number, number, number], cornerRadii?: number[]) {
     const center = new THREE.Vector3(cx, cy, 0);
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
     // station-local (lx,ly) → world, rotated by yaw about the station centre.
     const toWorld = (lx: number, ly: number): [number, number] => [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
-    // Rim: rectangle (4) or a regular N-gon inscribed in the half-extents — same as the primary worktop.
-    const rim: Array<[number, number]> = [];
-    if (sides === 4) {
-      rim.push([-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]);
-    } else {
-      for (let i = 0; i < sides; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
-        rim.push([Math.cos(a) * halfX, Math.sin(a) * halfY]);
-      }
-    }
+    // Rim: per-side/per-corner overrides, falling back to a regular rectangle/N-gon.
+    const rim = this.localRim(sides, halfX, halfY, sideExtents, cornerRadii);
 
     const shape = new THREE.Shape();
     rim.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));

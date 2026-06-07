@@ -112,6 +112,11 @@ export interface WorkcellConfig {
   originX?: number;
   originY?: number;
   yaw?: number;
+  /** Per-rail overrides (optional; absent = uniform from length/width/shapeSides). For a 4-sided
+   *  worktop: independent edge distances from centre [right(+X), left(-X), front(+Y), back(-Y)] in
+   *  metres → any rectangle. For N>4: one circum-radius per corner (length N). */
+  sideExtents?: [number, number, number, number];
+  cornerRadii?: number[];
   /** Camera-post (aluminium upright) world X/Y; origin = table centre. */
   postX: number;
   postY: number;
@@ -120,7 +125,7 @@ export interface WorkcellConfig {
   /** Additional workstations — each is its own worktop (slab + rails + post) at a world X/Y,
    *  with its own arm (added on creation). Lets you lay out a multi-cell lab. postX/postY are
    *  RELATIVE to the station's own centre. */
-  stations: Array<{ id: string; x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postX: number; postY: number; postHeight: number }>;
+  stations: Array<{ id: string; x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postX: number; postY: number; postHeight: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] }>;
   /** Extra placeable overhead D435i cameras (beyond the primary) — each at (x,y,z) with an euler
    *  aim (rotX/rotY/rotZ radians; 0,0,0 = straight down). Each renders its own live Feeds PIP and is
    *  selectable with a move/aim gizmo like the primary. */

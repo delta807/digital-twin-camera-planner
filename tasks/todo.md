@@ -29,4 +29,8 @@ stack (no framer-motion/shadcn).
 - [ ] SelectionInspector: 4 named extent sliders (4-sided) or N corner-radius sliders (N>4).
 
 ## Review
-(end)
+All 5 shipped + verified in-browser, tsc+build+vitest+smoke green:
+- A bigger boxed inputs; B keyboard (Delete/Ctrl+D/Ctrl+C·V/Esc/F); C Selection-on-top reorder;
+  D Controls→pill toolbar (components/ui/toolbar.tsx, no framer-motion); E per-rail base
+  (sideExtents for 4-sided, cornerRadii for N>4) on primary + stations, with per-side sliders.
+Commits: 542ddb8 (A-D), + Phase E.

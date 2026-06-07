@@ -22,8 +22,8 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
-  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number } | null;
-  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number }) => void;
+  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] }) => void;
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
@@ -132,6 +132,8 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Length', v: p.station.length * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ length: v / 1000 }) },
               { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ width: v / 1000 }) },
             ]} />
+            {/* Per-rail sizing: 4-sided → independent edge distances from centre; N>4 → per-corner radius. */}
+            <RailSizers station={p.station} subtle={subtle} onStation={p.onStation} />
           </div>
           {sel.stationId === 'primary' && p.workcell && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
@@ -367,6 +369,40 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Per-rail worktop sizing. 4-sided → 4 independent edge distances from centre (Right/Left/Front/
+ *  Back); N>4 → one radius per corner. Falls back to the uniform length/width until edited. */
+function RailSizers({ station, subtle, onStation }: {
+  station: { shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] };
+  subtle: string;
+  onStation: (p: { sideExtents?: [number, number, number, number]; cornerRadii?: number[] }) => void;
+}) {
+  const sides = Math.round(station.shapeSides);
+  if (sides === 4) {
+    const e = station.sideExtents ?? [station.length / 2, station.length / 2, station.width / 2, station.width / 2];
+    const set = (i: number, v: number) => { const n = [...e] as [number, number, number, number]; n[i] = v / 1000; onStation({ sideExtents: n }); };
+    return (
+      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
+        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · per side</span>
+        <Sliders subtle={subtle} fields={[
+          { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(0, v) },
+          { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(1, v) },
+          { k: 'Front', v: e[2] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(2, v) },
+          { k: 'Back', v: e[3] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(3, v) },
+        ]} />
+      </div>
+    );
+  }
+  const def = station.length / 2;
+  const r = station.cornerRadii && station.cornerRadii.length === sides ? station.cornerRadii : Array.from({ length: sides }, () => def);
+  const set = (i: number, v: number) => { const n = [...r]; n[i] = v / 1000; onStation({ cornerRadii: n }); };
+  return (
+    <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
+      <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · per corner</span>
+      <Sliders subtle={subtle} fields={r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) }))} />
     </div>
   );
 }
