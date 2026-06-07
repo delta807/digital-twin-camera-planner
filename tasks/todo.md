@@ -201,3 +201,26 @@ Jetson overhead feed found: http://100.68.215.10:8080/stream.mjpg (FPV MJPEG, 84
 - [ ] 8. Jog additional SO-101s — NOT done: extra arms are non-physics visual clones that mirror
       the single physics arm. Independent jog needs per-arm joint state + an FK pose-drag (or
       multiple physics arms in the model). Proposed as a focused follow-up. See response.
+
+## HUD refinement pass 8 (review)
+- [x] 8. Baked tuned wrist mount into WRIST_FACTORY (D435i already at default pose).
+- [x] 4. Floating selection card moved below the nav cube (no overlap when panels closed).
+- [x] 7. Export JSON falls back to a file download when clipboard is blocked (preview iframe).
+- [x] 5. NavCube drag-to-orbit (RenderSystem.orbit); click-a-face snap still works.
+- [x] 2. Radial: primary D435i gained Duplicate. Full audit below.
+- [x] 6. Overlay fallback still wired (compare.fallbackSrc → /fallback-*.jpg); user adds the 2 files.
+- [ ] 3. Mount posts not yet selectable (need the same "selectable entity" treatment as props).
+- [ ] 1. Per-clone FK jog — NOT done: ghost arms are flattened rigid snapshots; needs an articulated
+      clone + per-arm joint state + FK drag. Plan written; awaiting go-ahead (core-pipeline change).
+- [ ] 9. Synced side-by-side 3D compare — research done; clarifying Qs raised.
+Radial audit (min Move/Aim/Duplicate/Delete):
+  - prop: Move/Aim/Duplicate/Delete ✓
+  - station(satellite): Move/Aim·yaw/Duplicate/Delete ✓
+  - camera(extra): Move/Aim/Duplicate/Delete ✓
+  - arm(non-primary): Jog/Move/Aim·yaw/Duplicate/Delete ✓ (extra: Jog)
+  - arm(primary): Jog/Move/Aim·yaw/Duplicate — no Delete (it's the base arm)
+  - station(primary table): Move/Aim·yaw/Duplicate — no Delete (base table)
+  - camera(primary D435i): Move/Aim/Duplicate — no Delete (base cam)
+  - wristcam: Move/Aim — bound to the arm (can't dup/delete)
+  - object(physics box): Move/Aim/Hide — can't dup/delete (MuJoCo recompile); use props instead
+  - mount post: (pending) not selectable yet
