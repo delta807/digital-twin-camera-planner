@@ -280,6 +280,14 @@ export function App() {
     // Overhead camera pose (position + aim/roll + FOV).
     if (p.camera) simRef.current?.renderSys.cameraRig.applyPose(p.camera);
   };
+  // Auto-load the "IRL-layout" profile once on startup (the team's default arrangement), if present.
+  const didAutoLoadRef = useRef(false);
+  useEffect(() => {
+    if (isLoading || didAutoLoadRef.current) return;
+    const p = profiles.find((x) => x.name === 'IRL-layout');
+    if (p) { didAutoLoadRef.current = true; handleLoadProfile(p); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, profiles]);
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
   cameraTogglesRef.current = cameraToggles;
 

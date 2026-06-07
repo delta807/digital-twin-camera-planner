@@ -320,8 +320,9 @@ export class MujocoSim {
         const rs = this.renderSys;
         if (on) {
             tagArmJoints(rs.bodies, this.mjData, this.armJointDescs);
-            // Raycast the whole SCENE (not just simGroup) so the SAME engine can grab GHOST joints,
-            // which live in planningArmsGroup (a sibling of simGroup).
+            // Raycast the whole SCENE so the SAME engine grabs both the physics arm (simGroup) and the
+            // GHOST joints (planningArmsGroup). The raycaster now has its camera set (vendor fix), so
+            // fat-line overlays no longer throw, and update() skips non-joint occluders.
             this.jointDrag = MujocoJointDrag.create(
                 rs.scene, rs.camera, rs.renderer.domElement,
                 this.mujoco, this.mjModel, this.mjData, rs.controls, onJointLabel,

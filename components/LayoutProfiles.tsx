@@ -80,13 +80,14 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && commitSave()}
-              placeholder="Name this layout…"
+              placeholder="Name this layout to save it"
               className={`flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] outline-none border ${inputCls}`}
             />
             <button
               onClick={commitSave}
-              title="Save current layout"
-              className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase flex items-center gap-1 hover:bg-indigo-500"
+              disabled={!name.trim()}
+              title={name.trim() ? 'Save current layout' : 'Type a name first'}
+              className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase flex items-center gap-1 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Save className="w-3 h-3" /> Save
             </button>

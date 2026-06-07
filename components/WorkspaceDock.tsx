@@ -125,24 +125,42 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
-          <div className="flex items-center gap-1.5">
-            {onSaveWorkspace && (
-              <button onClick={onSaveWorkspace} title="Save / load this workspace layout"
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                <Save className="w-3.5 h-3.5" /> Save
-              </button>
-            )}
-            {onClose && (
-              <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {onClose && (
+            <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <span className={`block text-[9px] ${subtle} mt-1`}>origin = table center · X→ Y↑ Z out</span>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-black/5">
+        {/* ── Templates (saved layouts): load / save profiles — at the top so it's the first thing ── */}
+        <Section title="Templates (saved layouts)" icon={<Bookmark className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}
+          action={onSaveWorkspace ? <button onClick={onSaveWorkspace} className="text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Manage</button> : undefined}>
+          <div className="flex items-center gap-1.5">
+            <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveTpl()}
+              placeholder="Name this layout to save it" className={`flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] outline-none border ${isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-500' : 'bg-black/5 border-black/10 placeholder:text-slate-400'}`} />
+            <button onClick={saveTpl} disabled={!tplName.trim()} title={tplName.trim() ? 'Save this layout' : 'Type a name first'} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase flex items-center gap-1 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+              <Save className="w-3 h-3" /> Save
+            </button>
+          </div>
+          {tplSaved
+            ? <p className="text-[9px] text-emerald-500 font-medium">Saved “{tplSaved}” on this device ✓</p>
+            : <p className={`text-[9px] ${subtle}`}>Saved on this device. Share via Manage → Export JSON → presets.ts.</p>}
+          {(!templates || templates.profiles.length === 0)
+            ? <p className={`text-[9px] ${subtle}`}>No saved layouts yet.</p>
+            : templates.profiles.slice(0, 8).map((p) => (
+              <button key={p.name} onClick={() => templates.onLoad(p)} title="Load this layout"
+                className={`w-full flex items-center gap-2 rounded-md px-2 py-1 text-left ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>
+                <Bookmark className="w-3 h-3 text-indigo-400 shrink-0" />
+                <span className="text-[11px] font-medium truncate flex-1">{p.name}</span>
+                {p.builtin && <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${isDarkMode ? 'bg-white/10 text-slate-300' : 'bg-black/10 text-slate-500'}`}>built-in</span>}
+                <span className={`text-[9px] ${subtle}`}>{p.arms.length}a</span>
+              </button>
+            ))}
+        </Section>
+
         {/* ── Insert: click-to-add palette (mirrors the right-click → create-here radial) ── */}
         <Section title="Insert" icon={<Plus className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <div className="grid grid-cols-2 gap-1.5">
@@ -194,8 +212,8 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
           </Section>
         )}
 
-        {/* ── Scene & templates: global toggles, coords, saved layouts, reachability ── */}
-        <Section title="Scene & templates" icon={<Grid3x3 className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
+        {/* ── Scene: global toggles, coords, reachability ── */}
+        <Section title="Scene" icon={<Grid3x3 className="w-3.5 h-3.5 text-indigo-500" />} isDarkMode={isDarkMode}>
           <Row label="Origin axes" checked={scene.axesVisible} onChange={scene.onAxesToggle} />
           <div className={`rounded-lg px-2 py-1.5 text-[10px] tabular-nums ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
             <div className="flex justify-between"><span className={subtle}>Camera</span>
@@ -204,36 +222,6 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
             {arm && <div className="flex justify-between mt-0.5"><span className={subtle}>{arm.label}</span>
               <span>{fmt(arm.x, scene.unit)}  {fmt(arm.y, scene.unit)}  {(arm.yaw * 180 / Math.PI).toFixed(0)}°</span>
             </div>}
-          </div>
-
-          {/* Templates — save the current layout, and load a saved or bundled (built-in) layout. */}
-          <div className={`pt-1.5 mt-1 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'} space-y-1`}>
-            <div className="flex items-center justify-between">
-              <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>Templates (saved layouts)</span>
-              {onSaveWorkspace && <button onClick={onSaveWorkspace} className="text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400">Manage</button>}
-            </div>
-            {/* Save current layout — name it + Save, with a confirmation so it's clear it persisted. */}
-            <div className="flex items-center gap-1.5">
-              <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveTpl()}
-                placeholder="Name this layout…" className={`flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] outline-none border ${isDarkMode ? 'bg-white/5 border-white/10 placeholder:text-slate-500' : 'bg-black/5 border-black/10 placeholder:text-slate-400'}`} />
-              <button onClick={saveTpl} disabled={!tplName.trim()} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-bold uppercase flex items-center gap-1 hover:bg-indigo-500 disabled:opacity-40">
-                <Save className="w-3 h-3" /> Save
-              </button>
-            </div>
-            {tplSaved
-              ? <p className="text-[9px] text-emerald-500 font-medium">Saved “{tplSaved}” on this device ✓</p>
-              : <p className={`text-[9px] ${subtle}`}>Saved on this device. Share with teammates via Manage → Export JSON → presets.ts.</p>}
-            {(!templates || templates.profiles.length === 0)
-              ? <p className={`text-[9px] ${subtle}`}>No saved layouts yet.</p>
-              : templates.profiles.slice(0, 6).map((p) => (
-                <button key={p.name} onClick={() => templates.onLoad(p)} title="Load this layout"
-                  className={`w-full flex items-center gap-2 rounded-md px-2 py-1 text-left ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>
-                  <Bookmark className="w-3 h-3 text-indigo-400 shrink-0" />
-                  <span className="text-[11px] font-medium truncate flex-1">{p.name}</span>
-                  {p.builtin && <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${isDarkMode ? 'bg-white/10 text-slate-300' : 'bg-black/10 text-slate-500'}`}>built-in</span>}
-                  <span className={`text-[9px] ${subtle}`}>{p.arms.length}a</span>
-                </button>
-              ))}
           </div>
 
           {/* Reachability — global compute (per-arm reach views live in the arm's Selection card). */}

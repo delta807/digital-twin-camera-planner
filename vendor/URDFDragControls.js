@@ -77,13 +77,17 @@ export class URDFDragControls {
 
         let hoveredJoint = null;
         const intersections = raycaster.intersectObject(scene, true);
-        if (intersections.length !== 0) {
-
-            const hit = intersections[0];
-            this.hitDistance = hit.distance;
-            hoveredJoint = findNearestJoint(hit.object);
-            this.initialGrabPoint.copy(hit.point);
-
+        // Pick the FIRST hit that actually belongs to a (non-fixed) joint — skipping occluders such
+        // as the worktop / grid / origin axes / other arms. (The original only checked the single
+        // closest object, so once the engine raycasts the whole scene those occluders blocked it.)
+        for (let i = 0; i < intersections.length; i++) {
+            const j = findNearestJoint(intersections[i].object);
+            if (j) {
+                hoveredJoint = j;
+                this.hitDistance = intersections[i].distance;
+                this.initialGrabPoint.copy(intersections[i].point);
+                break;
+            }
         }
 
         if (hoveredJoint !== hovered) {
@@ -241,8 +245,13 @@ export class PointerURDFDragControls extends URDFDragControls {
         super(scene);
         this.camera = camera;
         this.domElement = domElement;
+        // The intersect raycaster must know the camera, else raycasting fat lines (LineSegments2 —
+        // the reach envelope / frustum overlays) THROWS and aborts the whole raycast, so no joint is
+        // ever found. (Only matters once the engine raycasts a scene that contains such overlays.)
+        this.raycaster.camera = camera;
 
         const raycaster = new Raycaster();
+        raycaster.camera = camera;
         const mouse = new Vector2();
 
         function updateMouse(e) {
