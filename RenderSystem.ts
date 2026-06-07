@@ -607,20 +607,30 @@ export class RenderSystem {
         this.controls.update();
     }
 
-    /** Snap the orbit camera to a named view (NavCube). Reuses the moveCameraTo animation; the
-     *  worktop is at the origin so every preset looks at (0,0,0). */
-    snapToView(preset: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso') {
+    /** Snap the orbit camera to a named view OR an arbitrary direction (NavCube faces/edges/corners).
+     *  Reuses the moveCameraTo animation; the worktop is at the origin so every view looks at (0,0,0).
+     *  A direction array [x,y,z] (Z-up world) places the camera along that ray — used for the cube's
+     *  corner→iso and edge→45° two-face views. */
+    snapToView(preset: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso' | [number, number, number]) {
         const D = 2.4, Z = 0.4;
-        const P: Record<string, THREE.Vector3> = {
-            top: new THREE.Vector3(0, -0.001, D + 0.5),   // tiny -Y offset avoids Z-up gimbal + keeps the cube axis-aligned
-            bottom: new THREE.Vector3(0, -0.001, -(D + 0.5)),
-            front: new THREE.Vector3(0, -D, Z),
-            back: new THREE.Vector3(0, D, Z),
-            left: new THREE.Vector3(-D, 0, Z),
-            right: new THREE.Vector3(D, 0, Z),
-            iso: new THREE.Vector3(1.8, -1.4, 2.0),
-        };
-        this.moveCameraTo(P[preset] ?? P.iso, new THREE.Vector3(0, 0, 0), 360);
+        let pos: THREE.Vector3;
+        if (Array.isArray(preset)) {
+            const dir = new THREE.Vector3(preset[0], preset[1], preset[2]);
+            if (dir.lengthSq() < 1e-9) dir.set(1.8, -1.4, 2.0);
+            pos = dir.normalize().multiplyScalar(2.95); // ~iso distance
+        } else {
+            const P: Record<string, THREE.Vector3> = {
+                top: new THREE.Vector3(0, -0.001, D + 0.5),   // tiny -Y offset avoids Z-up gimbal + keeps the cube axis-aligned
+                bottom: new THREE.Vector3(0, -0.001, -(D + 0.5)),
+                front: new THREE.Vector3(0, -D, Z),
+                back: new THREE.Vector3(0, D, Z),
+                left: new THREE.Vector3(-D, 0, Z),
+                right: new THREE.Vector3(D, 0, Z),
+                iso: new THREE.Vector3(1.8, -1.4, 2.0),
+            };
+            pos = P[preset] ?? P.iso;
+        }
+        this.moveCameraTo(pos, new THREE.Vector3(0, 0, 0), 360);
     }
 
     /**

@@ -32,6 +32,11 @@ import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
 import { Bot, Box as BoxIcon, Boxes, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Package, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
 
+/** Keyboard view shortcuts (Bambu/CAD convention) → NavCube snap presets. */
+const VIEW_KEYS: Record<string, 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso'> = {
+  '1': 'top', '2': 'bottom', '3': 'front', '4': 'back', '5': 'left', '6': 'right', '7': 'iso',
+};
+
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
 /** Live camera feeds from the Jetson Orin Nano (Tailscale) "SO101 Rig — Live Views" dashboard on
@@ -213,6 +218,7 @@ export function App() {
   const [axesVisible, setAxesVisible] = useState(true);
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
+  const [measureMode, setMeasureMode] = useState<'point' | 'gap'>('point');
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   // Pan tool (Fusion-style hand): left-drag pans the camera while on.
   const [panMode, setPanMode] = useState(false);
@@ -976,6 +982,8 @@ export function App() {
       else if (mod && (e.key === 'v' || e.key === 'V')) { if (clipboardRef.current) { e.preventDefault(); editFnsRef.current.dup(clipboardRef.current); } }
       else if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) { e.preventDefault(); histFnsRef.current.undo(); }
       else if (mod && (((e.key === 'z' || e.key === 'Z') && e.shiftKey) || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); histFnsRef.current.redo(); }
+      // View shortcuts (Bambu/CAD): 1 top · 2 bottom · 3 front · 4 back · 5 left · 6 right · 7 iso.
+      else if (!mod && VIEW_KEYS[e.key]) { e.preventDefault(); simRef.current?.renderSys.snapToView(VIEW_KEYS[e.key]); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1830,6 +1838,7 @@ export function App() {
               {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
+                onViewDir={(d) => simRef.current?.renderSys.snapToView(d)}
                 isDarkMode={isDarkMode}
                 dockOpen={dockOpen}
                 sidebarOpen={showSidebar}
@@ -2038,8 +2047,18 @@ export function App() {
                 )}
                 {measureActive && (
                   <div className="space-y-1 px-0.5">
+                    {/* Point-to-point vs object-to-object minimum gap. */}
+                    <div className={`flex gap-0.5 p-0.5 rounded-lg ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
+                      {(['point', 'gap'] as const).map((mode) => (
+                        <button key={mode}
+                          onClick={() => { setMeasureMode(mode); simRef.current?.renderSys.measureTool?.setMode(mode); }}
+                          className={`flex-1 py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${measureMode === mode ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600/15 text-indigo-700') : (isDarkMode ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-black/5')}`}>
+                          {mode === 'point' ? 'Point' : 'Object gap'}
+                        </button>
+                      ))}
+                    </div>
                     {measurements.length === 0
-                      ? <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Click two objects or points. Shift-click = free point.</p>
+                      ? <p className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{measureMode === 'gap' ? 'Click two objects → minimum gap between them.' : 'Click two points. Snaps to vertex / circle-center / edge; Shift = free point.'}</p>
                       : measurements.map((m) => (
                         <div key={m.id} className={`rounded-lg px-2 py-1 text-[10px] tabular-nums flex items-center justify-between ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
                           <div>
