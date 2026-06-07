@@ -1690,7 +1690,7 @@ export function App() {
               />
               {/* Status readout now lives in the sidebar header (MetricBar inline). When the panel is
                   closed, show the floating pill as a fallback so the sim state stays visible. */}
-              {!showSidebar && <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />}
+              {!showSidebar && mode !== 'compare' && <MetricBar armCount={armInstances.length} baseResult={baseResult} isPaused={isPaused} isDarkMode={isDarkMode} />}
               {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}

@@ -48,9 +48,10 @@ export function CompareView({ isDarkMode, onExit, cells, cellA, cellB, onCellA, 
       {badge('A', cellA, onCellA, 'oklch(0.655 0.155 262)', 'l')}
       {badge('B', cellB, onCellB, 'oklch(0.70 0.13 292)', 'r')}
 
-      {/* per-pane feed stacks (overhead + wrist) */}
-      {feedsA && <div className="absolute top-3 left-[calc(50%-13.5rem)] z-10 flex flex-col gap-2 pointer-events-auto">{feedsA}</div>}
-      {feedsB && <div className="absolute top-3 right-3 z-10 flex flex-col gap-2 pointer-events-auto">{feedsB}</div>}
+      {/* per-pane feed stacks (overhead + wrist) — anchored in each pane's OWN bottom-outer corner so
+          they never collide with the centred A/B pickers + Compare pill at the top. */}
+      {feedsA && <div className="absolute bottom-4 left-[4.75rem] z-10 flex flex-col gap-2 pointer-events-auto">{feedsA}</div>}
+      {feedsB && <div className="absolute bottom-4 right-3 z-10 flex flex-col gap-2 pointer-events-auto">{feedsB}</div>}
 
       {/* exit */}
       <button onClick={onExit} aria-label="Exit compare"
