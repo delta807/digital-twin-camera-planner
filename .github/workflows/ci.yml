@@ -54,3 +54,48 @@ jobs:
       # don't affect the deployed bundle, so they must not block CI.
       - name: Security audit (production deps)
         run: npm audit --omit=dev --audit-level=high
+
+  # Auto-deploy to Netlify ONLY after verify + audit pass, and only on a push to master (never PRs).
+  # This is the collaborator-friendly path: it deploys with a Netlify token from repo secrets, so it
+  # works without the repo owner having to authorize Netlify's GitHub App on their account.
+  # Requires two repo secrets (Settings -> Secrets and variables -> Actions):
+  #   NETLIFY_AUTH_TOKEN  - a Netlify personal access token (Netlify -> User settings -> Applications)
+  #   NETLIFY_SITE_ID     - 457c9dd3-1efb-46b2-9f88-3e559b078bea
+  deploy:
+    needs: [verify, audit]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+    steps:
+      # Skip cleanly (green) until the secrets are configured, so this job never blocks CI.
+      - name: Check Netlify secrets
+        id: cfg
+        run: |
+          if [ -n "$NETLIFY_AUTH_TOKEN" ] && [ -n "$NETLIFY_SITE_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Netlify secrets not set — skipping deploy. Add NETLIFY_AUTH_TOKEN + NETLIFY_SITE_ID (repo Settings -> Secrets and variables -> Actions) to enable auto-deploy."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (clean, lockfile-faithful)
+        if: steps.cfg.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Deploy to Netlify (production)
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: npx --yes netlify-cli@17 deploy --build --prod --message "CI deploy $COMMIT_SHA"
