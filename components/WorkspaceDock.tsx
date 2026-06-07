@@ -32,6 +32,7 @@ export interface DockArmsProps {
   onChange: (id: string, patch: Partial<ArmInstance>) => void;
   onAdd: () => void;
   onAddProp?: () => void;
+  onAddBlock?: () => void;
   onRemove: (id: string) => void;
   onApplyPose: () => void;
   toggles: PlannerToggles;
@@ -168,6 +169,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
             <InsertCard icon={<Camera className="w-4 h-4" />} label="D435i cam" onClick={workcell.onAddExtraCamera} isDarkMode={isDarkMode} />
             <InsertCard icon={<Box className="w-4 h-4" />} label="Workstation" onClick={workcell.onAddStation} isDarkMode={isDarkMode} />
             <InsertCard icon={<PostIcon className="w-4 h-4" />} label="Mount post" onClick={() => workcell.onChange({ ...wc, extraPosts: [...(wc.extraPosts ?? []), { x: 0, y: 0, height: wc.postHeight }] })} isDarkMode={isDarkMode} />
+            {arms.onAddBlock && <InsertCard icon={<Boxes className="w-4 h-4" />} label="Block" onClick={arms.onAddBlock} isDarkMode={isDarkMode} />}
             {arms.onAddProp && <InsertCard icon={<Package className="w-4 h-4" />} label="Object" onClick={arms.onAddProp} isDarkMode={isDarkMode} />}
           </div>
           <p className={`text-[9px] ${subtle}`}>Adds at the origin. Or right-click / double-click empty space to place at a point.</p>

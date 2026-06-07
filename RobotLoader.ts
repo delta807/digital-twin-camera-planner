@@ -220,6 +220,16 @@ export class RobotLoader {
         s += `<body name="task5" pos="0.24 -0.02 0.015"><geom type="cylinder" size="0.025 0.015" rgba="0.95 0.95 0.95 1"/></body>`;
         s += `<body name="task6" pos="-0.06 0.26 0.005"><geom type="cylinder" size="0.03 0.005" rgba="0.85 0.78 0.6 1"/></body>`;
         s += `<body name="task7" pos="0.28 0.16 0.02"><geom type="box" size="0.04 0.04 0.02" rgba="0.2 0.7 0.66 1"/></body>`;
+
+        // Pre-allocated POOL of graspable freejoint cubes — MuJoCo can't add bodies at runtime without
+        // a model recompile (unbound in mujoco-wasm), so we bake a fixed pool and spawn/despawn by
+        // teleporting + toggling geom collision masks (the standard freejoint-pool pattern). They start
+        // parked far below the floor with collisions OFF (contype/conaffinity=0); MujocoSim.spawnBlock
+        // brings one up on demand. Named cube{i} so they're auto-selectable/movable like task blocks.
+        const POOL = 24;
+        for (let i = 0; i < POOL; i++) {
+            s += `<body name="cube${i}" pos="0 0 ${(-5 - i * 0.1).toFixed(1)}"><freejoint/><geom type="box" size="0.018 0.018 0.018" rgba="${ORANGE}" mass="0.03" friction="1.5 0.3 0.1" solref="0.01 1" solimp="0.95 0.99 0.001 0.5 2" condim="4" contype="0" conaffinity="0"/></body>`;
+        }
         return s;
     }
 

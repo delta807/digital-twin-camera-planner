@@ -59,6 +59,10 @@ export class MujocoSim {
     private armInstances: ArmInstance[] = [];
     private baseBodyId = 0;
     private armBodyIds: number[] = [];
+    /** Pre-allocated freejoint cube pool — spawn/despawn graspable blocks at runtime, no model reload
+     *  (mjSpec recompile is unbound in mujoco-wasm). Despawned slots are parked far below the floor
+     *  with collisions OFF + hidden; spawning re-poses one, re-enables collision, and shows it. */
+    private blockPool: { bodyId: number; geomId: number; qadr: number; dadr: number; used: boolean }[] = [];
 
     private userIkEnabled = false;
     private firstIkEnable = true; // Track first enable to enforce default rotation
@@ -152,6 +156,7 @@ export class MujocoSim {
         this.mujoco.mj_forward(this.mjModel, this.mjData);
         this.renderSys.initScene(this.mjModel);
         this.renderSys.syncBodiesFromData(this.mjData);
+        this.buildBlockPool();
 
         if (this.isFranka) {
             this.ikSys.init(this.mjModel, isDouble);
@@ -376,14 +381,70 @@ export class MujocoSim {
         );
     }
 
-    /** List the movable task blocks (for the object tree). */
+    /** Index the baked freejoint cube pool (bodies named `cube{i}`) and park them all as despawned. */
+    private buildBlockPool() {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return;
+        this.blockPool = [];
+        for (let i = 0; i < m.nbody; i++) {
+            if (!/^cube\d+$/.test(getName(m, m.name_bodyadr[i]))) continue;
+            const jadr = m.body_jntadr[i];
+            if (jadr < 0 || m.jnt_type[jadr] !== 0) continue; // freejoint only
+            const slot = { bodyId: i, geomId: m.body_geomadr[i], qadr: m.jnt_qposadr[jadr], dadr: m.jnt_dofadr[jadr], used: false };
+            this.blockPool.push(slot);
+            this.parkBlock(slot); // start despawned (hidden, no collision, under the floor)
+        }
+        if (this.blockPool.length) this.mujoco.mj_forward(m, d);
+    }
+
+    private parkBlock(slot: { bodyId: number; geomId: number; qadr: number; dadr: number; used: boolean }) {
+        const m = this.mjModel!, d = this.mjData!;
+        m.geom_contype[slot.geomId] = 0; m.geom_conaffinity[slot.geomId] = 0; // no collisions while parked
+        d.qpos[slot.qadr] = 0; d.qpos[slot.qadr + 1] = 0; d.qpos[slot.qadr + 2] = -5 - slot.bodyId * 0.1;
+        d.qpos[slot.qadr + 3] = 1; d.qpos[slot.qadr + 4] = 0; d.qpos[slot.qadr + 5] = 0; d.qpos[slot.qadr + 6] = 0;
+        for (let k = 0; k < 6; k++) d.qvel[slot.dadr + k] = 0;
+        if (this.renderSys.bodies[slot.bodyId]) this.renderSys.bodies[slot.bodyId].visible = false;
+        slot.used = false;
+    }
+
+    /** Spawn a graspable cube from the pool at (x,y). Returns its bodyId (selectable/movable like any
+     *  task block) or null if the pool is exhausted. Live — no model reload, no flash. */
+    spawnBlock(x: number, y: number, z = 0.018): number | null {
+        const m = this.mjModel, d = this.mjData;
+        if (!m || !d) return null;
+        const slot = this.blockPool.find((p) => !p.used);
+        if (!slot) return null;
+        d.qpos[slot.qadr] = x; d.qpos[slot.qadr + 1] = y; d.qpos[slot.qadr + 2] = z;
+        d.qpos[slot.qadr + 3] = 1; d.qpos[slot.qadr + 4] = 0; d.qpos[slot.qadr + 5] = 0; d.qpos[slot.qadr + 6] = 0;
+        for (let k = 0; k < 6; k++) d.qvel[slot.dadr + k] = 0;
+        m.geom_contype[slot.geomId] = 1; m.geom_conaffinity[slot.geomId] = 1;
+        if (this.renderSys.bodies[slot.bodyId]) this.renderSys.bodies[slot.bodyId].visible = true;
+        slot.used = true;
+        this.mujoco.mj_forward(m, d);
+        return slot.bodyId;
+    }
+
+    /** Despawn a pooled cube (back to parked/hidden). No-op for non-pool bodies. Live — no reload. */
+    despawnBlock(bodyId: number): boolean {
+        const slot = this.blockPool.find((p) => p.bodyId === bodyId);
+        if (!slot || !this.mjModel || !this.mjData) return false;
+        this.parkBlock(slot);
+        this.mujoco.mj_forward(this.mjModel, this.mjData);
+        return true;
+    }
+
+    /** How many pool cubes remain free (for UI / "pool exhausted" messaging). */
+    freeBlockCount(): number { return this.blockPool.filter((p) => !p.used).length; }
+
+    /** List the movable task blocks (for the object tree) — excludes despawned pool slots. */
     getTaskBodies(): { bodyId: number; name: string }[] {
         const m = this.mjModel;
         if (!m) return [];
+        const despawned = new Set(this.blockPool.filter((p) => !p.used).map((p) => p.bodyId));
         const out: { bodyId: number; name: string }[] = [];
         for (let i = 0; i < m.nbody; i++) {
             const n = getName(m, m.name_bodyadr[i]);
-            if (/^(task|cube|tray)/.test(n)) out.push({ bodyId: i, name: n });
+            if (/^(task|cube|tray)/.test(n) && !despawned.has(i)) out.push({ bodyId: i, name: n });
         }
         return out;
     }

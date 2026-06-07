@@ -31,7 +31,7 @@ import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
-import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Package, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
+import { Bot, Box as BoxIcon, Boxes, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Package, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
 
@@ -666,12 +666,15 @@ export function App() {
       { id: 'new-camera', label: 'D435i cam', icon: CameraIcon },
       { id: 'new-arm', label: 'SO-101', icon: Bot },
       { id: 'new-post', label: 'Mount post', icon: Pin },
+      { id: 'new-block', label: 'Block', icon: Boxes },
       { id: 'new-prop', label: 'Object', icon: Package },
     ];
     if (kind === 'object') return [
       { id: 'move', label: 'Move', icon: MoveIcon },
       { id: 'aim', label: 'Aim', icon: RotateCw },
       { id: 'hide', label: 'Hide', icon: EyeOff },
+      // Graspable pool cubes can be removed live; baked task objects fall back to Hide.
+      { id: 'delete', label: 'Delete', icon: Trash2 },
     ];
     if (kind === 'prop') return [
       { id: 'move', label: 'Move', icon: MoveIcon },
@@ -730,7 +733,17 @@ export function App() {
       else if (id === 'new-camera') handleAddExtraCameraAt(x, y);
       else if (id === 'new-arm') handleAddArmAt(x, y);
       else if (id === 'new-post') handleWorkcellChange({ ...workcellConfigRef.current, extraPosts: [...(workcellConfigRef.current.extraPosts ?? []), { x, y, height: workcellConfigRef.current.postHeight }] });
+      else if (id === 'new-block') handleSpawnBlockAt(x, y);
       else if (id === 'new-prop') handleAddPropAt(x, y);
+      return;
+    }
+    // Object delete: despawn a pooled cube live; baked task objects (task0-7) just hide instead.
+    if (kind === 'object' && id === 'delete') {
+      const bid = selection?.bodyId;
+      if (bid !== undefined) {
+        if (simRef.current?.despawnBlock(bid)) { sel?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); }
+        else toggleVisible({ key: `obj:${bid}`, kind: 'object', bodyId: bid });
+      }
       return;
     }
     if (id === 'jog') { if (!poseMode) togglePoseMode(); return; }
@@ -1178,6 +1191,19 @@ export function App() {
     handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { id: `prop-${n}`, x, y, z: size / 2, yaw: 0, size, color: '#e0772f', cell: nearestCell(x, y) }] });
   };
   const handleAddProp = () => handleAddPropAt(0, 0);
+  // Graspable pool blocks (real freejoint cubes) — spawn/despawn live from the pre-allocated pool,
+  // no model reload/flash. Spawned cubes are selectable + movable like any task block.
+  const handleSpawnBlockAt = (x: number, y: number) => {
+    const id = simRef.current?.spawnBlock(x, y);
+    if (id == null) { console.warn('[blocks] pool exhausted — delete a block to free a slot'); return; }
+    setTaskBodies(simRef.current?.getTaskBodies() ?? []); // show the new cube in the object tree
+    applyPlannerState();
+  };
+  const handleAddBlock = () => {
+    const wc = workcellConfigRef.current;
+    const spawned = simRef.current ? 24 - simRef.current.freeBlockCount() : 0; // spread successive drops into a row
+    handleSpawnBlockAt((wc.originX ?? 0) - 0.1 + (spawned % 5) * 0.05, (wc.originY ?? 0) + 0.12);
+  };
   const handleRemoveProp = (id: string) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).filter((p) => p.id !== id) }); };
   const handleCloneProp = (id: string) => { const wc = workcellConfigRef.current; const p = (wc.props ?? []).find((x) => x.id === id); if (p) { const n = nextPropRef.current++; handleWorkcellChange({ ...wc, props: [...(wc.props ?? []), { ...p, id: `prop-${n}`, x: p.x + 0.06, y: p.y + 0.06 }] }); } };
   const handlePropChange = (id: string, patch: Partial<{ x: number; y: number; z: number; yaw: number; size: number; color: string }>) => { const wc = workcellConfigRef.current; handleWorkcellChange({ ...wc, props: (wc.props ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) }); };
@@ -1937,6 +1963,7 @@ export function App() {
                 onChange: handleArmChange,
                 onAdd: handleAddArm,
                 onAddProp: handleAddProp,
+                onAddBlock: handleAddBlock,
                 onRemove: handleRemoveArm,
                 onApplyPose: handleApplyArmPose,
                 toggles: plannerToggles,
