@@ -29,7 +29,6 @@ import { TweaksPanel } from './components/TweaksPanel';
 import { MetricBar } from './components/MetricBar';
 import { ModeRail, WorkMode } from './components/ModeRail';
 import { CompareView } from './components/CompareView';
-import type { CompareSetup } from './components/SceneMap';
 import { RadialMenu, RadialItem } from './components/RadialMenu';
 import { NavCube } from './components/NavCube';
 import { Bot, Box as BoxIcon, Camera as CameraIcon, Copy, EyeOff, Hand, Move as MoveIcon, Package, PanelLeft, PanelRight, Pin, RotateCw, Trash2 } from 'lucide-react';
@@ -190,9 +189,7 @@ export function App() {
   };
   // Lab-instrument shell: work mode (Edit vs Compare A/B) + dock visibility, driven by the mode rail.
   const [mode, setMode] = useState<WorkMode>('edit');
-  // Compare mode holds two captured WORKSTATION SETUPS (full layouts), shown side-by-side.
-  const [compareA, setCompareA] = useState<CompareSetup | null>(null);
-  const [compareB, setCompareB] = useState<CompareSetup | null>(null);
+  // Compare v2 is a live two-cell scissor split (state lives in the renderer); no captured setups.
   const [dockOpen, setDockOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try { return localStorage.getItem('theme') === 'dark'; } catch { return false; }
@@ -1243,36 +1240,35 @@ export function App() {
     });
   };
 
-  // ── Compare A/B: capture the current LIVE layout as a full workstation setup, and snapshot it
-  // into slot A or B. Compare mode then renders the two captured setups side-by-side (SceneMap).
-  const captureSetup = (): CompareSetup => {
+  // ── Compare v2: two LIVE cells in the one MuJoCo sim, drawn side-by-side via a scissor split of
+  // the single main renderer (no extra WebGL contexts → no lag). Cell A = primary workcell; Cell B
+  // = the first satellite station. The whole scene stays live & editable; the NavCube/drag orbits
+  // both cells together (each scissor cam shares the orbit az/el+radius, looks at its own centroid).
+  const cellCentroids = () => {
     const wc = workcellConfigRef.current;
-    const arm = armInstancesRef.current.find((a) => a.primary) ?? armInstancesRef.current[0];
-    const cam = cameraPos ?? { x: wc.postX, y: wc.postY, z: wc.postHeight };
-    const pts = simRef.current?.planner?.taskWorldPoints() ?? [];
-    return {
-      table: { length: wc.length, width: wc.width, railH: wc.barHeight },
-      post: { x: wc.postX, y: wc.postY, h: wc.postHeight },
-      camera: { x: cam.x, y: cam.y, z: cam.z, fovH: intrinsics.hFovDeg },
-      arm: arm ? { x: arm.x, y: arm.y, yawDeg: (arm.yaw * 180) / Math.PI } : { x: 0, y: 0, yawDeg: 0 },
-      blocks: pts.map((p, i) => ({ id: `task${i}`, x: p.x, y: p.y, color: 'orange' as const })),
-      // Rich payload for the WebGL panes: full workcell + every arm (posed) + block positions.
-      scene3d: {
-        workcell: { ...wc },
-        arms: armInstancesRef.current.map((a) => ({ x: a.x, y: a.y, yaw: a.yaw, joints: a.joints ?? (a.primary ? simRef.current?.getArmJointPositions() : undefined) })),
-        blocks: pts.map((p) => ({ x: p.x, y: p.y, z: p.z })),
-      },
-    };
-  };
-  const handleSnapshot = (slot: 'A' | 'B') => {
-    const s = captureSetup();
-    if (slot === 'A') setCompareA(s); else setCompareB(s);
+    const a = { x: wc.originX ?? 0, y: wc.originY ?? 0, z: 0.12 };
+    const st = (wc.stations ?? [])[0];
+    const b = st ? { x: st.x, y: st.y, z: 0.12 } : { x: a.x + 0.9, y: a.y, z: 0.12 };
+    return { a, b };
   };
   const enterCompare = () => {
-    // Seed A with the current layout on first entry so there's always something to compare against.
-    setCompareA((a) => a ?? captureSetup());
+    // Need two cells: clone the primary worktop into a satellite station if none exists yet.
+    if ((workcellConfigRef.current.stations ?? []).length === 0) handleAddStation();
+    setShowSidebar(false); // give the split the full window
     setMode('compare');
   };
+  // Drive the renderer's split on/off + keep the cell centroids fresh as cells move.
+  useEffect(() => {
+    const sim = simRef.current;
+    if (!sim || isLoading) return;
+    if (mode === 'compare') {
+      const { a, b } = cellCentroids();
+      sim.setCompareSplit(a, b);
+    } else {
+      sim.clearCompareSplit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isLoading, workcellConfig.stations, workcellConfig.originX, workcellConfig.originY]);
 
   const handleApplyArmPose = () => {
     const selected = armInstances.find((arm) => arm.id === selectedArmId);
@@ -1592,19 +1588,11 @@ export function App() {
               />
               {mode === 'compare' && (
                 <CompareView
-                  setupA={compareA}
-                  setupB={compareB}
                   isDarkMode={isDarkMode}
                   sidebarOpen={showSidebar}
-                  onSnapshot={handleSnapshot}
                   onExit={() => setMode('edit')}
-                  getOrbit={() => {
-                    const rs = simRef.current?.renderSys; if (!rs) return null;
-                    const p = rs.camera.position, t = rs.controls.target;
-                    return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
-                  }}
-                  onOrbit={(dAz, dEl) => simRef.current?.renderSys.orbit(dAz, dEl)}
-                  makeArmClone={(a) => simRef.current?.posedArmClone(a.x, a.y, a.yaw, a.joints) ?? null}
+                  labelA="Workcell"
+                  labelB="Workstation 2"
                 />
               )}
             </>

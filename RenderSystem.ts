@@ -60,8 +60,13 @@ export class RenderSystem {
     private planningArmTemplate: THREE.Group | null = null;
     private raycaster = new THREE.Raycaster();
 
-    private dummy = new THREE.Object3D(); 
+    private dummy = new THREE.Object3D();
     private container: HTMLElement;
+    /** When set, the main view is rendered as two scissor halves (A | B) with one renderer — the
+     *  Compare v2 split. Both cams share the live orbit (az/el/radius) but look at their own cell
+     *  centroid, so dragging the NavCube turns both setups together with zero extra GL contexts. */
+    compareSplit: { camA: THREE.PerspectiveCamera; camB: THREE.PerspectiveCamera; targetA: THREE.Vector3; targetB: THREE.Vector3 } | null = null;
+    private tmpSize = new THREE.Vector2();
     private geomBuilder: GeomBuilder;
     private grid!: THREE.GridHelper;
 
@@ -237,7 +242,8 @@ export class RenderSystem {
         });
 
         this.selection.update();
-        this.renderer.render(this.scene, this.camera);
+        if (this.compareSplit) this.renderCompareSplit();
+        else this.renderer.render(this.scene, this.camera);
 
         // Sensor-camera overlays + PIP. Runs after the main view so its helper-hiding
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
@@ -477,6 +483,83 @@ export class RenderSystem {
 
     getCameraState() {
         return { position: this.camera.position.clone(), target: this.controls.target.clone() };
+    }
+
+    /** Enter Compare v2 split: render the live scene as two scissor halves framing targetA | targetB,
+     *  both sharing the live orbit. Disables OrbitControls (the CompareView overlay drives orbit). */
+    setCompareSplit(targetA: THREE.Vector3, targetB: THREE.Vector3) {
+        const mk = () => {
+            const c = new THREE.PerspectiveCamera(this.camera.fov, 1, this.camera.near, this.camera.far);
+            c.up.set(0, 0, 1);
+            return c;
+        };
+        this.compareSplit = {
+            camA: this.compareSplit?.camA ?? mk(),
+            camB: this.compareSplit?.camB ?? mk(),
+            targetA: targetA.clone(),
+            targetB: targetB.clone(),
+        };
+        // Keep OrbitControls live so dragging anywhere rotates/zooms BOTH cells together (each cell
+        // cam shares the orbit az/el+radius). Disable panning so the target stays put and the shared
+        // az/el derivation stays stable.
+        this.controls.enablePan = false;
+    }
+
+    /** Update just the cell centroids without rebuilding the cameras (cheap, called as cells move). */
+    setCompareTargets(targetA: THREE.Vector3, targetB: THREE.Vector3) {
+        if (!this.compareSplit) return;
+        this.compareSplit.targetA.copy(targetA);
+        this.compareSplit.targetB.copy(targetB);
+    }
+
+    clearCompareSplit() {
+        this.compareSplit = null;
+        this.controls.enablePan = true;
+        const w = this.tmpSize; this.renderer.getSize(w);
+        this.renderer.setViewport(0, 0, w.x, w.y);
+        this.renderer.setScissor(0, 0, w.x, w.y);
+        this.renderer.setScissorTest(false);
+    }
+
+    /** Position one cell camera from a shared (az,el,radius) orbit, looking at its own centroid. */
+    private placeCellCam(cam: THREE.PerspectiveCamera, target: THREE.Vector3, az: number, el: number, r: number, aspect: number) {
+        const ce = Math.cos(el);
+        cam.position.set(target.x + Math.sin(az) * ce * r, target.y + Math.cos(az) * ce * r, target.z + Math.sin(el) * r);
+        cam.aspect = aspect;
+        cam.updateProjectionMatrix();
+        cam.lookAt(target);
+    }
+
+    /** Draw the scene twice (A | B) into left/right scissor halves of the single canvas. */
+    private renderCompareSplit() {
+        const s = this.compareSplit!;
+        // Derive the shared orbit from the main camera (NavCube / pane-drag move it via orbit()).
+        const off = this.camera.position.clone().sub(this.controls.target);
+        const r = Math.max(off.length(), 1e-3);
+        const az = Math.atan2(off.x, off.y);
+        const el = Math.atan2(off.z, Math.hypot(off.x, off.y));
+
+        this.renderer.getSize(this.tmpSize);
+        const w = this.tmpSize.x, h = this.tmpSize.y;
+        const halfW = Math.floor(w / 2);
+        const gap = 1; // 1px seam so the two views read as separate panes
+
+        this.renderer.setScissorTest(true);
+        // Left = cell A
+        this.placeCellCam(s.camA, s.targetA, az, el, r, halfW / h);
+        this.renderer.setViewport(0, 0, halfW - gap, h);
+        this.renderer.setScissor(0, 0, halfW - gap, h);
+        this.renderer.render(this.scene, s.camA);
+        // Right = cell B
+        const rw = w - halfW - gap;
+        this.placeCellCam(s.camB, s.targetB, az, el, r, rw / h);
+        this.renderer.setViewport(halfW + gap, 0, rw, h);
+        this.renderer.setScissor(halfW + gap, 0, rw, h);
+        this.renderer.render(this.scene, s.camB);
+
+        this.renderer.setScissorTest(false);
+        this.renderer.setViewport(0, 0, w, h);
+        this.renderer.setScissor(0, 0, w, h);
     }
 
     /** Orbit the camera by (dAz, dEl) radians around the target — for dragging the NavCube to rotate

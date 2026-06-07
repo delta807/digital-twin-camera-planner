@@ -457,6 +457,15 @@ export class MujocoSim {
         return this.renderSys.makePosedArmClone(x, y, yaw, joints ? this.armPoseTransforms(joints) : null);
     }
 
+    /** Compare v2 — render the live scene as two scissor halves (A | B) with the one renderer. */
+    setCompareSplit(targetA: { x: number; y: number; z: number }, targetB: { x: number; y: number; z: number }) {
+        this.renderSys.setCompareSplit(new THREE.Vector3(targetA.x, targetA.y, targetA.z), new THREE.Vector3(targetB.x, targetB.y, targetB.z));
+    }
+    setCompareTargets(targetA: { x: number; y: number; z: number }, targetB: { x: number; y: number; z: number }) {
+        this.renderSys.setCompareTargets(new THREE.Vector3(targetA.x, targetA.y, targetA.z), new THREE.Vector3(targetB.x, targetB.y, targetB.z));
+    }
+    clearCompareSplit() { this.renderSys.clearCompareSplit(); }
+
     /** The actuated joints' display info (name + limits) for per-arm jog sliders. */
     getArmJointInfo(): { name: string; lo: number; hi: number }[] {
         return this.armJointDescs.map((j) => ({ name: j.name, lo: j.lo, hi: j.hi }));
