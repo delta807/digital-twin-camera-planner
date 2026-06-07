@@ -4,6 +4,7 @@
  */
 
 import { Columns2, Info, Camera, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { SceneMap, CompareSetup } from './SceneMap';
 
 interface Props {
@@ -13,6 +14,10 @@ interface Props {
   sidebarOpen: boolean;
   onSnapshot: (slot: 'A' | 'B') => void;
   onExit: () => void;
+  /** Shared orbit: read the live camera angle (so both panes match the 3D view) … */
+  getOrbit: () => { dx: number; dy: number; dz: number } | null;
+  /** … and orbit it by (dAz, dEl) when a pane is dragged (drives both panes + the NavCube). */
+  onOrbit: (dAz: number, dEl: number) => void;
 }
 
 interface Metrics { heightCm: number; footprintCm2: number; coveragePct: number; reachPct: number; inFp: number; reachable: number; total: number }
@@ -50,11 +55,17 @@ function MiniMetric({ label, value, unit, pct, good, isDarkMode }: { label: stri
   );
 }
 
-function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode }: {
+function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode, az, el, onOrbit }: {
   tag: string; accent: string; setup: CompareSetup | null; slot: 'A' | 'B'; onSnapshot: (s: 'A' | 'B') => void; isDarkMode: boolean;
+  az: number; el: number; onOrbit: (dAz: number, dEl: number) => void;
 }) {
   const sub = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const m = setup ? metricsFor(setup) : null;
+  // Drag anywhere on the scene to orbit BOTH panes (+ the NavCube), like grabbing the model.
+  let drag: { x: number; y: number } | null = null;
+  const onDown = (e: React.PointerEvent) => { drag = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); };
+  const onMove = (e: React.PointerEvent) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY }; onOrbit(-dx * 0.01, dy * 0.01); };
+  const onUp = (e: React.PointerEvent) => { drag = null; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); };
   return (
     <div className="flex-1 min-w-0 flex flex-col relative">
       {/* badge + readout */}
@@ -74,10 +85,11 @@ function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode }: {
         </button>
       </div>
 
-      {/* scene map or empty state */}
-      <div className="flex-1 min-h-0">
+      {/* scene map or empty state — drag to orbit both setups in sync */}
+      <div className="flex-1 min-h-0" style={setup ? { cursor: 'grab', touchAction: 'none' } : undefined}
+        onPointerDown={setup ? onDown : undefined} onPointerMove={setup ? onMove : undefined} onPointerUp={setup ? onUp : undefined}>
         {setup ? (
-          <SceneMap setup={setup} isDarkMode={isDarkMode} />
+          <SceneMap setup={setup} isDarkMode={isDarkMode} az={az} el={el} />
         ) : (
           <div className={`h-full grid place-items-center text-center px-6 ${sub}`}>
             <div>
@@ -108,8 +120,25 @@ function Pane({ tag, accent, setup, slot, onSnapshot, isDarkMode }: {
  * blocks, reach + footprint) with coverage/reach metrics; a verdict calls which setup frames /
  * reaches more of the task objects. "Snapshot" captures the current live layout into A or B.
  */
-export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapshot, onExit }: Props) {
+export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapshot, onExit, getOrbit, onOrbit }: Props) {
   const panel = isDarkMode ? 'bg-slate-900/90 border-white/10 text-slate-100' : 'bg-white/92 border-white/80 text-slate-800';
+  // Mirror the live camera angle so both panes show the setups from the SAME orientation; updates
+  // as the NavCube (or a pane drag) orbits — that's "move the cube, both setups move".
+  const [view, setView] = useState({ az: Math.PI / 4, el: 0.62 });
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const o = getOrbit();
+      if (o) {
+        const az = Math.atan2(o.dx, o.dy);
+        const el = Math.atan2(o.dz, Math.hypot(o.dx, o.dy));
+        setView((p) => (Math.abs(p.az - az) > 1e-3 || Math.abs(p.el - el) > 1e-3 ? { az, el } : p));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getOrbit]);
   const mA = setupA ? metricsFor(setupA) : null;
   const mB = setupB ? metricsFor(setupB) : null;
 
@@ -133,9 +162,9 @@ export function CompareView({ setupA, setupB, isDarkMode, sidebarOpen, onSnapsho
       </div>
 
       <div className="flex-1 min-h-0 flex">
-        <Pane tag="A" accent="oklch(0.655 0.155 262)" setup={setupA} slot="A" onSnapshot={onSnapshot} isDarkMode={isDarkMode} />
+        <Pane tag="A" accent="oklch(0.655 0.155 262)" setup={setupA} slot="A" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} />
         <span className={`w-px self-stretch ${isDarkMode ? 'bg-white/10' : 'bg-black/10'}`} />
-        <Pane tag="B" accent="oklch(0.70 0.13 292)" setup={setupB} slot="B" onSnapshot={onSnapshot} isDarkMode={isDarkMode} />
+        <Pane tag="B" accent="oklch(0.70 0.13 292)" setup={setupB} slot="B" onSnapshot={onSnapshot} isDarkMode={isDarkMode} az={view.az} el={view.el} onOrbit={onOrbit} />
       </div>
 
       <div className={`flex items-center gap-2 px-4 py-2.5 border-t shrink-0 ${isDarkMode ? 'border-white/10 bg-slate-900/50' : 'border-black/5 bg-black/[0.02]'}`}>

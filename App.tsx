@@ -1581,6 +1581,12 @@ export function App() {
                   sidebarOpen={showSidebar}
                   onSnapshot={handleSnapshot}
                   onExit={() => setMode('edit')}
+                  getOrbit={() => {
+                    const rs = simRef.current?.renderSys; if (!rs) return null;
+                    const p = rs.camera.position, t = rs.controls.target;
+                    return { dx: p.x - t.x, dy: p.y - t.y, dz: p.z - t.z };
+                  }}
+                  onOrbit={(dAz, dEl) => simRef.current?.renderSys.orbit(dAz, dEl)}
                 />
               )}
             </>

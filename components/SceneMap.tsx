@@ -20,6 +20,9 @@ export interface CompareSetup {
 }
 
 type P = [number, number];
+/** A metre→svg-px projector. Rotatable: built from camera azimuth/elevation so the compare panes
+ *  can orbit in sync with the NavCube (z-up world; az=atan2(x,y), el = elevation). */
+export type Proj = (x: number, y: number, z?: number) => P;
 
 // --- categorical OKLCH scheme (inline; not CSS vars since this renders standalone) ---
 const CAM = 'oklch(0.82 0.14 78)';
@@ -32,18 +35,23 @@ const RAIL = 'oklch(0.32 0.012 250)';
 const METAL = 'oklch(0.80 0.006 250)';
 const METAL_D = 'oklch(0.64 0.006 250)';
 
-// --- iso projection (metre -> svg px), 2:1 ---
-const K = 320;
+// --- rotatable orthographic projection (metre -> svg px) ---
+const K = 360;
 const CX = 500;
-const CY = 300;
-function iso(x: number, y: number, z = 0): P {
-  return [CX + (x - y) * K, CY + (x + y) * K * 0.5 - z * K];
+const CY = 320;
+/** Build a projector for a given camera azimuth + elevation (radians). Default ≈ the old 2:1 iso. */
+function makeProj(az: number, el: number): Proj {
+  const ca = Math.cos(az), sa = Math.sin(az), se = Math.sin(el), ce = Math.cos(el);
+  return (x: number, y: number, z = 0): P => [
+    CX + (x * ca - y * sa) * K,
+    CY + ((x * sa + y * ca) * se - z * ce) * K,
+  ];
 }
 const pts = (arr: P[]) => arr.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
 const line = (a: P, b: P) => ({ x1: a[0], y1: a[1], x2: b[0], y2: b[1] });
 
 /** flat ring on a z-plane (reach envelope) */
-function isoRing(cx: number, cy: number, r: number, z: number, seg = 72): string {
+function isoRing(iso: Proj, cx: number, cy: number, r: number, z: number, seg = 72): string {
   let d = '';
   for (let i = 0; i <= seg; i++) {
     const a = (i / seg) * Math.PI * 2;
@@ -53,7 +61,7 @@ function isoRing(cx: number, cy: number, r: number, z: number, seg = 72): string
   return d + 'Z';
 }
 /** filled sector wedge (precision fan) */
-function isoSector(cx: number, cy: number, r: number, a0: number, a1: number, z: number, seg = 48): string {
+function isoSector(iso: Proj, cx: number, cy: number, r: number, a0: number, a1: number, z: number, seg = 48): string {
   const [ox, oy] = iso(cx, cy, z);
   let d = 'M' + ox.toFixed(1) + ' ' + oy.toFixed(1);
   for (let i = 0; i <= seg; i++) {
@@ -65,8 +73,8 @@ function isoSector(cx: number, cy: number, r: number, a0: number, a1: number, z:
 }
 
 /** little box drawn as 3 visible iso faces (left/right/top, with brightness shading) */
-function Cube({ x, y, z, w, d, h, color, opacity = 1 }: {
-  x: number; y: number; z: number; w: number; d: number; h: number; color: string; opacity?: number;
+function Cube({ iso, x, y, z, w, d, h, color, opacity = 1 }: {
+  iso: Proj; x: number; y: number; z: number; w: number; d: number; h: number; color: string; opacity?: number;
 }) {
   const x0 = x - w / 2, x1 = x + w / 2, y0 = y - d / 2, y1 = y + d / 2, z1 = z + h;
   const top = [iso(x0, y0, z1), iso(x1, y0, z1), iso(x1, y1, z1), iso(x0, y1, z1)];
@@ -82,7 +90,7 @@ function Cube({ x, y, z, w, d, h, color, opacity = 1 }: {
 }
 
 /** SO-101 arm glyph: hex base, shoulder, two links, gripper tip */
-function ArmGlyph({ arm, z }: { arm: CompareSetup['arm']; z: number }) {
+function ArmGlyph({ iso, arm, z }: { iso: Proj; arm: CompareSetup['arm']; z: number }) {
   const baseTop = z + 0.04;
   const hex: P[] = [];
   for (let i = 0; i < 6; i++) {
@@ -99,7 +107,7 @@ function ArmGlyph({ arm, z }: { arm: CompareSetup['arm']; z: number }) {
   return (
     <g>
       <ellipse cx={base[0]} cy={base[1]} rx={46} ry={23} fill="rgba(0,0,0,0.32)" />
-      <Cube x={arm.x} y={arm.y} z={z} w={0.1} d={0.1} h={0.04} color={METAL_D} />
+      <Cube iso={iso} x={arm.x} y={arm.y} z={z} w={0.1} d={0.1} h={0.04} color={METAL_D} />
       <polygon points={pts(hex)} fill={METAL} stroke={METAL_D} strokeWidth={1.2} />
       <line {...line(sh, elbow)} stroke={METAL} strokeWidth={9} strokeLinecap="round" />
       <line {...line(elbow, wrist)} stroke={METAL} strokeWidth={8} strokeLinecap="round" />
@@ -114,18 +122,18 @@ function ArmGlyph({ arm, z }: { arm: CompareSetup['arm']; z: number }) {
 }
 
 /** aluminium-extrusion post with mounting plate */
-function PostGlyph({ post, z }: { post: CompareSetup['post']; z: number }) {
+function PostGlyph({ iso, post, z }: { iso: Proj; post: CompareSetup['post']; z: number }) {
   const top = z + post.h;
   return (
     <g>
-      <Cube x={post.x} y={post.y} z={z} w={0.03} d={0.03} h={post.h} color="oklch(0.58 0.006 250)" />
-      <Cube x={post.x} y={post.y} z={top} w={0.06} d={0.06} h={0.012} color="oklch(0.5 0.006 250)" />
+      <Cube iso={iso} x={post.x} y={post.y} z={z} w={0.03} d={0.03} h={post.h} color="oklch(0.58 0.006 250)" />
+      <Cube iso={iso} x={post.x} y={post.y} z={top} w={0.06} d={0.06} h={0.012} color="oklch(0.5 0.006 250)" />
     </g>
   );
 }
 
 /** D435i camera body */
-function CameraGlyph({ camera }: { camera: CompareSetup['camera'] }) {
+function CameraGlyph({ iso, camera }: { iso: Proj; camera: CompareSetup['camera'] }) {
   const p = iso(camera.x, camera.y, camera.z);
   return (
     <g transform={`translate(${p[0]},${p[1]})`}>
@@ -137,8 +145,9 @@ function CameraGlyph({ camera }: { camera: CompareSetup['camera'] }) {
   );
 }
 
-export function SceneMap({ setup, isDarkMode }: { setup: CompareSetup; isDarkMode: boolean }): JSX.Element {
+export function SceneMap({ setup, isDarkMode, az = Math.PI / 4, el = 0.62 }: { setup: CompareSetup; isDarkMode: boolean; az?: number; el?: number }): JSX.Element {
   const { table, post, camera, arm, blocks } = setup;
+  const iso = makeProj(az, el); // rotatable: az/el come from the shared orbit so both panes turn together
   const hw = table.length / 2;
   const hd = table.width / 2;
   const z = table.railH;
@@ -180,7 +189,7 @@ export function SceneMap({ setup, isDarkMode }: { setup: CompareSetup; isDarkMod
 
       {/* reach envelope (violet, dashed) */}
       <path
-        d={isoRing(arm.x, arm.y, 0.33, z + 0.001)}
+        d={isoRing(iso, arm.x, arm.y, 0.33, z + 0.001)}
         fill={REACH}
         fillOpacity={0.06}
         stroke={REACH}
@@ -191,7 +200,7 @@ export function SceneMap({ setup, isDarkMode }: { setup: CompareSetup; isDarkMod
 
       {/* precision fan (cyan), +-95 deg around arm yaw */}
       <path
-        d={isoSector(arm.x, arm.y, 0.24, ((yaw - 95) * Math.PI) / 180, ((yaw + 95) * Math.PI) / 180, z + 0.002)}
+        d={isoSector(iso, arm.x, arm.y, 0.24, ((yaw - 95) * Math.PI) / 180, ((yaw + 95) * Math.PI) / 180, z + 0.002)}
         fill={PRECISION}
         fillOpacity={0.15}
         stroke={PRECISION}
@@ -203,11 +212,11 @@ export function SceneMap({ setup, isDarkMode }: { setup: CompareSetup; isDarkMod
 
       {/* blocks */}
       {blocks.map((b) => (
-        <Cube key={b.id} x={b.x} y={b.y} z={z} w={0.05} d={0.05} h={0.05} color={b.color === 'teal' ? TEAL : OBJECT} />
+        <Cube key={b.id} iso={iso} x={b.x} y={b.y} z={z} w={0.05} d={0.05} h={0.05} color={b.color === 'teal' ? TEAL : OBJECT} />
       ))}
 
-      <ArmGlyph arm={arm} z={z} />
-      <PostGlyph post={post} z={z} />
+      <ArmGlyph iso={iso} arm={arm} z={z} />
+      <PostGlyph iso={iso} post={post} z={z} />
 
       {/* frustum lines from camera to footprint corners + post top */}
       <g>
@@ -217,7 +226,7 @@ export function SceneMap({ setup, isDarkMode }: { setup: CompareSetup; isDarkMod
         <line {...line(camPt, iso(post.x, post.y, z + post.h))} stroke="oklch(0.5 0.01 250)" strokeWidth={2} opacity={0.5} />
       </g>
 
-      <CameraGlyph camera={camera} />
+      <CameraGlyph iso={iso} camera={camera} />
     </svg>
   );
 }
