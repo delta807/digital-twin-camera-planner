@@ -224,3 +224,10 @@ Radial audit (min Move/Aim/Duplicate/Delete):
   - wristcam: Move/Aim — bound to the arm (can't dup/delete)
   - object(physics box): Move/Aim/Hide — can't dup/delete (MuJoCo recompile); use props instead
   - mount post: (pending) not selectable yet
+
+## HUD refinement pass 9 (review)
+- [x] 3. Mount posts are selectable entities now (right/double-click + tree): radial Move/Duplicate
+      (+Delete for extras), Selection card X/Y/Height + dup/delete, per-post hide. Main camera post
+      also gets Move/Duplicate via right-click.
+- Decisions taken: #1 per-clone FK jog = next, on its own (articulated ghost rebuild); #9 compare =
+      two live 3D scenes sharing the NavCube camera (queued).
