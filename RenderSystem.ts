@@ -346,6 +346,7 @@ export class RenderSystem {
             const local = new THREE.Matrix4().multiplyMatrices(invBase, body.matrixWorld);
             const bodyClone = new THREE.Group();
             bodyClone.applyMatrix4(local);
+            bodyClone.userData.__bodyId = bodyId; // so a ghost can be re-posed per-body via the FK oracle
             for (const child of body.children) {
                 const mesh = child as THREE.Mesh;
                 if (!mesh.isMesh) continue;
@@ -362,7 +363,10 @@ export class RenderSystem {
         this.planningArmTemplate = template;
     }
 
-    setPlanningArmInstances(instances: ArmInstance[]) {
+    setPlanningArmInstances(
+        instances: ArmInstance[],
+        poseFor?: (joints: number[]) => { bodies: Map<number, THREE.Matrix4>; tcp: THREE.Matrix4 | null } | null,
+    ) {
         this.planningArmsGroup.clear();
         if (!this.planningArmTemplate) return;
         for (const instance of instances) {
@@ -372,6 +376,15 @@ export class RenderSystem {
             clone.rotation.z = instance.yaw;
             clone.userData.armId = instance.id;
             clone.userData.selectable = 'arm'; // pickable + carries its armId for per-arm outline
+            // Pose this ghost at its OWN joint angles via the FK oracle (else it shows the home pose).
+            const t = instance.joints && poseFor ? poseFor(instance.joints) : null;
+            if (t) {
+                clone.children.forEach((c) => {
+                    const bid = c.userData.__bodyId as number | undefined;
+                    if (typeof bid === 'number' && t.bodies.has(bid)) t.bodies.get(bid)!.decompose(c.position, c.quaternion, c.scale);
+                    else if (c.userData.isTcp && t.tcp) t.tcp.decompose(c.position, c.quaternion, c.scale);
+                });
+            }
             this.planningArmsGroup.add(clone);
         }
     }

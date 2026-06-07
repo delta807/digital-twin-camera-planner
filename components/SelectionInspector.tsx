@@ -63,6 +63,8 @@ export interface InspectorProps {
   // Migrated dock controls (#6): each renders inside the matching item's card.
   camera?: CameraCardControls;                                  // primary D435i optics/profile/toggles
   armReach?: { toggles: PlannerToggles; onToggle: (k: keyof PlannerToggles, v: boolean) => void; canRemove: boolean; onRemove: () => void };
+  // Per-arm joint jog: slider per actuated joint (primary drives live physics; others pose their ghost).
+  armJoints?: { info: { name: string; lo: number; hi: number }[]; values: number[]; onChange: (index: number, angle: number) => void };
   workcell?: { config: WorkcellConfig; onChange: (next: WorkcellConfig) => void }; // primary table rail/post
   /** Render as a flow card inside the reasoning sidebar instead of a floating panel. */
   inline?: boolean;
@@ -163,6 +165,20 @@ export function SelectionInspector(p: InspectorProps) {
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
             <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
           </div>
+          {p.armJoints && p.armJoints.info.length > 0 && (
+            <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-0.5`}>
+              <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Jog joints</span>
+              {p.armJoints.info.map((j, i) => (
+                <div key={j.name} className="flex items-center gap-2">
+                  <span className={`text-[9px] font-bold uppercase w-16 shrink-0 truncate ${subtle}`}>{j.name}</span>
+                  <input type="range" min={j.lo} max={j.hi} step={(j.hi - j.lo) / 240} value={p.armJoints!.values[i] ?? 0}
+                    onChange={(e) => p.armJoints!.onChange(i, parseFloat(e.target.value))}
+                    className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+                  <span className={`text-[9px] tabular-nums w-8 text-right ${subtle}`}>{((p.armJoints!.values[i] ?? 0) * 180 / Math.PI).toFixed(0)}°</span>
+                </div>
+              ))}
+            </div>
+          )}
           {p.armReach && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
               <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Reach views</span>

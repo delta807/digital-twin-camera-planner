@@ -156,6 +156,9 @@ export interface ArmInstance {
   /** Which workstation this arm belongs to (undefined = the primary worktop). Lets removing a
    *  station also remove its arm, so a station is a real "workstation clone" not just a table. */
   stationId?: string;
+  /** Per-arm joint angles (rad) for the actuated joints, so each SO-101 can be posed/jogged
+   *  independently. undefined = the home rest pose. Persisted with layout profiles. */
+  joints?: number[];
 }
 
 /** Length display unit. The sim is metre-native (MuJoCo); mm is offered for CAD familiarity. */

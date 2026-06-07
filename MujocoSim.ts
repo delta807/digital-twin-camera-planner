@@ -224,7 +224,7 @@ export class MujocoSim {
         });
         this.renderSys.extraPipHelpers = [this.planner.group, this.planner.gizmoHelper];
         this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
-        this.renderSys.setPlanningArmInstances(this.armInstances);
+        this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));
         this.planner.setArms(this.armInstances, this.basePose?.yaw ?? 0);
         this.planner.computeReachability();
 
@@ -254,7 +254,7 @@ export class MujocoSim {
     refreshGhostArms(): void {
         if (this.isFranka || !this.mjModel) return;
         this.renderSys.buildPlanningArmTemplate(this.armBodyIds, this.baseBodyId, this.currentTcpWorld());
-        this.renderSys.setPlanningArmInstances(this.armInstances);
+        this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));
     }
 
     /** Show/hide a scene entity from the object tree's eye toggle. The render loop only syncs body
@@ -419,9 +419,49 @@ export class MujocoSim {
 
     setArmInstances(instances: ArmInstance[]) {
         this.armInstances = instances.map((arm) => ({ ...arm }));
-        this.renderSys.setPlanningArmInstances(this.armInstances);
+        this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));
         // Ghost arms moving doesn't need a recompute — just re-transform the reach outlines.
         this.planner?.setArms(this.armInstances, this.basePose?.yaw ?? 0);
+    }
+
+    /** The actuated joints' display info (name + limits) for per-arm jog sliders. */
+    getArmJointInfo(): { name: string; lo: number; hi: number }[] {
+        return this.armJointDescs.map((j) => ({ name: j.name, lo: j.lo, hi: j.hi }));
+    }
+
+    /** Live-jog the PRIMARY physics arm's joint (writes qpos + ctrl so it holds through mj_step). */
+    setPrimaryJoint(index: number, angle: number) {
+        const m = this.mjModel, d = this.mjData; if (!m || !d) return;
+        const j = this.armJointDescs[index]; if (!j) return;
+        const a = Math.min(j.hi, Math.max(j.lo, angle));
+        d.qpos[j.qadr] = a; (d as unknown as { qvel: Float64Array }).qvel[j.dofadr] = 0;
+        if (j.actId >= 0) d.ctrl[j.actId] = a;
+        this.mujoco.mj_forward(m, d);
+    }
+
+    /** FK ORACLE: base-relative transforms of every arm body (+ the TCP) at the given joint angles,
+     *  computed by transiently posing the single MuJoCo arm and reading mjData, then restoring it.
+     *  Lets a GHOST arm render at its OWN pose without needing its own physics body chain. */
+    private bodyMatrix(bid: number, xpos: Float64Array, xquat: Float64Array): THREE.Matrix4 {
+        const p = new THREE.Vector3(xpos[bid * 3], xpos[bid * 3 + 1], xpos[bid * 3 + 2]);
+        const q = new THREE.Quaternion(xquat[bid * 4 + 1], xquat[bid * 4 + 2], xquat[bid * 4 + 3], xquat[bid * 4]);
+        return new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1));
+    }
+    armPoseTransforms(joints?: number[]): { bodies: Map<number, THREE.Matrix4>; tcp: THREE.Matrix4 | null } | null {
+        const m = this.mjModel, d = this.mjData; if (!m || !d || !joints) return null;
+        const qadrs = this.armJointDescs.map((j) => j.qadr);
+        const saved = qadrs.map((a) => d.qpos[a]);
+        for (let i = 0; i < qadrs.length; i++) if (typeof joints[i] === 'number') d.qpos[qadrs[i]] = joints[i];
+        this.mujoco.mj_forward(m, d);
+        const xpos = d.xpos as unknown as Float64Array, xquat = d.xquat as unknown as Float64Array;
+        const invBase = new THREE.Matrix4().copy(this.bodyMatrix(this.baseBodyId, xpos, xquat)).invert();
+        const bodies = new Map<number, THREE.Matrix4>();
+        for (const bid of this.armBodyIds) bodies.set(bid, new THREE.Matrix4().multiplyMatrices(invBase, this.bodyMatrix(bid, xpos, xquat)));
+        const tcpW = this.currentTcpWorld();
+        const tcp = tcpW ? new THREE.Matrix4().multiplyMatrices(invBase, tcpW) : null;
+        for (let i = 0; i < qadrs.length; i++) d.qpos[qadrs[i]] = saved[i]; // restore physics state
+        this.mujoco.mj_forward(m, d);
+        return { bodies, tcp };
     }
 
     /**

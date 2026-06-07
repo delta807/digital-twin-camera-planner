@@ -184,6 +184,7 @@ export function App() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
   // Brief "saved" confirmation after recording the current jogged pose as the default rest pose.
   const [restSaved, setRestSaved] = useState(false);
+  const [armJointInfo, setArmJointInfo] = useState<{ name: string; lo: number; hi: number }[]>([]);
   const handleSaveRestPose = () => {
     if (simRef.current?.saveRestPose().length) { setRestSaved(true); setTimeout(() => setRestSaved(false), 1800); }
   };
@@ -905,6 +906,7 @@ export function App() {
     sel.onPropMove = (id, x, y, z) => handlePropChange(id, { x, y, z });
     sel.onPropRotate = (id, yaw) => handlePropChange(id, { yaw });
     setTaskBodies(simRef.current?.getTaskBodies() ?? []); // populate the object tree
+    setArmJointInfo(simRef.current?.getArmJointInfo() ?? []); // joint names + limits for per-arm jog sliders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
@@ -1017,6 +1019,19 @@ export function App() {
     const primary = armInstancesRef.current.find((a) => a.primary);
     if (!sim || !primary) return;
     sim.relocateBase(primary.x, primary.y, primary.yaw).then(() => applyPlannerState());
+  };
+
+  // Per-arm joint jog (#1): primary drives the live physics arm; a non-primary arm stores its own
+  // joint angles, and its ghost re-renders at them via the FK oracle (independent pose).
+  const handleArmJoint = (armId: string, index: number, angle: number) => {
+    const arm = armInstancesRef.current.find((a) => a.id === armId);
+    if (!arm) return;
+    if (arm.primary) { simRef.current?.setPrimaryJoint(index, angle); return; }
+    const seed = arm.joints ?? simRef.current?.getArmJointPositions() ?? [];
+    const joints = [...seed]; joints[index] = angle;
+    const next = armInstancesRef.current.map((a) => (a.id === armId ? { ...a, joints } : a));
+    setArmInstances(next);
+    simRef.current?.setArmInstances(next); // re-pose this ghost at its new joints
   };
 
   const handleArmChange = (id: string, patch: Partial<ArmInstance>) => {
@@ -1635,6 +1650,12 @@ export function App() {
                   canRemove: !(armInstances.find((a) => a.id === selectedArmId)?.primary),
                   onRemove: () => handleRemoveArm(selectedArmId),
                 }}
+                armJoints={(() => {
+                  const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary);
+                  if (!a || armJointInfo.length === 0) return undefined;
+                  const values = a.joints ?? simRef.current?.getArmJointPositions() ?? [];
+                  return { info: armJointInfo, values, onChange: (i: number, ang: number) => handleArmJoint(a.id, i, ang) };
+                })()}
                 workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
                 extraCamera={(() => { const c = workcellConfig.extraCameras?.find((x) => x.id === selection?.cameraId); return c ? { x: c.x, y: c.y, z: c.z } : null; })()}
                 onExtraCamera={(patch) => { if (selection?.cameraId) handleExtraCameraChange(selection.cameraId, patch); }}
