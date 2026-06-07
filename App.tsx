@@ -674,12 +674,13 @@ export function App() {
         ...(isPrimary ? [] : [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem]),
       ];
     }
-    // camera: primary (own rig) gets Move/Aim; an extra camera also gets Duplicate/Delete.
+    // camera: Move/Aim/Duplicate for all; Delete only for an extra (the primary D435i is the base cam).
     const isExtra = !!selection?.cameraId;
     return [
       { id: 'move', label: 'Move', icon: MoveIcon, active: kind === 'camera' && !isExtra && dragMode === 'translate' },
       { id: 'aim', label: 'Aim', icon: RotateCw, active: kind === 'camera' && !isExtra && dragMode === 'rotate' },
-      ...(isExtra ? [{ id: 'duplicate', label: 'Duplicate', icon: Copy } as RadialItem, { id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem] : []),
+      { id: 'duplicate', label: 'Duplicate', icon: Copy } as RadialItem,
+      ...(isExtra ? [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem] : []),
     ];
   };
   const handleRadialSelect = (id: string) => {
@@ -701,7 +702,7 @@ export function App() {
     if (id === 'duplicate') {
       if (kind === 'arm') handleAddArm();
       else if (kind === 'station') { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }
-      else if (kind === 'camera' && selection?.cameraId) handleAddExtraCamera();
+      else if (kind === 'camera') handleAddExtraCamera(); // duplicate primary OR extra → a new overhead cam
       else if (kind === 'prop' && selection?.propId) handleCloneProp(selection.propId);
       return;
     }
