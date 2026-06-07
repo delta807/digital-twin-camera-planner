@@ -1308,11 +1308,11 @@ export function App() {
 
   // Edit a station like the arm — X/Y/Yaw + shape/size — live rebuild + station-cam re-sync. The
   // paired arm moves with the worktop as a unit (rotated about the centre).
-  const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number; sideExtents: [number, number, number, number]; cornerRadii: number[] }>) => {
+  const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number; sideExtents: [number, number, number, number]; cornerRadii: number[]; railLengths: number[] }>) => {
     const wc = workcellConfigRef.current;
-    // Editing the uniform Length/Width/Sides clears any per-rail override so the shape stays coherent.
+    // Editing the uniform Length/Width/Sides clears the per-rail overrides so the shape stays coherent.
     if (patch.length !== undefined || patch.width !== undefined || patch.shapeSides !== undefined) {
-      patch = { sideExtents: undefined, cornerRadii: undefined, ...patch } as typeof patch;
+      patch = { sideExtents: undefined, cornerRadii: undefined, railLengths: undefined, ...patch } as typeof patch;
     }
     // Pure move → edge-snap against neighbouring worktops so they click together.
     if ((patch.x !== undefined || patch.y !== undefined) && patch.yaw === undefined && patch.shapeSides === undefined && patch.length === undefined && patch.width === undefined) {
@@ -1335,6 +1335,7 @@ export function App() {
         ...(patch.width !== undefined ? { width: patch.width } : {}),
         ...('sideExtents' in patch ? { sideExtents: patch.sideExtents } : {}),
         ...('cornerRadii' in patch ? { cornerRadii: patch.cornerRadii } : {}),
+        ...('railLengths' in patch ? { railLengths: patch.railLengths } : {}),
       });
       // Task blocks (real physics cubes) ride the worktop too — live, no reload.
       if (dx || dy || dyaw) simRef.current?.transformTaskBodies(dx, dy, dyaw, prevOX, prevOY);
@@ -1849,8 +1850,8 @@ export function App() {
                 isDarkMode={isDarkMode}
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
                 station={(() => {
-                  if (selection?.stationId === 'primary') { const w = workcellConfig; return { x: w.originX ?? 0, y: w.originY ?? 0, yaw: w.yaw ?? 0, shapeSides: w.shapeSides, length: w.length, width: w.width, sideExtents: w.sideExtents, cornerRadii: w.cornerRadii }; }
-                  const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width, sideExtents: s.sideExtents, cornerRadii: s.cornerRadii } : null;
+                  if (selection?.stationId === 'primary') { const w = workcellConfig; return { x: w.originX ?? 0, y: w.originY ?? 0, yaw: w.yaw ?? 0, shapeSides: w.shapeSides, length: w.length, width: w.width, sideExtents: w.sideExtents, cornerRadii: w.cornerRadii, railLengths: w.railLengths }; }
+                  const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width, sideExtents: s.sideExtents, cornerRadii: s.cornerRadii, railLengths: s.railLengths } : null;
                 })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
                 onCloneStation={() => { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }}

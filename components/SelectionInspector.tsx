@@ -22,8 +22,8 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
-  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] } | null;
-  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] }) => void;
+  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number }) => void;
@@ -123,11 +123,6 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.station.y, on: (v) => p.onStation({ y: v }) },
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.station.yaw * 180 / Math.PI} on={(d) => p.onStation({ yaw: d * Math.PI / 180 })} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.station.x, min: -2, max: 2, unit: 'm', on: (v) => p.onStation({ x: v }) },
-            { k: 'Y', v: p.station.y, min: -2, max: 2, unit: 'm', on: (v) => p.onStation({ y: v }) },
-            { k: 'Yaw', v: p.station.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onStation({ yaw: v * Math.PI / 180 }) },
-          ]} />
           <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
             <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Shape &amp; size</span>
             <Sliders subtle={subtle} fields={[
@@ -161,11 +156,6 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.arm.y, on: (v) => p.onArm({ y: v }) },
             ]} />
           <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.arm.x, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onArm({ x: v }) },
-            { k: 'Y', v: p.arm.y, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onArm({ y: v }) },
-            { k: 'Yaw', v: p.arm.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onArm({ yaw: v * Math.PI / 180 }) },
-          ]} />
           <div className="flex gap-2">
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
             <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
@@ -204,11 +194,6 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.extraCamera.y, on: (v) => p.onExtraCamera({ y: v }) },
               { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
             ]} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.extraCamera.x, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ x: v }) },
-            { k: 'Y', v: p.extraCamera.y, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ y: v }) },
-            { k: 'Z', v: p.extraCamera.z, min: 0, max: 2, unit: 'm', on: (v) => p.onExtraCamera({ z: v }) },
-          ]} />
           <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
           <p className={`text-[9px] ${subtle}`}>Right-click → Aim to tilt/rotate the camera in the viewport.</p>
         </div>
@@ -222,11 +207,6 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.cameraPos.y, on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
               { k: 'Z', v: p.cameraPos.z, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
             ]} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.cameraPos.x, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onCamera(v, p.cameraPos!.y, p.cameraPos!.z) },
-            { k: 'Y', v: p.cameraPos.y, min: -0.6, max: 0.6, unit: 'm', on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
-            { k: 'Z', v: p.cameraPos.z, min: 0, max: 1.4, unit: 'm', on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
-          ]} />
           <div className="flex gap-2">
             <button onClick={p.onSnapToPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to post</button>
             <button onClick={p.onAimDown} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim down</button>
@@ -260,12 +240,7 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.prop.y, on: (v) => p.onProp!({ y: v }) },
               { k: 'Z', v: p.prop.z, on: (v) => p.onProp!({ z: v }) },
             ]} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.prop.x, min: -1, max: 1, unit: 'm', on: (v) => p.onProp!({ x: v }) },
-            { k: 'Y', v: p.prop.y, min: -1, max: 1, unit: 'm', on: (v) => p.onProp!({ y: v }) },
-            { k: 'Z', v: p.prop.z, min: 0, max: 1, unit: 'm', on: (v) => p.onProp!({ z: v }) },
-            { k: 'Yaw', v: p.prop.yaw * 180 / Math.PI, min: -180, max: 180, unit: '°', on: (v) => p.onProp!({ yaw: v * Math.PI / 180 }) },
-          ]} />
+          <Angle subtle={subtle} label="Yaw" deg={p.prop.yaw * 180 / Math.PI} on={(d) => p.onProp!({ yaw: d * Math.PI / 180 })} />
           <WMSlider label="Size" min={10} max={300} step={5} value={p.prop.size * 1000} on={(v) => p.onProp!({ size: v / 1000 })} subtle={subtle} unit="mm" />
           <label className="flex items-center justify-between gap-2 text-[10px] font-medium">
             <span>Colour</span>
@@ -310,10 +285,6 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'X', v: p.extraPost.x, on: (v) => p.onExtraPost!({ x: v }) },
               { k: 'Y', v: p.extraPost.y, on: (v) => p.onExtraPost!({ y: v }) },
             ]} />
-          <Sliders subtle={subtle} fields={[
-            { k: 'X', v: p.extraPost.x, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraPost!({ x: v }) },
-            { k: 'Y', v: p.extraPost.y, min: -2, max: 2, unit: 'm', on: (v) => p.onExtraPost!({ y: v }) },
-          ]} />
           <WMSlider label="Height" min={100} max={1400} step={20} value={p.extraPost.height * 1000} on={(v) => p.onExtraPost!({ height: v / 1000 })} subtle={subtle} unit="mm" />
           <div className="flex gap-2">
             {p.onCloneExtraPost && <button onClick={p.onCloneExtraPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Duplicate</button>}
@@ -355,20 +326,23 @@ export function SelectionInspector(p: InspectorProps) {
 
 const AXIS_HUE: Record<string, string> = { X: 'text-rose-500', Y: 'text-emerald-500', Z: 'text-sky-500', Yaw: 'text-amber-500' };
 
-/** Drag sliders per axis, each with a live value readout (auto-precision by range) + optional unit. */
+/** Drag sliders per axis, each with a big editable value box (auto-precision by range) + optional unit. */
 function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: number; max: number; unit?: string; on: (v: number) => void }[]; subtle: string }) {
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       {fields.map(({ k, v, min, max, unit, on }) => {
         const range = max - min;
         const digits = range >= 100 ? 0 : range >= 10 ? 1 : 2;
         return (
           <div key={k} className="flex items-center gap-2">
-            <span className={`text-[9px] font-bold uppercase w-11 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+            <span className={`text-[10px] font-bold uppercase w-10 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
             <input type="range" min={min} max={max} step={(max - min) / 240} value={v}
               onChange={(e) => on(parseFloat(e.target.value))}
-              className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
-            <span className={`text-[9px] tabular-nums w-12 text-right shrink-0 ${subtle}`}>{Number(v.toFixed(digits))}{unit ? ` ${unit}` : ''}</span>
+              className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
+            <input type="number" value={Number(v.toFixed(digits))} step={range >= 100 ? 1 : range >= 10 ? 0.1 : 0.01}
+              onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(d); }}
+              className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+            <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>{unit ?? ''}</span>
           </div>
         );
       })}
@@ -379,17 +353,30 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
 /** Per-rail worktop sizing. 4-sided → 4 independent edge distances from centre (Right/Left/Front/
  *  Back); N>4 → one radius per corner. Falls back to the uniform length/width until edited. */
 function RailSizers({ station, subtle, onStation }: {
-  station: { shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[] };
+  station: { shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] };
   subtle: string;
-  onStation: (p: { sideExtents?: [number, number, number, number]; cornerRadii?: number[] }) => void;
+  onStation: (p: { sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
 }) {
   const sides = Math.round(station.shapeSides);
+  const hx = station.length / 2, hy = station.width / 2;
+  // Local rim corners (mirrors BaseBuilder.localRim) — used for the per-rail default edge spans.
+  const corners: Array<[number, number]> = [];
   if (sides === 4) {
-    const e = station.sideExtents ?? [station.length / 2, station.length / 2, station.width / 2, station.width / 2];
+    const e = station.sideExtents;
+    const xMax = e ? e[0] : hx, xMin = e ? -e[1] : -hx, yMax = e ? e[2] : hy, yMin = e ? -e[3] : -hy;
+    corners.push([xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]);
+  } else {
+    const useR = !!station.cornerRadii && station.cornerRadii.length === sides;
+    for (let i = 0; i < sides; i++) { const a = -Math.PI / 2 + (i * Math.PI * 2) / sides; const r = useR ? station.cornerRadii![i] : hx; const ry = useR ? station.cornerRadii![i] : hy; corners.push([Math.cos(a) * r, Math.sin(a) * ry]); }
+  }
+  const edgeSpan = (i: number) => { const [x1, y1] = corners[i], [x2, y2] = corners[(i + 1) % corners.length]; return Math.hypot(x2 - x1, y2 - y1); };
+
+  const cornerUI = sides === 4 ? (() => {
+    const e = station.sideExtents ?? [hx, hx, hy, hy];
     const set = (i: number, v: number) => { const n = [...e] as [number, number, number, number]; n[i] = v / 1000; onStation({ sideExtents: n }); };
     return (
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
-        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · per side</span>
+        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Worktop · per side (from centre)</span>
         <Sliders subtle={subtle} fields={[
           { k: 'Right', v: e[0] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(0, v) },
           { k: 'Left', v: e[1] * 1000, min: 50, max: 900, unit: 'mm', on: (v) => set(1, v) },
@@ -398,15 +385,29 @@ function RailSizers({ station, subtle, onStation }: {
         ]} />
       </div>
     );
-  }
-  const def = station.length / 2;
-  const r = station.cornerRadii && station.cornerRadii.length === sides ? station.cornerRadii : Array.from({ length: sides }, () => def);
-  const set = (i: number, v: number) => { const n = [...r]; n[i] = v / 1000; onStation({ cornerRadii: n }); };
+  })() : (() => {
+    const r = station.cornerRadii && station.cornerRadii.length === sides ? station.cornerRadii : Array.from({ length: sides }, () => hx);
+    const set = (i: number, v: number) => { const n = [...r]; n[i] = v / 1000; onStation({ cornerRadii: n }); };
+    return (
+      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
+        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Worktop · corner from centre</span>
+        <Sliders subtle={subtle} fields={r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) }))} />
+      </div>
+    );
+  })();
+
+  // Independent rail-bar lengths (need not meet the corners). Default = the edge span.
+  const rl = Array.from({ length: corners.length }, (_, i) => (station.railLengths?.[i] && station.railLengths[i] > 0 ? station.railLengths[i] : edgeSpan(i)));
+  const setRail = (i: number, v: number) => { const n = [...rl]; n[i] = v / 1000; onStation({ railLengths: n }); };
+
   return (
-    <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
-      <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · per corner</span>
-      <Sliders subtle={subtle} fields={r.map((rv, i) => ({ k: `C${i + 1}`, v: rv * 1000, min: 50, max: 900, unit: 'mm', on: (v: number) => set(i, v) }))} />
-    </div>
+    <>
+      {cornerUI}
+      <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
+        <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · bar length</span>
+        <Sliders subtle={subtle} fields={rl.map((rv, i) => ({ k: `R${i + 1}`, v: rv * 1000, min: 50, max: 1600, unit: 'mm', on: (v: number) => setRail(i, v) }))} />
+      </div>
+    </>
   );
 }
 
