@@ -438,6 +438,26 @@ export class RenderSystem {
         return { position: this.camera.position.clone(), target: this.controls.target.clone() };
     }
 
+    /** Orbit the camera by (dAz, dEl) radians around the target — for dragging the NavCube to rotate
+     *  the view (Z-up spherical, matching the cube's az=atan2(x,y) / el=atan2(z,·) convention). */
+    orbit(dAz: number, dEl: number) {
+        const off = this.camera.position.clone().sub(this.controls.target);
+        const r = off.length();
+        if (r < 1e-6) return;
+        let az = Math.atan2(off.x, off.y);
+        let el = Math.atan2(off.z, Math.hypot(off.x, off.y));
+        az += dAz;
+        el = Math.max(-1.5533, Math.min(1.5533, el + dEl)); // clamp just shy of ±90° to avoid gimbal flip
+        const ce = Math.cos(el);
+        this.camera.position.set(
+            this.controls.target.x + Math.sin(az) * ce * r,
+            this.controls.target.y + Math.cos(az) * ce * r,
+            this.controls.target.z + Math.sin(el) * r,
+        );
+        this.camera.lookAt(this.controls.target);
+        this.controls.update();
+    }
+
     /** Snap the orbit camera to a named view (NavCube). Reuses the moveCameraTo animation; the
      *  worktop is at the origin so every preset looks at (0,0,0). */
     snapToView(preset: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso') {

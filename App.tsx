@@ -1528,6 +1528,7 @@ export function App() {
                 isDarkMode={isDarkMode}
                 dockOpen={dockOpen}
                 sidebarOpen={showSidebar}
+                onDragRotate={(dAz, dEl) => simRef.current?.renderSys.orbit(dAz, dEl)}
                 getOrbit={() => {
                   const rs = simRef.current?.renderSys;
                   if (!rs) return null;

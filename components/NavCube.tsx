@@ -12,6 +12,8 @@ interface Props {
   /** Live camera orientation: the vector from the orbit target to the camera (world, Z-up). The
    *  cube reads this each frame and rotates to mirror the 3D view — a real CAD view-cube. */
   getOrbit: () => { dx: number; dy: number; dz: number } | null;
+  /** Drag the cube to orbit the view by (dAz, dEl) radians. */
+  onDragRotate?: (dAz: number, dEl: number) => void;
   /** Sit right of the dock when it's open; tuck against the rail when it's closed (no dead gap). */
   dockOpen: boolean;
   /** When the right panel is open, sit just left of it; when closed, sit in the top-right corner
@@ -38,8 +40,20 @@ const FACES: Array<{ view: Exclude<ViewPreset, 'iso'>; label: string; t: string 
   { view: 'bottom', label: 'BOT',    t: 'rotateX(-90deg) translateZ(var(--h))' },
 ];
 
-export function NavCube({ onView, isDarkMode, getOrbit, dockOpen, sidebarOpen }: Props) {
+export function NavCube({ onView, isDarkMode, getOrbit, onDragRotate, dockOpen, sidebarOpen }: Props) {
   const cubeRef = useRef<HTMLDivElement>(null);
+  // Drag-to-orbit: track the pointer; if it moves, rotate the view and suppress the face click.
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const onDown = (e: React.PointerEvent) => { drag.current = { x: e.clientX, y: e.clientY, moved: false }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); };
+  const onMove = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 3) return; // tolerance so a click still snaps a face
+    d.moved = true; d.x = e.clientX; d.y = e.clientY;
+    onDragRotate?.(-dx * 0.01, dy * 0.01); // drag to "turn the cube" — horizontal = azimuth, vertical = elevation
+  };
+  const onUp = (e: React.PointerEvent) => { (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); };
+  const faceClick = (v: ViewPreset) => { if (drag.current?.moved) { drag.current = null; return; } drag.current = null; onView(v); };
 
   // Per-frame: rotate the cube to mirror the camera's azimuth/elevation.
   useEffect(() => {
@@ -68,19 +82,23 @@ export function NavCube({ onView, isDarkMode, getOrbit, dockOpen, sidebarOpen }:
   return (
     <div className={`absolute ${place} z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
       <div
-        style={{ width: 64, height: 64, perspective: 260, ['--h' as string]: '27px' }}
+        style={{ width: 64, height: 64, perspective: 260, ['--h' as string]: '27px', cursor: 'grab', touchAction: 'none' }}
         className="relative"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        title="Drag to orbit · click a face to snap"
       >
-        <div ref={cubeRef} style={{ position: 'absolute', inset: 0, transformStyle: 'preserve-3d', transition: 'transform 80ms linear' }}>
+        <div ref={cubeRef} style={{ position: 'absolute', inset: 0, transformStyle: 'preserve-3d', transition: 'transform 80ms linear', pointerEvents: 'none' }}>
           {FACES.map((f) => (
             <button
               key={f.view}
-              onClick={() => onView(f.view)}
+              onClick={() => faceClick(f.view)}
               title={f.label}
               className="nav-face"
               style={{
                 position: 'absolute', width: 54, height: 54, left: 5, top: 5,
-                transform: f.t, backfaceVisibility: 'hidden',
+                transform: f.t, backfaceVisibility: 'hidden', pointerEvents: 'auto',
                 background: faceBg, color: faceText, border: `1px solid ${faceBorder}`,
                 fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
