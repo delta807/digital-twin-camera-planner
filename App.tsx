@@ -1129,11 +1129,24 @@ export function App() {
   const reachSig = (arms: ArmInstance[]) => `${arms.length}|${arms.find((a) => a.primary)?.id ?? ''}|${reachResolutionRef.current}`;
   const reachSigRef = useRef('');
 
+  // Obstacle cylinders the reach sweep must route around: the mount posts + every OTHER arm. The
+  // sweep runs in the primary arm's world frame, so these are world XY. Makes the ROM obstacle-aware.
+  const collectObstacles = () => {
+    const obs: Array<{ x: number; y: number; r: number; zTop: number }> = [];
+    const bb = simRef.current?.renderSys.baseBuilder;
+    if (bb?.postAxis && bb.postAxis.height > 0) obs.push({ x: bb.postAxis.x, y: bb.postAxis.y, r: bb.postAxis.width / 2 + 0.01, zTop: bb.postAxis.height });
+    for (const ep of workcellConfigRef.current.extraPosts ?? []) obs.push({ x: ep.x, y: ep.y, r: 0.022, zTop: Math.max(0.08, ep.height) });
+    const primaryId = armInstancesRef.current.find((a) => a.primary)?.id;
+    for (const a of armInstancesRef.current) if (a.id !== primaryId) obs.push({ x: a.x, y: a.y, r: 0.09, zTop: 0.35 });
+    return obs;
+  };
+
   // Re-apply React's planner state to a freshly (re)created planner (called on scene reload).
   const applyPlannerState = () => {
     const p = planner();
     if (!p) return;
     p.setToggles(plannerTogglesRef.current);
+    p.setObstacles(collectObstacles());
     p.computeReachability(reachResolutionRef.current);
     reachSigRef.current = reachSig(armInstancesRef.current);
     if (plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
@@ -1213,6 +1226,7 @@ export function App() {
     setComputingReach(true);
     // Defer so the spinner paints before the synchronous FK sweep blocks the main thread.
     setTimeout(() => {
+      p.setObstacles(collectObstacles());
       p.computeReachability(reachResolutionRef.current);
       refreshBaseResult();
       setComputingReach(false);

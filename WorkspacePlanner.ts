@@ -47,6 +47,8 @@ const MAX_TILES = 1024;
 // base-rotation joint finely (BASE_STEPS) so every angular bin is well-populated.
 const ANG_BINS = 120;   // angular resolution of the fan (3° bins)
 const BASE_STEPS = 160; // base-rotation joint samples (dominates the angular sweep)
+const LINK_R = 0.035;   // arm link half-thickness (m) — capsule radius for collision tests
+const SEG_SAMPLES = 3;  // points sampled along each arm link segment for the collision test
 
 /**
  * WorkspacePlanner
@@ -94,6 +96,13 @@ export class WorkspacePlanner {
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
   lastBaseResult: { x: number; y: number; covered: number; total: number } | null = null;
+
+  /** Obstacle cylinders (world XY, z 0→zTop) the arm must not pass through — the camera/mount posts
+   *  and other arms. Sweep configs whose links collide are dropped, so the ROM excludes regions the
+   *  arm can't actually reach because something is in the way. World-frame, so accurate for the swept
+   *  (primary) base; the base-relative cells are then reused for placement. */
+  private obstacles: Array<{ x: number; y: number; r: number; zTop: number }> = [];
+  private armBodies: number[] | null = null; // memoized arm subtree body ids (chain under baseBodyId)
 
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
@@ -188,6 +197,54 @@ export class WorkspacePlanner {
   // angular spread; the remaining joints at `resolution`. Each accepted TCP fills two things:
   //   • cells (reachCells / reachCellsMax) — used by base-placement + layout set-cover, and
   //   • the radial profiles (radMax / radPrec) — used to draw the clean fan outline.
+  /** Set the obstacle cylinders considered by the reach sweep (posts + other arms). */
+  setObstacles(obs: Array<{ x: number; y: number; r: number; zTop: number }>) { this.obstacles = obs; }
+
+  /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose
+   *  swept geometry we collision-test. Memoised; falls back to [] if body_parentid isn't exposed. */
+  private getArmBodies(): number[] {
+    if (this.armBodies) return this.armBodies;
+    const par = this.cfg.model.body_parentid as Int32Array | undefined;
+    const ids: number[] = [];
+    if (par) {
+      const nb = this.cfg.model.nbody;
+      for (let b = 1; b < nb; b++) {
+        for (let p = b, g = 0; p > 0 && g < 64; p = par[p], g++) { if (p === this.cfg.baseBodyId) { ids.push(b); break; } }
+      }
+    }
+    this.armBodies = ids;
+    return ids;
+  }
+
+  /** Does the arm (in its current scratch pose) collide with any obstacle? Each link is the segment
+   *  from a body to its parent (capsule radius LINK_R); obstacles are vertical cylinders. Cheap:
+   *  a few sampled points per link vs each cylinder in XY, gated to the cylinder's height. */
+  private armCollides(d: MujocoData): boolean {
+    if (this.obstacles.length === 0) return false;
+    const par = this.cfg.model.body_parentid as Int32Array | undefined;
+    const ids = this.getArmBodies();
+    const xp = d.xpos;
+    // Fallback when the body tree isn't available: a single base→TCP capsule.
+    const segs: Array<[number, number, number, number, number, number]> = [];
+    if (par && ids.length) {
+      for (const b of ids) { const pb = par[b]; segs.push([xp[pb * 3], xp[pb * 3 + 1], xp[pb * 3 + 2], xp[b * 3], xp[b * 3 + 1], xp[b * 3 + 2]]); }
+    } else {
+      const bb = this.cfg.baseBodyId, t = this.cfg.tcpSiteId;
+      segs.push([xp[bb * 3], xp[bb * 3 + 1], xp[bb * 3 + 2], d.site_xpos[t * 3], d.site_xpos[t * 3 + 1], d.site_xpos[t * 3 + 2]]);
+    }
+    for (const [ax, ay, az, bx, by, bz] of segs) {
+      for (let s = 0; s <= SEG_SAMPLES; s++) {
+        const f = s / SEG_SAMPLES, px = ax + (bx - ax) * f, py = ay + (by - ay) * f, pz = az + (bz - az) * f;
+        for (const o of this.obstacles) {
+          if (pz < -0.02 || pz > o.zTop + 0.02) continue;
+          const dx = px - o.x, dy = py - o.y, rr = o.r + LINK_R;
+          if (dx * dx + dy * dy < rr * rr) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   computeReachability(resolution = 9) {
     const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
     if (sweptJoints.length === 0) return;
@@ -221,6 +278,7 @@ export class WorkspacePlanner {
             scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1));
           }
           mujoco.mj_forward(model, scratch);
+          if (this.armCollides(scratch)) continue; // a link would hit a post / another arm — not reachable
           const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
           if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
           const tx = scratch.site_xpos[tcpSiteId * 3];
