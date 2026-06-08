@@ -80,6 +80,18 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
       viridis binary, % covered. overhead 80% / wrist 7% / combined 82%. DONE (this commit).
 - All three render from the LIVE layout with per-figure PNG export. ✅ Feature complete.
 
+## 9-item batch (in progress)
+- [x] #1 (answer) footage = Camera Feeds panel (SENSOR VIEW/WRIST CAM); analysis = dock "Analysis & export".
+- [x] #5 non-primary arms now show in overhead D435i footage (b3ef340) — dropped planningArmsGroup from pipHide.
+- [x] #4 undo instant (no resweep, was a >20s crash) + layout persists across refresh, history cap 20,
+      IRL auto-load gated to fresh sessions, dedup no-op pushes (369268f). VERIFIED.
+- [ ] #2 delete primary arm / workstation / mount post.
+- [ ] #3 new arms spawn at the ACTIVE/latest workstation, not the primary.
+- [ ] #7 keep additional workstations within bounds.
+- [ ] #8 workstation AREA as an adjustable param.
+- [ ] #9 rail linking R1=R2 / R3=R4 — BOTH: type-a-name in field + chain button + visual link badge + unlink.
+- [ ] #6 NEW third "Metrics" card: workstation area, % ROM coverage of worktop, inter-arm ROM overlap %.
+
 ## Backlog (parked)
 - [ ] **Multi-select (pairs + contextual actions).** Cmd/ctrl-click a SECOND object, both
       outlined, contextual action bar for recognized pairs (arm+rail → snap-to-rail,
