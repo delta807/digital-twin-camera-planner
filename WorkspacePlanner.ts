@@ -182,25 +182,28 @@ export class WorkspacePlanner {
   }
 
   /**
-   * Reach-weighted mean direction of the graspable (precision) fan, in the arm's LOCAL frame
-   * (base at origin, yaw 0). This is "which way the arm actually reaches" derived from the live
-   * MuJoCo sweep — so callers can face a snapped arm INTO the table without hardcoding the
-   * model's base-orientation convention. Falls back to the full envelope, then 0.
+   * Forward direction of the graspable (precision) fan, in the arm's LOCAL frame (base at origin,
+   * yaw 0) — the angular BISECTOR of the occupied bins. Each occupied bin counts equally (NOT
+   * radius-weighted), so a slightly-longer reach on one flank doesn't tilt "forward" by a few
+   * degrees (which made a snapped arm sit at e.g. 187° instead of a clean 180°). Derived from the
+   * live sweep so we never hardcode the model's base-orientation convention; falls back to the full
+   * envelope, then 0.
    */
-  localForwardAngle(): number {
-    const meanDir = (rad: Radial): [number, number] => {
-      let sx = 0, sy = 0;
-      for (let b = 0; b < ANG_BINS; b++) {
-        const r = rad.rMax[b];
-        if (!isFinite(r) || r <= 0) continue;
-        const theta = -Math.PI + ((b + 0.5) / ANG_BINS) * 2 * Math.PI;
-        sx += r * Math.cos(theta); sy += r * Math.sin(theta);
-      }
-      return [sx, sy];
-    };
-    let [sx, sy] = meanDir(this.radPrec);
-    if (sx === 0 && sy === 0) [sx, sy] = meanDir(this.radMax);
-    return sx === 0 && sy === 0 ? 0 : Math.atan2(sy, sx);
+  /** Cached: the arm's reach direction at base-rotation 0, yaw 0 (a fixed model property — NOT
+   *  obstacle/pose dependent). Computed once from a single FK; used to face a snapped arm inward. */
+  private modelForward: number | null = null;
+  localForwardAngle(): number { return this.modelForward ?? 0; }
+  /** At base-rotation 0 the TCP's azimuth is the model's forward for ANY pitch/elbow (those change
+   *  reach + height, not azimuth), so one FK at a mid-range pose gives it exactly + obstacle-free. */
+  private computeModelForward(scratch: MujocoData) {
+    const { mujoco, model, sweptJoints, tcpSiteId, baseBodyId } = this.cfg;
+    this.setSweepBase(0, 0, 0); // base at origin, yaw 0 → reads in the local frame
+    scratch.qpos[sweptJoints[0].qposAdr] = 0;
+    for (const sj of sweptJoints.slice(1)) scratch.qpos[sj.qposAdr] = (sj.lo + sj.hi) / 2;
+    mujoco.mj_forward(model, scratch);
+    const dx = scratch.site_xpos[tcpSiteId * 3] - scratch.xpos[baseBodyId * 3];
+    const dy = scratch.site_xpos[tcpSiteId * 3 + 1] - scratch.xpos[baseBodyId * 3 + 1];
+    if (Math.hypot(dx, dy) > 1e-3) this.modelForward = Math.atan2(dy, dx);
   }
 
   // ── Forward reachability: sweep joints on a scratch MjData ──
@@ -321,6 +324,7 @@ export class WorkspacePlanner {
     const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
     try {
       for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
+      if (this.modelForward == null) this.computeModelForward(scratch); // once: the model's forward axis
       this.armRadials.clear();
       this.armBlocked.clear();
       this.lastBlocked = null;
