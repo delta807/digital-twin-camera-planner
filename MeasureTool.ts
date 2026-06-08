@@ -67,7 +67,7 @@ export class MeasureTool {
   private mode: MeasureMode = 'point';
   private prevCursor = '';
   private pending: { point: THREE.Vector3; marker: THREE.Mesh } | null = null;
-  private pendingObj: { mesh: THREE.Mesh; marker: THREE.Mesh } | null = null;
+  private pendingObj: { mesh: THREE.Mesh; owner: THREE.Object3D; marker: THREE.Mesh } | null = null;
   private entries: Entry[] = [];
   private readonly raycaster = new THREE.Raycaster();
   private readonly downPos = new THREE.Vector2();
@@ -204,11 +204,12 @@ export class MeasureTool {
     const hit = this.raycast(e);
     if (!hit) return;
     const mesh = hit.object as THREE.Mesh;
+    const owner = ownerOf(mesh);
     if (!this.pendingObj) {
       const marker = this.makeMarker(hit.point.clone(), KIND_COLOR.gap);
       this.group.add(marker);
-      this.pendingObj = { mesh, marker };
-    } else if (mesh !== this.pendingObj.mesh) {
+      this.pendingObj = { mesh, owner, marker };
+    } else if (owner !== this.pendingObj.owner) { // a different OBJECT, not just a different sub-mesh of the same arm
       const { a, b } = minMeshDistance(this.pendingObj.mesh, mesh);
       this.addMeasurement(a, b, 'gap');
       this.clearPending();
@@ -410,7 +411,9 @@ function detectCircles(verts: THREE.Vector3[]): Array<{ center: THREE.Vector3; r
     for (const v of verts) { const k = Math.round(v.getComponent(ax) * 1000); (buckets.get(k) ?? buckets.set(k, []).get(k)!).push(v); }
     const other = [0, 1, 2].filter((a) => a !== ax);
     for (const pts of buckets.values()) {
-      if (pts.length < 8) continue;
+      // Need MANY coplanar points: a faceted cylinder rim has ≥~24, while a regular-polygon
+      // worktop (4–8 sides) also has equidistant corners — those must NOT read as a circle.
+      if (pts.length < 16) continue;
       const center = pts.reduce((acc, p) => acc.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
       const radii = pts.map((p) => p.distanceTo(center));
       const r = radii.reduce((a, b) => a + b, 0) / radii.length;
@@ -418,6 +421,12 @@ function detectCircles(verts: THREE.Vector3[]): Array<{ center: THREE.Vector3; r
       if (Math.max(...radii.map((x) => Math.abs(x - r))) / r > 0.12) continue; // not equidistant → not a circle
       // Both in-plane extents must span the diameter-ish, else it's a collinear row of points.
       if (other.some((a) => { const cs = pts.map((p) => p.getComponent(a)); return Math.max(...cs) - Math.min(...cs) < r; })) continue;
+      // Angular uniformity: sorted in-plane angles must have no large gap — a true rim is evenly
+      // spaced (small steps); a sparse/clustered ring (or a low-N polygon) leaves a big gap.
+      const angs = pts.map((p) => Math.atan2(p.getComponent(other[1]) - center.getComponent(other[1]), p.getComponent(other[0]) - center.getComponent(other[0]))).sort((a, b) => a - b);
+      let maxGap = angs[0] + Math.PI * 2 - angs[angs.length - 1];
+      for (let i = 1; i < angs.length; i++) maxGap = Math.max(maxGap, angs[i] - angs[i - 1]);
+      if (maxGap > Math.PI / 6) continue; // > 30° gap → not a full, evenly-sampled circle
       // Dedupe near-coincident centres found via different axes.
       if (out.some((c) => c.center.distanceTo(center) < r * 0.2)) continue;
       out.push({ center, radius: r });
@@ -427,6 +436,17 @@ function detectCircles(verts: THREE.Vector3[]): Array<{ center: THREE.Vector3; r
 }
 
 // ───────────────────────── object-to-object minimum gap ─────────────────────────
+
+/** The logical OBJECT a hit mesh belongs to: the highest ancestor tagged selectable (an arm's many
+ *  link meshes all resolve to the one arm root; a task cube resolves to its own body). Used so the
+ *  gap tool treats two links of the SAME arm as one object, not two. */
+function ownerOf(o: THREE.Object3D): THREE.Object3D {
+  let owner = o;
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.userData?.selectable || n.userData?.bodyID !== undefined) owner = n;
+  }
+  return owner;
+}
 
 /** Minimum distance between two meshes: nearest vertex-pair, then refined by the closest point on
  *  each mesh's triangles near that pair. Good enough for layout-clearance checks at workcell scale. */
