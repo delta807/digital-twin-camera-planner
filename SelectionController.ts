@@ -62,6 +62,10 @@ export class SelectionController {
   private readonly vCenter = new THREE.Vector3();
   private enabled = true;
   private skipArm = false;
+  // Magnetic snap targets (world): rail midpoints / corners / post tops. While dragging, the gizmo
+  // snaps to the nearest within SNAP_DIST and a coloured marker flags it (FreeCAD/Fusion inference).
+  private snapTargets: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }> = [];
+  private snapMarker!: THREE.Mesh;
   private pointerDown: { x: number; y: number } | null = null;
 
   onChange?: (sel: SelectionInfo | null) => void;
@@ -117,6 +121,15 @@ export class SelectionController {
     this.scene.add(this.group);
     this.scene.add(this.proxy);
 
+    // Drag-time magnetic-snap marker (flat ring on the ground, recoloured per target kind).
+    this.snapMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.018, 0.03, 28),
+      new THREE.MeshBasicMaterial({ color: 0x2dd4bf, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthTest: false }),
+    );
+    this.snapMarker.renderOrder = 1002;
+    this.snapMarker.visible = false;
+    this.scene.add(this.snapMarker);
+
     // Yellow unit-box outline (depth-test off so it reads through geometry).
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     this.outline = new THREE.LineSegments(
@@ -137,9 +150,12 @@ export class SelectionController {
     this.control.attach(this.proxy);
     this.control.enabled = false;
     this.control.addEventListener('dragging-changed', (e) => {
-      this.orbit.enabled = !(e as unknown as { value: boolean }).value;
+      const dragging = (e as unknown as { value: boolean }).value;
+      this.orbit.enabled = !dragging;
+      if (!dragging) this.snapMarker.visible = false; // clear the snap glyph when the drag ends
     });
     this.control.addEventListener('objectChange', () => {
+      this.maybeSnap(); // magnetic snap (mutates proxy.position) before the write-backs read it
       if (this.selected?.kind === 'arm') {
         if (this.armAim) this.onArmRotate?.(this.selected.armId, this.proxy.rotation.z);
         else this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y);
@@ -265,6 +281,36 @@ export class SelectionController {
     this.enabled = on;
     this.pointerDown = null; // never carry a half-finished press across an enable/disable
     if (!on) this.deselect();
+  }
+
+  /** Candidate magnetic-snap targets (world coords): rail midpoints, corners, post tops. */
+  setSnapTargets(t: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }>) { this.snapTargets = t; }
+
+  /** During a translate drag, snap the gizmo to the nearest relevant target within SNAP_DIST and
+   *  show a marker (cyan = rail midpoint, amber = corner, violet = post top). Cameras snap to post
+   *  tops (XYZ); everything else snaps on the floor (XY). No-op while aiming/rotating. */
+  private maybeSnap() {
+    const k = this.selected?.kind;
+    const aiming = this.armAim || this.stationAim || this.cameraAim || this.objectAim || this.propAim || this.wristAim;
+    if (aiming || !this.snapTargets.length || !k) { this.snapMarker.visible = false; return; }
+    const wantPost = k === 'camera'; // cameras mount on post tops; floor objects on rails/corners
+    const px = this.proxy.position.x, py = this.proxy.position.y;
+    let best: { x: number; y: number; z?: number; kind: string } | null = null, bestD = Infinity;
+    for (const t of this.snapTargets) {
+      if (wantPost ? t.kind !== 'post' : t.kind === 'post') continue;
+      const d = Math.hypot(t.x - px, t.y - py);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    const SNAP_DIST = 0.045;
+    if (best && bestD < SNAP_DIST) {
+      this.proxy.position.x = best.x; this.proxy.position.y = best.y;
+      if (wantPost && best.z != null) this.proxy.position.z = best.z;
+      (this.snapMarker.material as THREE.MeshBasicMaterial).color.setHex(best.kind === 'mid' ? 0x2dd4bf : best.kind === 'corner' ? 0xf59e0b : 0x8b5cf6);
+      this.snapMarker.position.set(best.x, best.y, (best.z ?? 0) + 0.012);
+      this.snapMarker.visible = true;
+    } else {
+      this.snapMarker.visible = false;
+    }
   }
 
   /** Jog/pose mode: keep selection live for everything EXCEPT the arm (whose link clicks drive
@@ -678,6 +724,8 @@ export class SelectionController {
     this.control.dispose();
     this.outline.geometry.dispose();
     (this.outline.material as THREE.Material).dispose();
-    this.scene.remove(this.group, this.proxy);
+    this.snapMarker.geometry.dispose();
+    (this.snapMarker.material as THREE.Material).dispose();
+    this.scene.remove(this.group, this.proxy, this.snapMarker);
   }
 }

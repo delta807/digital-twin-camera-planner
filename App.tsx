@@ -853,6 +853,23 @@ export function App() {
   const selKey = selection ? `${selection.kind}:${selection.bodyId ?? selectedArmId ?? ''}` : null;
   useEffect(() => { setRodSnap(null); }, [selKey]);
   const rods = (): Rod[] => simRef.current?.renderSys.baseBuilder.rods ?? [];
+  // Feed the SelectionController the magnetic-snap targets (rail midpoints + corners + post tops) so
+  // dragging an object snaps to them with a glyph (FreeCAD/Fusion inference). Recompute on layout change.
+  useEffect(() => {
+    const sel = simRef.current?.renderSys.selection; if (!sel) return;
+    const targets: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }> = [];
+    for (const rod of rods()) {
+      if (Math.abs(rod.b.z - rod.a.z) < 0.05 && rod.label.includes('Rail')) {
+        targets.push({ x: (rod.a.x + rod.b.x) / 2, y: (rod.a.y + rod.b.y) / 2, kind: 'mid' });
+        targets.push({ x: rod.a.x, y: rod.a.y, kind: 'corner' });
+      }
+    }
+    const bb = simRef.current?.renderSys.baseBuilder;
+    if (bb?.postAxis && bb.postAxis.height > 0) targets.push({ x: bb.postAxis.x, y: bb.postAxis.y, z: bb.postAxis.height, kind: 'post' });
+    for (const ep of workcellConfig.extraPosts ?? []) targets.push({ x: ep.x, y: ep.y, z: ep.height, kind: 'post' });
+    sel.setSnapTargets(targets);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workcellConfig, isLoading]);
   const getSelectedPos = (): THREE.Vector3 | null => {
     if (!selection) return null;
     if (selection.kind === 'camera' && cameraPos) return new THREE.Vector3(cameraPos.x, cameraPos.y, cameraPos.z);
