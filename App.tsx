@@ -1126,18 +1126,20 @@ export function App() {
   // The reach envelope is base-RELATIVE and depends only on the arm model (joint limits) + the
   // sweep resolution — NOT on the base pose or cube positions. So a signature of those is all we
   // need to decide whether an undo must re-run the (expensive ~116k-FK-call) sweep.
-  const reachSig = (arms: ArmInstance[]) => `${arms.length}|${arms.find((a) => a.primary)?.id ?? ''}|${reachResolutionRef.current}`;
+  // Per-arm obstacle reach depends on EVERY arm's pose (each arm is an obstacle for the others) +
+  // the posts, so the undo-skip signature must include all arm poses.
+  const reachSig = (arms: ArmInstance[]) => `${arms.map((a) => `${a.id}:${a.x.toFixed(3)},${a.y.toFixed(3)},${a.yaw.toFixed(3)}`).join('|')}|${reachResolutionRef.current}`;
   const reachSigRef = useRef('');
 
   // Obstacle cylinders the reach sweep must route around: the mount posts + every OTHER arm. The
   // sweep runs in the primary arm's world frame, so these are world XY. Makes the ROM obstacle-aware.
+  // Static post obstacles only — the planner adds each OTHER arm itself (per-arm sweeps), so the
+  // notch lands in the right frame for every arm.
   const collectObstacles = () => {
     const obs: Array<{ x: number; y: number; r: number; zTop: number }> = [];
     const bb = simRef.current?.renderSys.baseBuilder;
     if (bb?.postAxis && bb.postAxis.height > 0) obs.push({ x: bb.postAxis.x, y: bb.postAxis.y, r: bb.postAxis.width / 2 + 0.01, zTop: bb.postAxis.height });
     for (const ep of workcellConfigRef.current.extraPosts ?? []) obs.push({ x: ep.x, y: ep.y, r: 0.022, zTop: Math.max(0.08, ep.height) });
-    const primaryId = armInstancesRef.current.find((a) => a.primary)?.id;
-    for (const a of armInstancesRef.current) if (a.id !== primaryId) obs.push({ x: a.x, y: a.y, r: 0.09, zTop: 0.35 });
     return obs;
   };
 

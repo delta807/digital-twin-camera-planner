@@ -92,6 +92,10 @@ export class WorkspacePlanner {
   // min & max reachable radius. radMax = full envelope; radPrec = top-down graspable fan.
   private radMax = makeRadial();
   private radPrec = makeRadial();
+  // Per-arm radial profiles (each swept at its OWN base + obstacle set, so every arm's outline is
+  // obstacle-aware in its own frame). radMax/radPrec above mirror the PRIMARY arm (base placement +
+  // localForwardAngle read those).
+  private armRadials = new Map<string, { radMax: Radial; radPrec: Radial }>();
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -219,8 +223,8 @@ export class WorkspacePlanner {
   /** Does the arm (in its current scratch pose) collide with any obstacle? Each link is the segment
    *  from a body to its parent (capsule radius LINK_R); obstacles are vertical cylinders. Cheap:
    *  a few sampled points per link vs each cylinder in XY, gated to the cylinder's height. */
-  private armCollides(d: MujocoData): boolean {
-    if (this.obstacles.length === 0) return false;
+  private armCollides(d: MujocoData, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>): boolean {
+    if (obstacles.length === 0) return false;
     const par = this.cfg.model.body_parentid as Int32Array | undefined;
     const ids = this.getArmBodies();
     const xp = d.xpos;
@@ -235,7 +239,7 @@ export class WorkspacePlanner {
     for (const [ax, ay, az, bx, by, bz] of segs) {
       for (let s = 0; s <= SEG_SAMPLES; s++) {
         const f = s / SEG_SAMPLES, px = ax + (bx - ax) * f, py = ay + (by - ay) * f, pz = az + (bz - az) * f;
-        for (const o of this.obstacles) {
+        for (const o of obstacles) {
           if (pz < -0.02 || pz > o.zTop + 0.02) continue;
           const dx = px - o.x, dy = py - o.y, rr = o.r + LINK_R;
           if (dx * dx + dy * dy < rr * rr) return true;
@@ -245,62 +249,89 @@ export class WorkspacePlanner {
     return false;
   }
 
+  /** Move the (welded) arm Base body in the model to (x,y,yaw) so the next sweep happens AT that
+   *  arm's mount — same edit relocateBase makes, but on the planner's model for the scratch sweep. */
+  private setSweepBase(x: number, y: number, yaw: number) {
+    const b = this.cfg.baseBodyId;
+    const bp = this.cfg.model.body_pos as unknown as Float32Array;
+    const bq = this.cfg.model.body_quat as unknown as Float32Array;
+    bp[b * 3] = x; bp[b * 3 + 1] = y; // z left at its loaded value (arm on the floor)
+    const h = yaw * 0.5;
+    bq[b * 4] = Math.cos(h); bq[b * 4 + 1] = 0; bq[b * 4 + 2] = 0; bq[b * 4 + 3] = Math.sin(h);
+  }
+
+  /** Obstacles an arm must route around = the static posts + every OTHER arm's footprint. */
+  private obstaclesFor(armId: string): Array<{ x: number; y: number; r: number; zTop: number }> {
+    const obs = [...this.obstacles];
+    for (const a of this.arms) if (a.id !== armId) obs.push({ x: a.x, y: a.y, r: 0.09, zTop: 0.35 });
+    return obs;
+  }
+
+  /** One forward-kinematics sweep with the base WHERE IT CURRENTLY IS in the model + the given
+   *  obstacles. Returns base-relative cells + radial profiles in the arm's local frame (yaw 0). */
+  private sweepArm(scratch: MujocoData, resolution: number, yaw: number, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>) {
+    const { mujoco, model, sweptJoints, tcpSiteId } = this.cfg;
+    mujoco.mj_forward(model, scratch);
+    const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
+    const radMax = makeRadial(), radPrec = makeRadial();
+    const cells = new Map<string, number>(), cellsMax = new Map<string, number>();
+    const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
+    const nArm = Math.max(2, resolution), nBase = Math.max(nArm, BASE_STEPS);
+    const armTotal = Math.pow(nArm, armJoints.length);
+    const idx = new Array(armJoints.length).fill(0);
+    const cos = Math.cos(-yaw), sin = Math.sin(-yaw); // un-rotate hits into the arm's local frame
+    for (let bi = 0; bi < nBase; bi++) {
+      scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
+      for (let c = 0; c < armTotal; c++) {
+        let rem = c;
+        for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
+        for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); }
+        mujoco.mj_forward(model, scratch);
+        if (this.armCollides(scratch, obstacles)) continue; // a link would hit a post / another arm
+        const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
+        if (tz < 0 || tz > Z_BAND) continue;
+        const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
+        const key = Math.round((tx - baseX) / CELL) + ',' + Math.round((ty - baseY) / CELL);
+        cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1);
+        const ox = tx - baseX, oy = ty - baseY;
+        const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
+        accumRadial(radMax, Math.atan2(ly, lx), Math.hypot(lx, ly));
+        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
+        cells.set(key, (cells.get(key) ?? 0) + 1);
+        accumRadial(radPrec, Math.atan2(ly, lx), Math.hypot(lx, ly));
+      }
+    }
+    return { radMax, radPrec, cells, cellsMax, baseX, baseY };
+  }
+
   computeReachability(resolution = 9) {
-    const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
+    const { mujoco, model, sweptJoints, zeroQposAdr } = this.cfg;
     if (sweptJoints.length === 0) return;
     const scratch: MujocoData = new mujoco.MjData(model);
+    const b = this.cfg.baseBodyId;
+    const bp = model.body_pos as unknown as Float32Array, bq = model.body_quat as unknown as Float32Array;
+    const savedP = [bp[b * 3], bp[b * 3 + 1], bp[b * 3 + 2]];
+    const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
     try {
       for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
-      this.readBaseWorld(scratch);
-
-      this.reachCells.clear();
-      this.reachCellsMax.clear();
-      resetRadial(this.radMax);
-      resetRadial(this.radPrec);
-
-      const base = sweptJoints[0];
-      const armJoints = sweptJoints.slice(1);
-      const nArm = Math.max(2, resolution);
-      const nBase = Math.max(nArm, BASE_STEPS);
-      const armTotal = Math.pow(nArm, armJoints.length);
-      const idx = new Array(armJoints.length).fill(0);
-      // Un-rotate world hits by the sweep yaw to get the arm's LOCAL frame (so each arm's outline
-      // can be re-rotated to its own yaw later).
-      const cos = Math.cos(-this.primaryYaw), sin = Math.sin(-this.primaryYaw);
-
-      for (let bi = 0; bi < nBase; bi++) {
-        scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
-        for (let c = 0; c < armTotal; c++) {
-          let rem = c;
-          for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
-          for (let j = 0; j < armJoints.length; j++) {
-            const sj = armJoints[j];
-            scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1));
-          }
-          mujoco.mj_forward(model, scratch);
-          if (this.armCollides(scratch)) continue; // a link would hit a post / another arm — not reachable
-          const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
-          if (tz < 0 || tz > Z_BAND) continue; // only count reaching down toward the worktop
-          const tx = scratch.site_xpos[tcpSiteId * 3];
-          const ty = scratch.site_xpos[tcpSiteId * 3 + 1];
-          const di = Math.round((tx - this.baseX) / CELL);
-          const dj = Math.round((ty - this.baseY) / CELL);
-          const key = di + ',' + dj;
-          // MAX envelope: every config that reaches worktop height (physically reachable).
-          this.reachCellsMax.set(key, (this.reachCellsMax.get(key) ?? 0) + 1);
-          // local polar (base at origin, yaw 0) → radial bin.
-          const ox = tx - this.baseX, oy = ty - this.baseY;
-          const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
-          accumRadial(this.radMax, Math.atan2(ly, lx), Math.hypot(lx, ly));
-          // PRECISION: also require the gripper approach to point roughly DOWN (graspable from
-          // above). approach = -localY of the tcp site; world-z component is -site_xmat[7], so
-          // "points down" ⇒ site_xmat[7] > cos(angle).
-          if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
-          this.reachCells.set(key, (this.reachCells.get(key) ?? 0) + 1);
-          accumRadial(this.radPrec, Math.atan2(ly, lx), Math.hypot(lx, ly));
+      this.armRadials.clear();
+      // Sweep each arm at its OWN base + obstacle set (DRY: the same sweepArm per arm). A single
+      // fallback sweep at the current base when no arm list is set yet.
+      const arms = this.arms.length ? this.arms : [{ id: '__single', x: savedP[0], y: savedP[1], yaw: this.primaryYaw, primary: true } as ArmInstance];
+      for (const arm of arms) {
+        this.setSweepBase(arm.x, arm.y, arm.yaw);
+        const r = this.sweepArm(scratch, resolution, arm.yaw, this.obstaclesFor(arm.id));
+        this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
+        if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
+          this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
+          this.radMax = r.radMax; this.radPrec = r.radPrec; this.baseX = r.baseX; this.baseY = r.baseY;
         }
       }
     } finally {
+      // Restore the base to where it was (the primary's live pose) so the live sim is untouched.
+      bp[b * 3] = savedP[0]; bp[b * 3 + 1] = savedP[1]; bp[b * 3 + 2] = savedP[2];
+      bq[b * 4] = savedQ[0]; bq[b * 4 + 1] = savedQ[1]; bq[b * 4 + 2] = savedQ[2]; bq[b * 4 + 3] = savedQ[3];
+      mujoco.mj_forward(model, scratch);
       scratch.delete();
     }
     this.renderReachTiles();
@@ -487,9 +518,6 @@ export class WorkspacePlanner {
     this.outlineGroup.clear();
     if (this.arms.length === 0) return;
 
-    const maxLocal = this.radialFan(this.radMax);
-    const precLocal = this.radialFan(this.radPrec);
-
     const addContour = (loops: Array<Array<[number, number]>>, arm: ArmInstance, color: number, linewidth: number, opacity: number, z: number) => {
       if (loops.length === 0) return;
       const c = Math.cos(arm.yaw), s = Math.sin(arm.yaw);
@@ -513,6 +541,10 @@ export class WorkspacePlanner {
     };
 
     this.arms.forEach((arm, i) => {
+      // Each arm draws from its OWN obstacle-aware sweep (fallback to the primary's if missing).
+      const rr = this.armRadials.get(arm.id);
+      const maxLocal = this.radialFan(rr?.radMax ?? this.radMax);
+      const precLocal = this.radialFan(rr?.radPrec ?? this.radPrec);
       addContour(maxLocal, arm, 0x9d8cc9, 1.5, 0.6, 0.006);  // max reach envelope (violet = "reach")
       addContour(precLocal, arm, WorkspacePlanner.ARM_PALETTE[i % WorkspacePlanner.ARM_PALETTE.length], 2.5, 0.95, 0.009); // precision
     });
