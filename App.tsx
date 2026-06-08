@@ -152,11 +152,28 @@ function nearestRod(p: THREE.Vector3, rods: Rod[]): { index: number; t: number; 
   return best;
 }
 
+// ── Working-layout persistence: the undo history (workcell + arms) survives a page refresh, so the
+// user never loses progress. Bounded to HISTORY_MAX so localStorage stays small + navigation instant.
+const PERSIST_KEY = 'dtcp.layoutHistory.v1';
+const HISTORY_MAX = 20;
+type PersistedLayout = { workcell: WorkcellConfig; arms: ArmInstance[] };
+function loadPersistedHistory(): { stack: PersistedLayout[]; idx: number } | null {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY); if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!Array.isArray(p?.stack) || !p.stack.length || !p.stack[p.idx]?.arms?.some((a: ArmInstance) => a.primary)) return null;
+    return { stack: p.stack, idx: Math.max(0, Math.min(p.idx, p.stack.length - 1)) };
+  } catch { return null; }
+}
+
 /**
  * Main Application Component
  */
 export function App() {
-  const containerRef = useRef<HTMLDivElement>(null); 
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Restore the last working layout once, before any state is initialized (null = fresh/default).
+  const persisted0 = useRef(loadPersistedHistory()).current;
+  const persistedCurrent = persisted0?.stack[persisted0.idx] ?? null;
   const simRef = useRef<MujocoSim | null>(null);      
   const isMounted = useRef(true);                     
   const mujocoModuleRef = useRef<MujocoModule | null>(null);          
@@ -337,8 +354,10 @@ export function App() {
     // Overhead camera pose (position + aim/roll + FOV).
     if (p.camera) simRef.current?.renderSys.cameraRig.applyPose(p.camera);
   };
-  // Auto-load the "IRL-layout" profile once on startup (the team's default arrangement), if present.
-  const didAutoLoadRef = useRef(false);
+  // Auto-load the "IRL-layout" profile once on startup (the team's default arrangement) — but ONLY
+  // for a fresh session. A persisted working layout (restored from localStorage) takes precedence so
+  // a refresh keeps the user's actual progress instead of snapping back to the team default.
+  const didAutoLoadRef = useRef(!!persisted0);
   useEffect(() => {
     if (isLoading || didAutoLoadRef.current) return;
     const p = profiles.find((x) => x.name === 'IRL-layout');
@@ -360,16 +379,17 @@ export function App() {
   // A short message shown in a centre overlay while a main-thread-blocking job runs (the FK reach
   // sweep), so users see "what's happening" instead of mistaking the freeze for lag.
   const [busyMsg, setBusyMsg] = useState<string | null>(null);
-  const [workcellConfig, setWorkcellConfig] = useState<WorkcellConfig>({ ...DEFAULT_WORKCELL_CONFIG });
+  const [workcellConfig, setWorkcellConfig] = useState<WorkcellConfig>(() => persistedCurrent?.workcell ?? { ...DEFAULT_WORKCELL_CONFIG });
   const workcellConfigRef = useRef(workcellConfig);
   workcellConfigRef.current = workcellConfig;
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [taskBodies, setTaskBodies] = useState<{ bodyId: number; name: string }[]>([]);
-  const [armInstances, setArmInstances] = useState<ArmInstance[]>([
+  const [armInstances, setArmInstances] = useState<ArmInstance[]>(() => persistedCurrent?.arms ?? [
     { id: 'so101-1', label: 'SO101 1', x: 0, y: 0, yaw: 0, primary: true },
   ]);
   const [selectedArmId, setSelectedArmId] = useState('so101-1');
-  const nextArmNumberRef = useRef(2);
+  // Next arm number starts past the highest restored arm so names don't collide after a refresh.
+  const nextArmNumberRef = useRef((persistedCurrent?.arms?.reduce((m, a) => Math.max(m, parseInt(a.label.replace(/\D/g, '') || '1', 10)), 1) ?? 1) + 1);
   const armInstancesRef = useRef(armInstances);
   armInstancesRef.current = armInstances;
   const primaryRelocateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1249,7 +1269,22 @@ export function App() {
   // coalesce into one step; discrete actions (add/move/delete) are their own steps. (Task-block
   // physics positions live in mjData, not React state, so those moves aren't tracked yet.)
   type LayoutSnap = { workcell: WorkcellConfig; arms: ArmInstance[]; task: TaskStateSnap | null };
-  const historyRef = useRef<{ stack: LayoutSnap[]; idx: number; lastTs: number }>({ stack: [], idx: -1, lastTs: 0 });
+  // Seed the timeline from the persisted layout so undo works (and survives refresh) from first paint.
+  const historyRef = useRef<{ stack: LayoutSnap[]; idx: number; lastTs: number }>(
+    persisted0 ? { stack: persisted0.stack.map((s) => ({ workcell: s.workcell, arms: s.arms, task: null })), idx: persisted0.idx, lastTs: 0 }
+               : { stack: [], idx: -1, lastTs: 0 });
+  // Persist the timeline (layout only — task-cube physics isn't tracked) to localStorage, debounced.
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistHistory = () => {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      try {
+        const h = historyRef.current;
+        const stack = h.stack.map((s) => ({ workcell: s.workcell, arms: s.arms }));
+        localStorage.setItem(PERSIST_KEY, JSON.stringify({ stack, idx: h.idx }));
+      } catch { /* quota / serialization — non-fatal, progress just isn't persisted this tick */ }
+    }, 400);
+  };
   const restoringRef = useRef(false);
   const [histVer, setHistVer] = useState(0);
   // Re-render ONLY when undo/redo availability flips — recording itself never forces a render (the
@@ -1267,12 +1302,17 @@ export function App() {
     const h = historyRef.current;
     const snap: LayoutSnap = { workcell: workcellConfigRef.current, arms: armInstancesRef.current, task: simRef.current?.snapshotTaskState() ?? null };
     const now = performance.now();
-    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = now; return; }
+    // Skip no-op pushes (e.g. the mount effect re-snapshotting the just-restored layout) so the
+    // timeline doesn't fill with identical entries that make undo a string of visual no-ops.
+    const layoutKey = (s: LayoutSnap) => JSON.stringify({ w: s.workcell, a: s.arms });
+    if (h.idx >= 0 && layoutKey(h.stack[h.idx]) === layoutKey(snap)) return;
+    if (h.stack.length === 0) { h.stack = [snap]; h.idx = 0; h.lastTs = now; persistHistory(); return; }
     if (h.idx < h.stack.length - 1) h.stack = h.stack.slice(0, h.idx + 1); // a fresh edit clears the redo branch
     if (now - h.lastTs < 350 && h.idx > 0) { h.stack[h.idx] = snap; } // coalesce a gesture into one step
-    else { h.stack.push(snap); h.idx = h.stack.length - 1; if (h.stack.length > 60) { h.stack.shift(); h.idx--; } }
+    else { h.stack.push(snap); h.idx = h.stack.length - 1; if (h.stack.length > HISTORY_MAX) { h.stack.shift(); h.idx--; } }
     h.lastTs = now;
     refreshHistButtons();
+    persistHistory();
   };
   const pushHistoryRef = useRef(pushHistory); pushHistoryRef.current = pushHistory; // stable handle for imperative callers
   useEffect(() => { pushHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [workcellConfig, armInstances, isLoading]);
@@ -1286,19 +1326,19 @@ export function App() {
     // model/resolution changed (rare on undo); for base-moves + cube-undo the outline is already
     // re-placed by relocateBase→setArms, so we skip the ~116k-FK sweep and just refresh the (cheap)
     // base-placement overlay. This is what made undo feel laggy. [[undo-skip-reach-recompute]]
+    // Undo must be INSTANT — never run the FK reach sweep on the undo path. With several arms the
+    // per-arm sweep is multi-second and would freeze (then crash) the tab. setArmInstances above
+    // already re-placed the arms + their cached reach outlines; the heatmap / reach-% just go stale
+    // until the next explicit "Recompute reach" (same as an arm MOVE, which also skips the sweep).
     if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => requestAnimationFrame(() => {
-      if (reachSig(s.arms) === reachSigRef.current) {
-        const p = planner();
-        if (p && plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
-        refreshBaseResult();
-      } else {
-        runHeavy('Restoring layout…', applyPlannerState); // arm model changed → full re-sweep blocks
-      }
+      const p = planner();
+      if (p && plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
+      refreshBaseResult();
     }));
     setTimeout(() => { restoringRef.current = false; }, 0);
   };
-  const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); } };
-  const redo = () => { const h = historyRef.current; if (h.idx < h.stack.length - 1) { h.idx++; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); } };
+  const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); persistHistory(); } };
+  const redo = () => { const h = historyRef.current; if (h.idx < h.stack.length - 1) { h.idx++; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); persistHistory(); } };
   void histVer; // histVer just forces re-render so the undo/redo button enabled state stays fresh
   const canUndo = historyRef.current.idx > 0;
   const canRedo = historyRef.current.idx < historyRef.current.stack.length - 1;
