@@ -743,7 +743,7 @@ export function App() {
     if (kind === 'arm') {
       const isPrimary = (armInstances.find((a) => a.id === selectedArmId)?.primary) ?? true;
       return [
-        { id: 'jog', label: 'Jog joints', icon: Hand, active: poseMode },
+        { id: 'jog', label: 'Robot arm joints', icon: Hand, active: poseMode },
         { id: 'move', label: 'Move', icon: MoveIcon },
         { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
         { id: 'duplicate', label: 'Duplicate', icon: Copy },
@@ -1114,12 +1114,19 @@ export function App() {
     setBaseResult(r ? { covered: r.covered, total: r.total } : null);
   };
 
+  // The reach envelope is base-RELATIVE and depends only on the arm model (joint limits) + the
+  // sweep resolution — NOT on the base pose or cube positions. So a signature of those is all we
+  // need to decide whether an undo must re-run the (expensive ~116k-FK-call) sweep.
+  const reachSig = (arms: ArmInstance[]) => `${arms.length}|${arms.find((a) => a.primary)?.id ?? ''}|${reachResolutionRef.current}`;
+  const reachSigRef = useRef('');
+
   // Re-apply React's planner state to a freshly (re)created planner (called on scene reload).
   const applyPlannerState = () => {
     const p = planner();
     if (!p) return;
     p.setToggles(plannerTogglesRef.current);
     p.computeReachability(reachResolutionRef.current);
+    reachSigRef.current = reachSig(armInstancesRef.current);
     if (plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
     refreshBaseResult();
   };
@@ -1161,8 +1168,19 @@ export function App() {
     setArmInstances(s.arms); simRef.current?.setArmInstances(s.arms);
     simRef.current?.restoreTaskState(s.task); setTaskBodies(simRef.current?.getTaskBodies() ?? []); // cube poses/spawns
     const primary = s.arms.find((a) => a.primary);
-    // Defer the (potentially heavy) reachability recompute off the undo's critical path.
-    if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => requestAnimationFrame(() => applyPlannerState()));
+    // Defer planner work off the undo's critical path. The reach SWEEP only re-runs if the arm
+    // model/resolution changed (rare on undo); for base-moves + cube-undo the outline is already
+    // re-placed by relocateBase→setArms, so we skip the ~116k-FK sweep and just refresh the (cheap)
+    // base-placement overlay. This is what made undo feel laggy. [[undo-skip-reach-recompute]]
+    if (primary) simRef.current?.relocateBase(primary.x, primary.y, primary.yaw).then(() => requestAnimationFrame(() => {
+      if (reachSig(s.arms) === reachSigRef.current) {
+        const p = planner();
+        if (p && plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
+        refreshBaseResult();
+      } else {
+        applyPlannerState();
+      }
+    }));
     setTimeout(() => { restoringRef.current = false; }, 0);
   };
   const undo = () => { const h = historyRef.current; if (h.idx > 0) { h.idx--; applyLayoutSnap(h.stack[h.idx]); refreshHistButtons(); } };
@@ -2117,16 +2135,7 @@ export function App() {
                   playbackSpeed={playbackSpeed}
                   geminiEnabled={Boolean(GEMINI_API_KEY)}
                   inspector={null /* Selection is now its own standalone floating panel (below) */}
-                  headerContent={!sceneIsFranka ? (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-[9px] font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Units</span>
-                      <div className="flex items-center gap-1" title="Display units for all length readouts">
-                        {(['m', 'mm'] as const).map((u) => (
-                          <button key={u} onClick={() => setLengthUnit(u)} className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${lengthUnit === u ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600 text-white') : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>{u}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  headerContent={null /* Units toggle moved to the left Workspace dock header */}
                   feeds={!sceneIsFranka ? feedsEl : null}
                   toolbar={null /* Controls is now its own standalone floating toolbar (below) */}
                   overlays={!sceneIsFranka ? overlaysEl : null}

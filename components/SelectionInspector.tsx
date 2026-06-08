@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useState } from 'react';
-import { ChevronDown, Crosshair, RotateCcw, Trash2, X } from 'lucide-react';
+import { ChevronDown, Focus, RotateCcw, Trash2, X } from 'lucide-react';
 import type { SelectionInfo } from '../SelectionController';
 import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 import { D435I_PRESET, DEFAULT_WORKCELL_CONFIG } from '../types';
@@ -76,13 +76,28 @@ export interface InspectorProps {
   floatStyle?: import('react').CSSProperties;
 }
 
-const CAMERA_TOGGLE_ROWS: Array<{ key: keyof CameraViewToggles; label: string }> = [
-  { key: 'frustum', label: 'FOV frustum' },
-  { key: 'sensorPip', label: 'Camera view (PIP)' },
-  { key: 'footprint', label: 'Ground footprint' },
-  { key: 'objectTint', label: 'Highlight what it frames' },
-  { key: 'coverage', label: 'Occlusion coverage' },
-];
+/** Shared D435i camera view toggles (primary, station + extra cams use the SAME set — DRY).
+ *  "Show FOV" folds the frustum + ground-footprint into one (they're two halves of one viz);
+ *  the camera PIP is governed by the Feeds dock (not a per-camera toggle here); the niche tint /
+ *  occlusion toggles live under "Advanced". */
+function CameraToggles({ toggles, onToggle }: { toggles: CameraViewToggles; onToggle: (k: keyof CameraViewToggles, v: boolean) => void }) {
+  const [adv, setAdv] = useState(false);
+  return (
+    <>
+      <Check label="Show FOV (frustum + footprint)" checked={toggles.frustum || toggles.footprint} onChange={(v) => { onToggle('frustum', v); onToggle('footprint', v); }} />
+      <button type="button" onClick={() => setAdv((v) => !v)} className="w-full flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-slate-500 pt-0.5">
+        <span>Advanced</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${adv ? '' : '-rotate-90'}`} />
+      </button>
+      {adv && (
+        <>
+          <Check label="Highlight what it frames" checked={toggles.objectTint} onChange={(v) => onToggle('objectTint', v)} />
+          <Check label="Occlusion coverage" checked={toggles.coverage} onChange={(v) => onToggle('coverage', v)} />
+        </>
+      )}
+    </>
+  );
+}
 const PLANNER_TOGGLE_ROWS: Array<{ key: keyof PlannerToggles; label: string }> = [
   { key: 'outline', label: 'Reach envelope (outline)' },
   { key: 'reach', label: 'Reach heatmap (density)' },
@@ -115,7 +130,7 @@ export function SelectionInspector(p: InspectorProps) {
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
-        <button onClick={p.onFrame} title="Frame (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Crosshair className="w-3.5 h-3.5" /></button>
+        <button onClick={p.onFrame} title="Fit camera to selected object (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Focus className="w-3.5 h-3.5" /></button>
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
 
@@ -210,7 +225,7 @@ export function SelectionInspector(p: InspectorProps) {
           {/* Per-camera FOV + the same overhead D435i view toggles as the primary. */}
           {p.camera && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
-              {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
+              <CameraToggles toggles={p.camera!.toggles} onToggle={p.camera!.onToggle} />
               <WMSlider label="H-FOV" min={40} max={95} step={0.5} value={p.extraCamera.fovDeg} def={D435I_PRESET.hFovDeg} on={(v) => p.onExtraCamera({ fovDeg: v })} subtle={subtle} unit="°" />
             </div>
           )}
@@ -233,8 +248,7 @@ export function SelectionInspector(p: InspectorProps) {
           {p.camera && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1.5`}>
               <Check label="Show camera" checked={p.camera.enabled} onChange={p.camera.onEnabled} />
-              <Check label="Wrist camera feed" checked={p.camera.wristEnabled} onChange={p.camera.onWristToggle} />
-              {CAMERA_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.camera!.toggles[r.key]} onChange={(v) => p.camera!.onToggle(r.key, v)} />)}
+              <CameraToggles toggles={p.camera!.toggles} onToggle={p.camera!.onToggle} />
               <label className="block">
                 <span className={`block text-[9px] font-bold uppercase tracking-widest ${subtle} mb-1`}>Stream profile</span>
                 <select value={p.camera.selectedProfileId} onChange={(e) => p.camera!.onStreamProfile(e.target.value)} className={`w-full rounded-lg px-2 py-1.5 text-[10px] font-semibold outline-none ${p.isDarkMode ? 'bg-slate-950/80 text-slate-200' : 'bg-white/70 text-slate-700'}`}>

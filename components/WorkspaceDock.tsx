@@ -125,7 +125,16 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
     <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-72 rounded-2xl glass-panel shadow-xl overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-900/80 border-white/10 text-slate-100' : 'bg-white/75 border-white/80 text-slate-800'}`}>
       <div className="px-4 py-3 border-b border-black/5 shrink-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-bold uppercase tracking-widest">Workspace</span>
+            {/* Display units for all length readouts (m / mm). */}
+            <div className="flex items-center gap-0.5" title="Display units for all length readouts">
+              {(['m', 'mm'] as const).map((u) => (
+                <button key={u} onClick={() => scene.onUnit(u)}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${scene.unit === u ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600 text-white') : (isDarkMode ? 'text-slate-400 hover:bg-white/10' : 'text-slate-500 hover:bg-black/5')}`}>{u}</button>
+              ))}
+            </div>
+          </div>
           {onClose && (
             <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
               <PanelLeftClose className="w-4 h-4" />

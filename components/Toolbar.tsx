@@ -87,7 +87,7 @@ export function Toolbar({
           <ToolbarButton label="Home view (ISO)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
           <ToolbarButton label="Fit camera to selected object" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
           {(onToggleJog || onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
-          {onToggleJog && <ToolbarButton label="Jog joints — drag a link to rotate" icon={JogIcon} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
+          {onToggleJog && <ToolbarButton label="Robot arm joints — drag a link to rotate" icon={JogIcon} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
           {onTogglePan && <ToolbarButton label="Pan view — drag to move the camera" icon={Hand} isActive={panActive} onClick={onTogglePan} isDarkMode={isDarkMode} />}
           {onToggleMeasure && <ToolbarButton label="Measure — click two points" icon={Ruler} isActive={measureActive} onClick={onToggleMeasure} isDarkMode={isDarkMode} />}
           <ToolbarDivider isDarkMode={isDarkMode} />

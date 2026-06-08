@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { BoxSelect, ChevronDown, FastForward, Grab, History, Info, Loader2, MousePointer2, PanelRightClose, RotateCcw, Send, Settings2, Thermometer } from 'lucide-react';
+import { BoxSelect, Camera, ChevronDown, FastForward, Grab, History, Info, Loader2, MousePointer2, Palette, PanelRightClose, RotateCcw, Send, Settings2, Sparkles, Thermometer, Wrench } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { LogOverlay } from '../App';
 import { DetectedItem, DetectType, LogEntry } from '../types';
@@ -35,18 +35,19 @@ interface UnifiedSidebarProps {
 }
 
 /** A labelled section in the stacked sidebar dashboard. */
-function Sec({ title, isDarkMode, children, collapsible = false, defaultOpen = true }: { title: string; isDarkMode: boolean; children: ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
+function Sec({ title, isDarkMode, children, collapsible = false, defaultOpen = true, icon }: { title: string; isDarkMode: boolean; children: ReactNode; collapsible?: boolean; defaultOpen?: boolean; icon?: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
+  const label = <span className="flex items-center gap-1.5">{icon}{title}</span>;
   return (
     <section className={`rounded-2xl border p-2.5 ${isDarkMode ? 'bg-white/[0.03] border-white/10' : 'bg-black/[0.015] border-black/5'}`}>
       {collapsible ? (
         <button type="button" onClick={() => setOpen((v) => !v)}
           className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">
-          <span>{title}</span>
+          {label}
           <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
         </button>
       ) : (
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">{title}</h3>
+        <h3 className="flex items-center text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">{label}</h3>
       )}
       {(!collapsible || open) && children}
     </section>
@@ -115,12 +116,12 @@ export function UnifiedSidebar({
       <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pt-2 pb-4 space-y-2.5">
 
         {/* Selection on top (above the camera footage), then feeds, then the controls toolbar. */}
-        {inspector && <Sec title="Selection" isDarkMode={isDarkMode}>{inspector}</Sec>}
-        {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
-        {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
+        {inspector && <Sec title="Selection" isDarkMode={isDarkMode} icon={<MousePointer2 className="w-3.5 h-3.5 text-indigo-500" />}>{inspector}</Sec>}
+        {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode} icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />}>{feeds}</Sec>}
+        {toolbar && <Sec title="Controls" isDarkMode={isDarkMode} icon={<Wrench className="w-3.5 h-3.5 text-indigo-500" />}>{toolbar}</Sec>}
 
-        {/* ── Embodied Reasoning (collapsed by default — it's a deep panel) ── */}
-        <Sec title="Embodied Reasoning" isDarkMode={isDarkMode} collapsible defaultOpen={false}>
+        {/* ── Gemini ER 1.6 (collapsed by default — it's a deep panel) ── */}
+        <Sec title="Gemini ER 1.6" isDarkMode={isDarkMode} collapsible defaultOpen={false} icon={<Sparkles className="w-3.5 h-3.5 text-indigo-500" />}>
         <div className="space-y-2">
         <div className="relative">
           <select
@@ -349,7 +350,7 @@ export function UnifiedSidebar({
         </div>
         </Sec>
 
-        {overlays && <Sec title="Overlays" isDarkMode={isDarkMode}>{overlays}</Sec>}
+        {overlays && <Sec title="Legends" isDarkMode={isDarkMode} icon={<Palette className="w-3.5 h-3.5 text-indigo-500" />}>{overlays}</Sec>}
       </div>
     </div>
   );

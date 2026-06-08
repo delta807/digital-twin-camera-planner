@@ -28,7 +28,7 @@ test('app boots into the workspace with no console errors', async ({ page }) => 
   // Core surfaces are present.
   await expect(page.getByText('Bodies', { exact: true })).toBeVisible();
   await expect(page.getByText('Camera Feeds', { exact: true })).toBeVisible();
-  await expect(page.getByText('Embodied Reasoning', { exact: true })).toBeVisible();
+  await expect(page.getByText('Gemini ER 1.6', { exact: true })).toBeVisible();
   // Insert palette has the add cards (accessible name = the card's visible label).
   await expect(page.getByRole('button', { name: 'SO-101', exact: true })).toBeVisible();
 
