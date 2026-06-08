@@ -4,6 +4,16 @@
  */
 import { useState } from 'react';
 import { ChevronDown, Focus, RotateCcw, Trash2, X } from 'lucide-react';
+import { JogIcon } from './ui/toolbar';
+
+/** Reach glyph (double-headed arrow = range of motion). */
+function ReachIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path fill="currentColor" d="M5.825 13L7.7 14.875q.275.3.288.713T7.7 16.3t-.7.3t-.7-.3l-3.6-3.6q-.15-.15-.213-.325T2.426 12t.063-.375t.212-.325l3.6-3.6q.3-.3.7-.3t.7.3t.3.713t-.3.712L5.825 11h12.35L16.3 9.125q-.275-.3-.287-.712T16.3 7.7t.7-.3t.7.3l3.6 3.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-3.6 3.6q-.3.3-.7.3t-.7-.3t-.3-.712t.3-.713L18.175 13z" />
+    </svg>
+  );
+}
 import type { SelectionInfo } from '../SelectionController';
 import type { CameraIntrinsics, CameraStreamProfile, CameraViewToggles, LengthUnit, WorkcellConfig } from '../types';
 import { D435I_PRESET, DEFAULT_WORKCELL_CONFIG } from '../types';
@@ -181,7 +191,7 @@ export function SelectionInspector(p: InspectorProps) {
           </div>
           {p.armJoints && p.armJoints.info.length > 0 && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-0.5`}>
-              <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Jog joints</span>
+              <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><JogIcon className="w-3 h-3" /> Robot arm joints</span>
               {p.armJoints.info.map((j, i) => (
                 <div key={j.name} className="flex items-center gap-2">
                   <span className={`text-[9px] font-bold uppercase w-16 shrink-0 truncate ${subtle}`}>{j.name}</span>
@@ -195,7 +205,7 @@ export function SelectionInspector(p: InspectorProps) {
           )}
           {p.armReach && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
-              <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Reach views</span>
+              <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><ReachIcon className="w-3 h-3" /> Reach views</span>
               {PLANNER_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.armReach!.toggles[r.key]} onChange={(v) => p.armReach!.onToggle(r.key, v)} accent="emerald" />)}
               {p.armReach.canRemove && (
                 <button onClick={p.armReach.onRemove} className={`w-full mt-1 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 ${p.isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3 h-3" /> Remove this arm</button>
@@ -458,22 +468,30 @@ function RailSizers({ station, subtle, onStation }: {
 
 /** Boxed numeric inputs — one row per axis with a large, clearly-clickable field + unit (Orca-style),
  *  so the value is easy to read and the input/steppers are a comfortable hit target. */
-function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void }[]; unit: LengthUnit; subtle: string }) {
+/** X/Y/Z position rows: a slider fills the space (coarse drag) next to a compact typeable box
+ *  (exact value). `min`/`max` are metres; default ±1.5 m covers the workcell. */
+function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void; min?: number; max?: number }[]; unit: LengthUnit; subtle: string }) {
   const mm = unit === 'mm';
   const toDisp = (v: number) => (mm ? v * 1000 : v);
   const fromDisp = (d: number) => (mm ? d / 1000 : d);
   const digits = mm ? 0 : 3;
   return (
     <div className="space-y-1.5">
-      {fields.map(({ k, v, on }) => (
-        <label key={k} className="flex items-center gap-2">
-          <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
-          <input type="number" step={mm ? 1 : 0.005} value={Number(toDisp(v).toFixed(digits))}
-            onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(fromDisp(d)); }}
-            className="flex-1 min-w-0 text-right tabular-nums text-[13px] px-2.5 py-1.5 rounded-lg border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
-          <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>{mm ? 'mm' : 'm'}</span>
-        </label>
-      ))}
+      {fields.map(({ k, v, on, min = -1.5, max = 1.5 }) => {
+        const dMin = toDisp(min), dMax = toDisp(max), dv = toDisp(v);
+        return (
+          <label key={k} className="flex items-center gap-2">
+            <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+            <input type="range" min={dMin} max={dMax} step={(dMax - dMin) / 240} value={Math.min(dMax, Math.max(dMin, dv))}
+              onChange={(e) => on(fromDisp(parseFloat(e.target.value)))}
+              className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
+            <input type="number" step={mm ? 1 : 0.005} value={Number(dv.toFixed(digits))}
+              onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(fromDisp(d)); }}
+              className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+            <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>{mm ? 'mm' : 'm'}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -518,9 +536,12 @@ function Angle({ label, deg, on, subtle }: { label: string; deg: number; on: (d:
   return (
     <label className="flex items-center gap-2">
       <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[label] ?? subtle}`}>{label}</span>
+      <input type="range" min={-180} max={180} step={1} value={Math.min(180, Math.max(-180, deg))}
+        onChange={(e) => on(parseFloat(e.target.value))}
+        className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
       <input type="number" step={1} value={Number(deg.toFixed(0))}
         onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(d); }}
-        className="flex-1 min-w-0 text-right tabular-nums text-[13px] px-2.5 py-1.5 rounded-lg border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+        className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
       <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>°</span>
     </label>
   );

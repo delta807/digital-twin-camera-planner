@@ -34,6 +34,7 @@ export class WorkspaceCameraRig {
 
   /** The grab handle whose pose drives the sensor camera. Drag it with TransformControls. */
   readonly gizmo = new THREE.Group(); // public so the SelectionController can raycast it
+  private selected = false; // gates the drag gizmo (axis) on selection, like every other object
   private readonly control: TransformControls;
   private readonly controlHelper: THREE.Object3D;
 
@@ -523,11 +524,15 @@ export class WorkspaceCameraRig {
 
   setDepthMode(on: boolean) { this.depthMode = on; }
 
+  /** Selection-gated drag gizmo: the camera BODY stays visible/clickable, but the move/aim AXES
+   *  only appear once the camera is selected — same "click first" interaction as every other object. */
+  setSelected(v: boolean) { if (v === this.selected) return; this.selected = v; this.applyToggleVisibility(); }
+
   private applyToggleVisibility() {
     const on = this.toggles.enabled;
-    this.gizmo.visible = on;
-    this.controlHelper.visible = on;
-    this.control.enabled = on;
+    this.gizmo.visible = on;                                  // camera body — clickable whenever shown
+    this.controlHelper.visible = on && this.selected;        // axis arrows — only when selected
+    this.control.enabled = on && this.selected;
     this.frustumLines.visible = on && this.toggles.frustum;
     this.footprint.visible = on && this.toggles.footprint;
     if (this.coveragePoints) this.coveragePoints.visible = on && this.toggles.coverage;

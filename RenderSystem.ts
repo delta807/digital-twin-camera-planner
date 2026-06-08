@@ -249,6 +249,9 @@ export class RenderSystem {
         });
 
         this.selection.update();
+        // The primary D435i's drag gizmo (axis) shows only while it's selected — "click first", like
+        // every other object (setSelected no-ops when unchanged, so this is cheap per frame).
+        this.cameraRig.setSelected(this.selection.current?.kind === 'camera' && !this.selection.current.cameraId);
 
         // FOV frustum + ground footprint for the station/extra overheads — mirror the primary D435i's
         // toggles (DRY), so every overhead camera shows the same overlays. Updated before the render;

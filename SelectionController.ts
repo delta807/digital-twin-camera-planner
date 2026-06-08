@@ -52,6 +52,8 @@ export class SelectionController {
   private readonly outline: THREE.LineSegments;
 
   private selected: SelectionInfo | null = null;
+  /** The current selection (read-only) — used by RenderSystem to gate the camera rig's gizmo. */
+  get current(): SelectionInfo | null { return this.selected; }
   private selectedBody: THREE.Object3D | null = null; // task-object ref (tracked each frame)
   private selectedArmId: string | undefined = undefined; // which arm to outline (undefined = primary/physics)
   private readonly box = new THREE.Box3();
