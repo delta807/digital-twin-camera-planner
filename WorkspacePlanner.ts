@@ -245,7 +245,14 @@ export class WorkspacePlanner {
     // Fallback when the body tree isn't available: a single base→TCP capsule.
     const segs: Array<[number, number, number, number, number, number]> = [];
     if (par && ids.length) {
-      for (const b of ids) { const pb = par[b]; segs.push([xp[pb * 3], xp[pb * 3 + 1], xp[pb * 3 + 2], xp[b * 3], xp[b * 3 + 1], xp[b * 3 + 2]]); }
+      // Each link = the segment from a body to its parent. SKIP the base body: its parent is the
+      // world (id 0) at the ORIGIN, so its segment is a phantom link running from (0,0,0) to the
+      // base — which spuriously collides with any post near the origin / the base-to-origin line
+      // (it made a post at (0,0) block 100% of the workspace). The base is fixed and isn't a link.
+      for (const b of ids) {
+        if (b === this.cfg.baseBodyId) continue;
+        const pb = par[b]; segs.push([xp[pb * 3], xp[pb * 3 + 1], xp[pb * 3 + 2], xp[b * 3], xp[b * 3 + 1], xp[b * 3 + 2]]);
+      }
     } else {
       const bb = this.cfg.baseBodyId, t = this.cfg.tcpSiteId;
       segs.push([xp[bb * 3], xp[bb * 3 + 1], xp[bb * 3 + 2], d.site_xpos[t * 3], d.site_xpos[t * 3 + 1], d.site_xpos[t * 3 + 2]]);
