@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { X, Download } from 'lucide-react';
-import { drawReachability, drawDepth, type ReachData, type DepthData } from '../analysis/figures';
+import { drawReachability, drawDepth, drawCoverage, type ReachData, type DepthData, type CoverageData } from '../analysis/figures';
 
 interface Props {
   open: boolean;
@@ -14,6 +14,8 @@ interface Props {
   getReach: () => ReachData | null;
   /** Live overhead depth image (null if no station camera). */
   getDepth: () => DepthData | null;
+  /** Live per-camera table coverage (null if no camera). */
+  getCoverage: () => CoverageData | null;
 }
 
 /** Render one figure to a hi-DPI canvas via `draw`, with a "Download PNG" button. */
@@ -42,10 +44,11 @@ function Figure({ title, width, height, draw }: { title: string; width: number; 
 }
 
 /** Analysis overlay: matplotlib-style figures for the LIVE layout, each exportable as a PNG. */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage }: Props) {
   if (!open) return null;
   const reach = getReach();
   const depth = getDepth();
+  const coverage = getCoverage();
   return (
     <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-6" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -59,6 +62,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth }:
             ? <Figure title="SO-101 reachability" width={620} height={560} draw={(c) => drawReachability(c, reach)} />
             : <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Reach grid not ready — compute reachability first.</p>}
           {depth && <Figure title="Camera depth (overhead)" width={620} height={400} draw={(c) => drawDepth(c, depth)} />}
+          {coverage && <Figure title="Camera coverage" width={900} height={330} draw={(c) => drawCoverage(c, coverage)} />}
         </div>
       </div>
     </div>

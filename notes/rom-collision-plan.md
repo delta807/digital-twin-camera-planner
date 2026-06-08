@@ -74,10 +74,11 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
 - [ ] **Graph 2 — reachability** (data READY): expose reachCells/cellsMax; draw heatmap — white =
       unreachable, gray = reachable-not-graspable (cellsMax-only), magma 1-4 = tool-down samples/cell
       (cells); table-centre marker; "reach N% of table". BUILD FIRST.
-- [ ] **Graph 1 — depth map**: render depth from the overhead camera (Three.js depth target /
-      readRenderTargetPixels), normalize, add sensor noise speckle, turbo colormap + colorbar.
-- [ ] **Graph 3 — camera coverage**: per-table-cell visibility grid for overhead + wrist (+combined),
-      % covered, viridis binary (yellow=covered). 3 sub-panels.
+- [x] **Graph 1 — depth map** (2e749be): overhead D435i via a linear-depth shader override (tight
+      near/far), turbo + speckle + colorbar. Fixed: sync sensorCamera from its gizmo before reading.
+- [x] **Graph 3 — camera coverage**: per-cell FOV+occlusion raycast for overhead/wrist/combined,
+      viridis binary, % covered. overhead 80% / wrist 7% / combined 82%. DONE (this commit).
+- All three render from the LIVE layout with per-figure PNG export. ✅ Feature complete.
 
 ## Backlog (parked)
 - [ ] **Multi-select (pairs + contextual actions).** Cmd/ctrl-click a SECOND object, both

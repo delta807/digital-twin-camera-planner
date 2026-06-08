@@ -375,7 +375,9 @@ export class WorkspaceCameraRig {
     this.sensorCamera.updateProjectionMatrix();
   }
 
-  private syncSensorToGizmo() {
+  /** Pose `sensorCamera` from the gizmo. Public so off-screen consumers (depth / coverage analysis)
+   *  can pose the camera before reading it — normally it's only synced when the PIP renders. */
+  syncSensorToGizmo() {
     this.gizmo.updateMatrixWorld(true);
     this.gizmo.getWorldPosition(this.sensorCamera.position);
     this.gizmo.getWorldQuaternion(this.sensorCamera.quaternion);

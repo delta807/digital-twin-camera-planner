@@ -557,11 +557,28 @@ export class MujocoSim {
     /** Depth image from the overhead (first station) camera, for the analysis depth figure. Overlay
      *  groups (ghost arms, planner tiles/outline/gizmo) are hidden so only real geometry shows. */
     overheadDepth(w = 320, h = 180): { depth: Float32Array; w: number; h: number } | null {
+        this.renderSys.cameraRig?.syncSensorToGizmo(); // pose the camera from its gizmo first
         const cam = this.renderSys.cameraRig?.sensorCamera; // the overhead D435i
         if (!cam) return null;
         const hide: THREE.Object3D[] = [this.renderSys.planningArmsGroup, ...this.renderSys.cameraRig.overlays];
         if (this.planner) hide.push(this.planner.group, this.planner.gizmoHelper);
         return this.renderSys.renderDepth(cam, w, h, hide);
+    }
+
+    /** Per-table-cell visibility for the overhead D435i + the wrist cam (+ their union), for the
+     *  camera-coverage figure. Grid spans [-half, half]² (centred on the workcell origin) at `step`. */
+    coverageGrids(half = 0.4, step = 0.025): { overhead: boolean[]; wrist: boolean[]; combined: boolean[]; n: number; half: number } | null {
+        const rs = this.renderSys;
+        rs.cameraRig?.syncSensorToGizmo(); // pose the overhead camera from its gizmo first
+        const overheadCam = rs.cameraRig?.sensorCamera; if (!overheadCam) return null;
+        const wristCam = [...rs.wristCameras.values()][0]?.camera;
+        const n = Math.floor((2 * half) / step) + 1;
+        const pts: THREE.Vector3[] = [];
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(-half + i * step, -half + j * step, 0.005));
+        const overhead = rs.computeCoverage(overheadCam, pts);
+        const wrist = wristCam ? rs.computeCoverage(wristCam, pts) : pts.map(() => false);
+        const combined = overhead.map((v, i) => v || wrist[i]);
+        return { overhead, wrist, combined, n, half };
     }
 
     setArmInstances(instances: ArmInstance[]) {

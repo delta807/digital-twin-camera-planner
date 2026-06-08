@@ -193,6 +193,7 @@ export function App() {
     return { ...g, half: Math.max(0.4, halfL, halfW), reachPct: total ? grasp / total : 0, center: [cx, cy] };
   };
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
+  const getCoverage = () => simRef.current?.coverageGrids() ?? null;
   const togglePoseMode = () => {
     const next = !poseMode;
     setPoseMode(next);
@@ -1928,7 +1929,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} />
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} />
 
       {/* Busy pill — shown while a main-thread-blocking job (the FK reach sweep) runs, so the brief
           freeze reads as "working" with a reason, not as lag. Top-centre, non-interactive. */}

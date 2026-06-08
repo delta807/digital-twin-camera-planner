@@ -38,18 +38,20 @@ interface FrameOpts {
   xr: [number, number]; yr: [number, number];
   colorbar?: { label: string; vr: [number, number]; cmap: (t: number) => RGB };
   pad?: { l: number; r: number; t: number; b: number };
+  clear?: boolean; // false → draw onto the existing canvas (multi-panel figures)
 }
 function frame(ctx: CanvasRenderingContext2D, W: number, H: number, o: FrameOpts): Axes {
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  if (o.clear !== false) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
   const pad = o.pad ?? { l: 64, r: o.colorbar ? 118 : 28, t: o.title ? 56 : 24, b: 52 };
   const a: Axes = { x0: pad.l, y0: pad.t, x1: W - pad.r, y1: H - pad.b, xr: o.xr, yr: o.yr };
   ctx.strokeStyle = '#222'; ctx.fillStyle = '#222'; ctx.lineWidth = 1;
   ctx.font = '13px -apple-system, system-ui, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  // title (supports a 2nd line after \n)
+  // title (supports a 2nd line after \n), placed in the top padding just above the axes box
   if (o.title) {
-    ctx.font = '15px -apple-system, system-ui, sans-serif';
-    o.title.split('\n').forEach((line, i) => ctx.fillText(line, (a.x0 + a.x1) / 2, 14 + i * 19));
+    ctx.font = '14px -apple-system, system-ui, sans-serif';
+    const lines = o.title.split('\n');
+    lines.forEach((line, i) => ctx.fillText(line, (a.x0 + a.x1) / 2, a.y0 - 12 - (lines.length - 1 - i) * 17));
     ctx.font = '13px -apple-system, system-ui, sans-serif';
   }
   ctx.strokeRect(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0);
@@ -148,4 +150,31 @@ export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {
   ctx.fillStyle = '#222'; ctx.textAlign = 'left'; const n = 5;
   for (let k = 0; k <= n; k++) ctx.fillText((k / n).toFixed(2), bx + bw + 6, y1 - bh * k / n);
   ctx.save(); ctx.translate(bx + bw + 56, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('depth (norm.)', 0, 0); ctx.restore();
+}
+
+// ── Figure 3: camera coverage — overhead / wrist / combined binary maps ──
+export interface CoverageData { overhead: boolean[]; wrist: boolean[]; combined: boolean[]; n: number; half: number; }
+export function drawCoverage(canvas: HTMLCanvasElement, d: CoverageData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#222'; ctx.font = '15px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Camera coverage', W / 2, 13);
+  const yes = css(VIRIDIS(0.95)), no = css(VIRIDIS(0.0)); // yellow = covered, purple = not
+  const panels: Array<[string, boolean[]]> = [['overhead', d.overhead], ['wrist', d.wrist], ['combined', d.combined]];
+  const gap = 16, pw = (W - gap * 4) / 3;
+  panels.forEach(([name, grid], k) => {
+    const pct = Math.round(100 * grid.filter(Boolean).length / grid.length);
+    const a = frame(ctx, W, H, { // reuse the axes frame, but only over this panel's sub-rect via pad
+      title: `${name}\n${pct}% covered`, xlabel: 'X (m)', ylabel: k === 0 ? 'Y (m)' : '',
+      xr: [-d.half, d.half], yr: [-d.half, d.half], clear: false,
+      pad: { l: gap + k * (pw + gap) + (k === 0 ? 40 : 22), r: W - (gap + k * (pw + gap) + pw), t: 56, b: 44 },
+    });
+    const cw = (a.x1 - a.x0) / d.n + 0.5, ch = (a.y1 - a.y0) / d.n + 0.5;
+    for (let j = 0; j < d.n; j++) for (let i = 0; i < d.n; i++) {
+      ctx.fillStyle = grid[j * d.n + i] ? yes : no;
+      const px = a.x0 + (i / d.n) * (a.x1 - a.x0), py = a.y1 - ((j + 1) / d.n) * (a.y1 - a.y0); // +Y up
+      ctx.fillRect(px, py, cw, ch);
+    }
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0);
+  });
 }

@@ -518,6 +518,25 @@ export class RenderSystem {
         return { depth, w, h };
     }
 
+    private readonly covRay = new THREE.Raycaster();
+    /** For each world point (a table cell centre), is it VISIBLE to `camera` — inside the FOV frustum
+     *  AND not occluded by geometry (arm / posts / cubes) before reaching the table? Used by the
+     *  camera-coverage figure. Occluders = real scene geometry (simGroup + worktop/posts). */
+    computeCoverage(camera: THREE.PerspectiveCamera, points: THREE.Vector3[]): boolean[] {
+        camera.updateMatrixWorld();
+        const camPos = camera.getWorldPosition(new THREE.Vector3());
+        const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group];
+        const dir = new THREE.Vector3();
+        return points.map((P) => {
+            if (!frustum.containsPoint(P)) return false;             // outside the camera FOV
+            dir.copy(P).sub(camPos); const dist = dir.length(); dir.normalize();
+            this.covRay.set(camPos, dir); this.covRay.far = dist + 0.05;
+            const hit = this.covRay.intersectObjects(occluders, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
+            return !hit || hit.distance >= dist - 0.04;              // first hit is the table itself (not an occluder in front)
+        });
+    }
+
     private updateContacts(mjData: MujocoData, show: boolean) {
         if (!show || !mjData.ncon) { this.contactMarkers.count = 0; return; }
         const count = Math.min(mjData.ncon, this.contactMarkers.instanceMatrix.count);
