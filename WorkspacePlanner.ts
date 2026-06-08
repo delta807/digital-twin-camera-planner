@@ -69,9 +69,11 @@ export class WorkspacePlanner {
   private cfg: PlannerConfig;
   private reachTiles: THREE.InstancedMesh;
   private baseTiles: THREE.InstancedMesh;
-  // Obstacle-blocked region: a filled red wedge per arm (carved from the same FK sweep as the
-  // reach fan), NOT a speckle of per-cell tiles — reads as one coherent "this is dead" shape.
-  private readonly blockedFill = new THREE.Group();
+  // Obstacle-blocked cells: drawn as FULL-cell red quads so contiguous cells merge into one solid
+  // footprint (the post + its shadow), while honestly staying sparse where blockage is sparse. A
+  // radial fan was tried here but mis-renders a scattered blocked set as a starburst (blocked is a
+  // 2D footprint, not a clean annulus like the reach fan).
+  private blockedTiles: THREE.InstancedMesh;
   private taskMarkers = new THREE.Group();
   private bestMarker: THREE.Mesh;
   private baseDisc: THREE.Mesh;
@@ -96,11 +98,12 @@ export class WorkspacePlanner {
   // min & max reachable radius. radMax = full envelope; radPrec = top-down graspable fan.
   private radMax = makeRadial();
   private radPrec = makeRadial();
-  private radBlocked = makeRadial();
   // Per-arm radial profiles (each swept at its OWN base + obstacle set, so every arm's outline is
   // obstacle-aware in its own frame). radMax/radPrec above mirror the PRIMARY arm (base placement +
   // localForwardAngle read those).
-  private armRadials = new Map<string, { radMax: Radial; radPrec: Radial; radBlocked: Radial }>();
+  private armRadials = new Map<string, { radMax: Radial; radPrec: Radial }>();
+  // Per-arm blocked cells (graspable but no collision-free config reaches them) → the red overlay.
+  private armBlocked = new Map<string, Map<string, number>>();
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -122,7 +125,8 @@ export class WorkspacePlanner {
     this.cfg = cfg;
     this.reachTiles = this.makeTiles();
     this.baseTiles = this.makeTiles();
-    this.group.add(this.reachTiles, this.baseTiles, this.blockedFill, this.taskMarkers, this.outlineGroup);
+    this.blockedTiles = this.makeTiles(1.0); // full-cell quads → contiguous blocked cells read solid
+    this.group.add(this.reachTiles, this.baseTiles, this.blockedTiles, this.taskMarkers, this.outlineGroup);
 
     // Best-mount marker: a thin ring laid flat on the worktop.
     this.bestMarker = new THREE.Mesh(
@@ -283,7 +287,7 @@ export class WorkspacePlanner {
     const { mujoco, model, sweptJoints, tcpSiteId } = this.cfg;
     mujoco.mj_forward(model, scratch);
     const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
-    const radMax = makeRadial(), radPrec = makeRadial(), radBlocked = makeRadial();
+    const radMax = makeRadial(), radPrec = makeRadial();
     // cells = graspable configs per cell (collision-ignored → kinematic outline/heatmap);
     // free = the subset of those that are ALSO collision-free. A cell is truly blocked iff it is
     // graspable but has ZERO free configs (every grasp there routes a link through an obstacle).
@@ -318,17 +322,9 @@ export class WorkspacePlanner {
     // A cell is BLOCKED only if it is graspable but NO config reaches it collision-free — i.e. the
     // obstacle removes EVERY grasp approach, not just some. (Flagging "any colliding config" over-
     // reports: cells the arm can still grasp by swinging the links around / reaching over the post.)
-    // Build radBlocked from those cells' centres so the red wedge is the genuinely-lost region; it
-    // stays nested in the precision fan since every blocked cell is also a graspable (radPrec) cell.
     const blocked = new Map<string, number>();
-    for (const [key, n] of cells) {
-      if (free.has(key)) continue;
-      blocked.set(key, n);
-      const [di, dj] = key.split(',').map(Number);
-      const ox = di * CELL, oy = dj * CELL;
-      accumRadial(radBlocked, Math.atan2(ox * sin + oy * cos, ox * cos - oy * sin), Math.hypot(ox, oy));
-    }
-    return { radMax, radPrec, radBlocked, cells, cellsMax, blocked, baseX, baseY };
+    for (const [key, n] of cells) if (!free.has(key)) blocked.set(key, n);
+    return { radMax, radPrec, cells, cellsMax, blocked, baseX, baseY };
   }
 
   computeReachability(resolution = 9) {
@@ -343,6 +339,7 @@ export class WorkspacePlanner {
       for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
       if (this.modelForward == null) this.computeModelForward(scratch); // once: the model's forward axis
       this.armRadials.clear();
+      this.armBlocked.clear();
       this.lastBlocked = null;
       // Sweep each arm at its OWN base + obstacle set (DRY: the same sweepArm per arm). A single
       // fallback sweep at the current base when no arm list is set yet.
@@ -350,10 +347,11 @@ export class WorkspacePlanner {
       for (const arm of arms) {
         this.setSweepBase(arm.x, arm.y, arm.yaw);
         const r = this.sweepArm(scratch, resolution, arm.yaw, this.obstaclesFor(arm.id));
-        this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec, radBlocked: r.radBlocked });
+        this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
+        this.armBlocked.set(arm.id, r.blocked);
         if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
           this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
-          this.radMax = r.radMax; this.radPrec = r.radPrec; this.radBlocked = r.radBlocked; this.baseX = r.baseX; this.baseY = r.baseY;
+          this.radMax = r.radMax; this.radPrec = r.radPrec; this.baseX = r.baseX; this.baseY = r.baseY;
           this.lastBlocked = { blocked: r.blocked.size, graspable: r.cells.size }; // blocked ⊆ cells
         }
       }
@@ -365,48 +363,35 @@ export class WorkspacePlanner {
       scratch.delete();
     }
     this.renderReachTiles();
-    this.renderBlockedSector();
+    this.renderBlockedTiles();
     this.renderOutlines();
     if (this.toggles.basePlacement) this.computeBasePlacement();
   }
 
-  /** Red overlay: every arm's graspable-but-obstacle-blocked region, drawn as ONE filled wedge
-   *  (carved from the arm's own blocked radial via the same `radialFan` machinery as the reach
-   *  fan), so it reads as a coherent "this slice is dead" shape instead of a speckle of tiles. */
-  private renderBlockedSector() {
-    for (const child of [...this.blockedFill.children]) {
-      const m = child as THREE.Mesh;
-      m.geometry.dispose();
-      (m.material as THREE.Material).dispose();
-    }
-    this.blockedFill.clear();
+  /** Red overlay: every arm's graspable-but-obstacle-blocked cells (no collision-free grasp), as
+   *  full-cell quads so a contiguous block (the post + its shadow) reads as one solid red footprint
+   *  while sparse blockage stays honestly sparse. Cell keys are world-aligned base-relative (the
+   *  sweep ran at the arm's real x/y/yaw), so they place directly at arm.x/arm.y + di/dj·CELL. */
+  private renderBlockedTiles() {
+    const red = new THREE.Color(0xef4444);
+    let i = 0;
     for (const arm of this.arms) {
-      const rr = this.armRadials.get(arm.id); // fall back to the primary mirror (matches renderOutlines)
-      this.addBlockedFill(this.radialFan(rr?.radBlocked ?? this.radBlocked), arm);
+      const cells = this.armBlocked.get(arm.id);
+      if (!cells) continue;
+      for (const key of cells.keys()) {
+        if (i >= MAX_TILES) break;
+        const [di, dj] = key.split(',').map(Number);
+        this.dummy.position.set(arm.x + di * CELL, arm.y + dj * CELL, 0.0046);
+        this.dummy.updateMatrix();
+        this.blockedTiles.setMatrixAt(i, this.dummy.matrix);
+        this.blockedTiles.setColorAt(i, red);
+        i++;
+      }
     }
-    this.blockedFill.visible = this.toggles.blocked;
-  }
-
-  /** Build a filled translucent red mesh from local-frame fan loops, placed at the arm's pose. The
-   *  blocked band nests inside the precision fan by construction, so it never spills past the reach. */
-  private addBlockedFill(loops: Array<Array<[number, number]>>, arm: ArmInstance) {
-    const shapes: THREE.Shape[] = [];
-    for (const loop of loops) {
-      if (loop.length < 3) continue;
-      const shape = new THREE.Shape();
-      loop.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-      shape.closePath();
-      shapes.push(shape);
-    }
-    if (shapes.length === 0) return;
-    const geo = new THREE.ShapeGeometry(shapes);
-    geo.rotateZ(arm.yaw);                  // local (yaw-0) → world orientation
-    geo.translate(arm.x, arm.y, 0.0046);   // to the arm base, just above the reach heatmap
-    const mat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.renderOrder = 2; // over the reach tiles
-    mesh.frustumCulled = false;
-    this.blockedFill.add(mesh);
+    this.blockedTiles.count = i;
+    this.blockedTiles.instanceMatrix.needsUpdate = true;
+    if (this.blockedTiles.instanceColor) this.blockedTiles.instanceColor.needsUpdate = true;
+    this.blockedTiles.visible = this.toggles.blocked;
   }
 
   // ── Inverse: for each candidate mount cell, how many task points become reachable? ──
@@ -495,12 +480,13 @@ export class WorkspacePlanner {
     // InstancedMesh.dispose() additionally frees the instanceMatrix/instanceColor buffers.
     this.reachTiles.dispose();
     this.baseTiles.dispose();
+    this.blockedTiles.dispose();
   }
 
   // ───────────────────────── internals ─────────────────────────
 
-  private makeTiles(): THREE.InstancedMesh {
-    const geo = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92);
+  private makeTiles(fill = 0.92): THREE.InstancedMesh {
+    const geo = new THREE.PlaneGeometry(CELL * fill, CELL * fill);
     const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false });
     const mesh = new THREE.InstancedMesh(geo, mat, MAX_TILES);
     mesh.count = 0;
@@ -693,7 +679,7 @@ export class WorkspacePlanner {
   private applyToggles() {
     this.outlineGroup.visible = this.toggles.outline;
     this.reachTiles.visible = this.toggles.reach;
-    this.blockedFill.visible = this.toggles.blocked;
+    this.blockedTiles.visible = this.toggles.blocked;
     this.baseTiles.visible = this.toggles.basePlacement;
     this.bestMarker.visible = this.toggles.basePlacement && (this.lastBaseResult?.covered ?? 0) > 0;
     this.taskMarkers.visible = this.toggles.tasks;
