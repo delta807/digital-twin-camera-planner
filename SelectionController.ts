@@ -64,8 +64,10 @@ export class SelectionController {
   private skipArm = false;
   // Magnetic snap targets (world): rail midpoints / corners / post tops. While dragging, the gizmo
   // snaps to the nearest within SNAP_DIST and a coloured marker flags it (FreeCAD/Fusion inference).
-  private snapTargets: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }> = [];
+  private snapTargets: Array<{ x: number; y: number; z?: number; yaw?: number; kind: 'mid' | 'corner' | 'post' }> = [];
   private snapMarker!: THREE.Mesh;
+  // Yaw the active snap wants applied to an arm (perpendicular-into-rail / face-corner), or null.
+  private snapYaw: number | null = null;
   private pointerDown: { x: number; y: number } | null = null;
 
   onChange?: (sel: SelectionInfo | null) => void;
@@ -74,7 +76,7 @@ export class SelectionController {
   onExtraPostMove?: (index: number, x: number, y: number) => void;
   getExtraPostPose?: (index: number) => { x: number; y: number; height: number } | null;
   private selectedPostIndex: number | undefined = undefined;
-  onArmMove?: (armId: string | undefined, x: number, y: number) => void;
+  onArmMove?: (armId: string | undefined, x: number, y: number, yaw?: number) => void;
   /** Arm "aim" gizmo (rotate mode) → write the base yaw (radians). */
   onArmRotate?: (armId: string | undefined, yaw: number) => void;
   /** App provides the selected arm's base pose so the gizmo can sit on it + track it. */
@@ -158,7 +160,7 @@ export class SelectionController {
       this.maybeSnap(); // magnetic snap (mutates proxy.position) before the write-backs read it
       if (this.selected?.kind === 'arm') {
         if (this.armAim) this.onArmRotate?.(this.selected.armId, this.proxy.rotation.z);
-        else this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y);
+        else this.onArmMove?.(this.selected.armId, this.proxy.position.x, this.proxy.position.y, this.snapYaw ?? undefined);
         return;
       }
       if (this.selected?.kind === 'station') {
@@ -284,18 +286,19 @@ export class SelectionController {
   }
 
   /** Candidate magnetic-snap targets (world coords): rail midpoints, corners, post tops. */
-  setSnapTargets(t: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }>) { this.snapTargets = t; }
+  setSnapTargets(t: Array<{ x: number; y: number; z?: number; yaw?: number; kind: 'mid' | 'corner' | 'post' }>) { this.snapTargets = t; }
 
   /** During a translate drag, snap the gizmo to the nearest relevant target within SNAP_DIST and
    *  show a marker (cyan = rail midpoint, amber = corner, violet = post top). Cameras snap to post
    *  tops (XYZ); everything else snaps on the floor (XY). No-op while aiming/rotating. */
   private maybeSnap() {
+    this.snapYaw = null;
     const k = this.selected?.kind;
     const aiming = this.armAim || this.stationAim || this.cameraAim || this.objectAim || this.propAim || this.wristAim;
     if (aiming || !this.snapTargets.length || !k) { this.snapMarker.visible = false; return; }
     const wantPost = k === 'camera'; // cameras mount on post tops; floor objects on rails/corners
     const px = this.proxy.position.x, py = this.proxy.position.y;
-    let best: { x: number; y: number; z?: number; kind: string } | null = null, bestD = Infinity;
+    let best: { x: number; y: number; z?: number; yaw?: number; kind: string } | null = null, bestD = Infinity;
     for (const t of this.snapTargets) {
       if (wantPost ? t.kind !== 'post' : t.kind === 'post') continue;
       const d = Math.hypot(t.x - px, t.y - py);
@@ -305,6 +308,8 @@ export class SelectionController {
     if (best && bestD < SNAP_DIST) {
       this.proxy.position.x = best.x; this.proxy.position.y = best.y;
       if (wantPost && best.z != null) this.proxy.position.z = best.z;
+      // Arms also rotate to the target's perpendicular-into-rail / face-corner yaw (other kinds don't).
+      if (k === 'arm' && best.yaw != null) { this.snapYaw = best.yaw; this.proxy.rotation.z = best.yaw; }
       (this.snapMarker.material as THREE.MeshBasicMaterial).color.setHex(best.kind === 'mid' ? 0x2dd4bf : best.kind === 'corner' ? 0xf59e0b : 0x8b5cf6);
       this.snapMarker.position.set(best.x, best.y, (best.z ?? 0) + 0.012);
       this.snapMarker.visible = true;

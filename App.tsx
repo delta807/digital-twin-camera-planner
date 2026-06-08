@@ -857,11 +857,16 @@ export function App() {
   // dragging an object snaps to them with a glyph (FreeCAD/Fusion inference). Recompute on layout change.
   useEffect(() => {
     const sel = simRef.current?.renderSys.selection; if (!sel) return;
-    const targets: Array<{ x: number; y: number; z?: number; kind: 'mid' | 'corner' | 'post' }> = [];
+    const targets: Array<{ x: number; y: number; z?: number; yaw?: number; kind: 'mid' | 'corner' | 'post' }> = [];
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
     for (const rod of rods()) {
       if (Math.abs(rod.b.z - rod.a.z) < 0.05 && rod.label.includes('Rail')) {
-        targets.push({ x: (rod.a.x + rod.b.x) / 2, y: (rod.a.y + rod.b.y) / 2, kind: 'mid' });
-        targets.push({ x: rod.a.x, y: rod.a.y, kind: 'corner' });
+        // An arm dropped on a rail faces perpendicular-INTO the worktop; on a corner it faces the
+        // centre diagonally. Carry that yaw so the magnetic snap rotates the arm, not just moves it.
+        const cx = rod.center?.x ?? 0, cy = rod.center?.y ?? 0;
+        const mx = (rod.a.x + rod.b.x) / 2, my = (rod.a.y + rod.b.y) / 2;
+        targets.push({ x: mx, y: my, yaw: railInwardYaw(rod), kind: 'mid' });
+        targets.push({ x: rod.a.x, y: rod.a.y, yaw: Math.atan2(cy - rod.a.y, cx - rod.a.x) - fwd, kind: 'corner' });
       }
     }
     const bb = simRef.current?.renderSys.baseBuilder;
@@ -1068,7 +1073,7 @@ export function App() {
     sel.onExtraPostMove = (i, x, y) => { const wc = workcellConfigRef.current; const next = [...(wc.extraPosts ?? [])]; if (next[i]) { next[i] = { ...next[i], x, y }; handleWorkcellChange({ ...wc, extraPosts: next }); } };
     // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
     sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
-    sel.onArmMove = (armId, x, y) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { x, y }); };
+    sel.onArmMove = (armId, x, y, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, yaw != null ? { x, y, yaw } : { x, y }); };
     sel.onArmRotate = (armId, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, { yaw }); };
     // Stations reuse the same gizmo (DRY): move/rotate the worktop from the viewport.
     sel.getStationPose = (id) => {
