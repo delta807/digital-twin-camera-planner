@@ -20,6 +20,8 @@ import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_RGB_640X480_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector } from './components/SelectionInspector';
+import { AnalysisPanel } from './components/AnalysisPanel';
+import type { ReachData } from './analysis/figures';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -171,8 +173,25 @@ export function App() {
   // How the arm reacts when you jog it into a mount post. 'clamp' = hard-stop at the post (Mode A).
   const [contactMode, setContactMode] = useState<'off' | 'clamp' | 'physics'>('off');
   const handleContactMode = (m: 'off' | 'clamp' | 'physics') => { setContactMode(m); simRef.current?.setContactMode(m); };
-  // Re-apply the contact mode after a (re)load so it survives a model reload (sim defaults to 'off').
-  useEffect(() => { if (!isLoading) simRef.current?.setContactMode(contactMode); }, [contactMode, isLoading]);
+  // Analysis figures (reachability / depth / coverage) overlay for the live layout.
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
+  const getReach = (): ReachData | null => {
+    const p = planner(); if (!p) return null;
+    const g = p.getReachGrid();
+    if (g.cellsMax.size === 0) return null;
+    const wc = workcellConfigRef.current;
+    const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
+    const halfL = (wc.length ?? 0.6) / 2, halfW = (wc.width ?? 0.4) / 2; // worktop rectangle (X=length, Y=width)
+    let total = 0, grasp = 0;
+    for (let x = cx - halfL; x <= cx + halfL + 1e-6; x += g.cell)
+      for (let y = cy - halfW; y <= cy + halfW + 1e-6; y += g.cell) {
+        total++;
+        const di = Math.round((x - g.baseX) / g.cell), dj = Math.round((y - g.baseY) / g.cell);
+        if ((g.cells.get(di + ',' + dj) ?? 0) > 0) grasp++;
+      }
+    return { ...g, half: Math.max(0.4, halfL, halfW), reachPct: total ? grasp / total : 0, center: [cx, cy] };
+  };
   const togglePoseMode = () => {
     const next = !poseMode;
     setPoseMode(next);
@@ -1322,10 +1341,20 @@ export function App() {
         p.computeReachability(reachResolutionRef.current);
         refreshBaseResult();
       });
+      simRef.current?.syncPostColliders(collectObstacles()); // keep Mode-B colliders on the live posts
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workcellConfig.extraPosts, workcellConfig.postX, workcellConfig.postY, workcellConfig.postHeight, isLoading]);
+
+  // Contact mode (re)apply: survives a model reload (sim defaults to 'off') and, when switched to
+  // 'physics', enables the post collision geoms at the live post positions.
+  useEffect(() => {
+    if (isLoading) return;
+    simRef.current?.setContactMode(contactMode);
+    simRef.current?.syncPostColliders(collectObstacles());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactMode, isLoading]);
 
 
   // The PRIMARY arm's base now moves LIVE (body_pos + mj_forward, no reload) — so dragging the
@@ -1898,6 +1927,8 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} />
+
       {/* Busy pill — shown while a main-thread-blocking job (the FK reach sweep) runs, so the brief
           freeze reads as "working" with a reason, not as lag. Top-centre, non-interactive. */}
       {busyMsg && (
@@ -2330,6 +2361,7 @@ export function App() {
                 baseResult,
                 onSuggestLayout: handleSuggestLayout,
                 layoutResult,
+                onAnalysis: () => setAnalysisOpen(true),
               }}
             />
           )}

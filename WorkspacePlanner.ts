@@ -222,6 +222,13 @@ export class WorkspacePlanner {
    *  clamp (Mode A) to stop a joint at the post like a joint limit. Tests the current obstacle set. */
   armCollidesLive(d: MujocoData): boolean { return this.armCollides(d, this.obstacles); }
 
+  /** Snapshot of the primary arm's reach grid for the analysis figures (base-relative cells, world
+   *  base, cell size). `cells` = tool-down graspable (count/cell); `cellsMax` = any-orientation
+   *  reachable. Keys are "di,dj" → world (baseX+di·cell, baseY+dj·cell). */
+  getReachGrid(): { cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number } {
+    return { cells: this.reachCells, cellsMax: this.reachCellsMax, baseX: this.baseX, baseY: this.baseY, cell: CELL };
+  }
+
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose
    *  swept geometry we collision-test. Memoised; falls back to [] if body_parentid isn't exposed. */
   private getArmBodies(): number[] {
