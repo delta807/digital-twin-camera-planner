@@ -271,7 +271,10 @@ export class RenderSystem {
         // (for clean PIP "footage") never affects what the user sees in the main viewport.
         // Hide the camera post in every PIP: the real D435i is mounted ON the post, so its footage
         // never contains the post — the sim PIP should match that to represent reality faithfully.
-        const pipHide = [this.grid, this.erGroup, this.planningArmsGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...camOverlays];
+        // NOTE: planningArmsGroup (the FK-posed ghost clones = every NON-primary arm) is intentionally
+        // NOT hidden here, so additional arms appear in the overhead D435i footage too — only the
+        // primary is a real physics body, the rest are ghosts. (Other overlays/grid still hidden.)
+        const pipHide = [this.grid, this.erGroup, this.originAxes, this.measureTool.group, this.selection.group, ...this.baseBuilder.postMeshes, ...this.extraPipHelpers, ...camOverlays];
         this.cameraRig.update(this.simGroup, pipHide);
 
         // Visible camera-body glyphs follow each feed's enable toggle.
