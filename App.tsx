@@ -216,6 +216,14 @@ export function App() {
   // --- Coordinate readout (Phase 3) ---
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('mm');
   const [axesVisible, setAxesVisible] = useState(true);
+  // Transient top-of-screen hint (e.g. "no object selected") — fades out after a few seconds.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 5000);
+  };
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
   const [cameraRot, setCameraRot] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
@@ -967,7 +975,8 @@ export function App() {
   const handleResetView = () => simRef.current?.renderSys.snapToView('iso');
   const handleFrameSelection = () => {
     const sim = simRef.current; if (!sim) return;
-    sim.renderSys.frameView(sim.renderSys.selection?.focusTarget ?? null, true);
+    if (!sim.renderSys.selection?.current) { showToast('No object selected — pick one to frame it'); return; }
+    sim.renderSys.frameView(sim.renderSys.selection.focusTarget ?? null, true);
   };
 
   // ── Keyboard editing: Delete removes, Ctrl/Cmd+D (and C→V) duplicates the selection, Esc clears.
@@ -1906,6 +1915,12 @@ export function App() {
                 layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
                 isDarkMode={isDarkMode}
               />
+              {/* Transient hint pill — top centre, fades up + out over 5s (matches the clear timer). */}
+              {toast && (
+                <div key={toast} className={`absolute top-4 left-1/2 z-50 px-3 py-1.5 rounded-full text-[11px] font-semibold shadow-lg pointer-events-none ${isDarkMode ? 'bg-slate-800 text-slate-100 border border-white/10' : 'bg-white text-slate-700 border border-black/10'}`} style={{ animation: 'toastHint 5s ease forwards' }}>
+                  {toast}
+                </div>
+              )}
               {/* NavCube sits to the LEFT of the right sidebar's top (beside the Camera Feeds card). */}
               <NavCube
                 onView={(p) => simRef.current?.renderSys.snapToView(p)}
@@ -1998,6 +2013,7 @@ export function App() {
                 unit={lengthUnit}
                 isDarkMode={isDarkMode}
                 arm={(() => { const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; })()}
+                armYawDetentDeg={(() => { if (selection?.kind !== 'arm' || !rodSnap) return null; const rod = rods()[rodSnap.rodIndex]; return rod ? railInwardYaw(rod) * 180 / Math.PI : null; })()}
                 station={(() => {
                   if (selection?.stationId === 'primary') { const w = workcellConfig; return { x: w.originX ?? 0, y: w.originY ?? 0, yaw: w.yaw ?? 0, shapeSides: w.shapeSides, length: w.length, width: w.width, sideExtents: w.sideExtents, cornerRadii: w.cornerRadii, railLengths: w.railLengths }; }
                   const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width, sideExtents: s.sideExtents, cornerRadii: s.cornerRadii, railLengths: s.railLengths } : null;

@@ -126,7 +126,7 @@ export function NavCube({ onView, onViewDir, isDarkMode, getOrbit, onDragRotate,
   // Open panel → tuck just left of it; closed → top-right corner beside the drawer toggle.
   const place = sidebarOpen ? 'top-6 right-4 min-[660px]:right-[22.5rem]' : 'top-3 right-16';
   return (
-    <div className={`absolute ${place} z-30 flex flex-col items-center gap-1.5 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
+    <div className={`absolute ${place} z-30 flex flex-col items-center gap-4 rounded-xl glass-panel border shadow-lg p-2 ${panel}`}>
       <div
         style={{ width: 64, height: 64, perspective: 260, ['--h' as string]: `${HALF}px`, cursor: 'grab', touchAction: 'none' }}
         className="relative"

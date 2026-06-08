@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useState } from 'react';
-import { ChevronDown, Focus, RotateCcw, Trash2, X } from 'lucide-react';
-import { JogIcon, So101Icon } from './ui/toolbar';
+import { ChevronDown, RotateCcw, Trash2, X } from 'lucide-react';
+import { FrameIcon, JogIcon, So101Icon } from './ui/toolbar';
 
 /** Reach glyph (double-headed arrow = range of motion). */
 function ReachIcon({ className }: { className?: string }) {
@@ -31,15 +31,18 @@ function RodSnap({ p, subtle }: { p: InspectorProps; subtle: string }) {
       <button onClick={p.onSnapToRod} className={`w-full text-[9px] font-bold uppercase tracking-wide py-1 rounded-md ${p.isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>
         {p.rodLabel ? `Snapped to ${p.rodLabel} — re-snap` : 'Snap to nearest rail / base'}
       </button>
-      {p.rodLabel && (
-        <label className="flex items-center gap-2">
-          <span className={`text-[9px] font-bold uppercase ${subtle}`}>Along</span>
-          <input type="range" min={0} max={1} step={0.01} value={p.rodT}
-            onChange={(e) => p.onSlideAlongRod(parseFloat(e.target.value))}
-            className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
-          <span className={`text-[9px] tabular-nums w-7 text-right ${subtle}`}>{Math.round(p.rodT * 100)}%</span>
-        </label>
-      )}
+      {p.rodLabel && (() => {
+        const atMid = Math.abs(p.rodT - 0.5) < 0.015; // CAD-style detent at the rail midpoint
+        return (
+          <label className="flex items-center gap-2">
+            <span className={`text-[9px] font-bold uppercase ${atMid ? 'text-emerald-600' : subtle}`}>Along</span>
+            <input type="range" min={0} max={1} step={0.01} value={p.rodT}
+              onChange={(e) => { let t = parseFloat(e.target.value); if (Math.abs(t - 0.5) < 0.04) t = 0.5; p.onSlideAlongRod(t); }}
+              className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+            <span className={`text-[9px] tabular-nums w-7 text-right ${atMid ? 'text-emerald-600 font-bold' : subtle}`}>{atMid ? '◇ mid' : `${Math.round(p.rodT * 100)}%`}</span>
+          </label>
+        );
+      })()}
     </div>
   );
 }
@@ -63,6 +66,8 @@ export interface InspectorProps {
   isDarkMode: boolean;
   // Live entity transforms (the panel edits the entity's own control point, not the bbox centre).
   arm: { x: number; y: number; yaw: number } | null;
+  /** Perpendicular-to-the-snapped-rail yaw (deg) for the arm, so Yaw can detent + flag "⊥". null = none. */
+  armYawDetentDeg?: number | null;
   station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
   onCloneStation: () => void;
@@ -174,7 +179,7 @@ export function SelectionInspector(p: InspectorProps) {
           ? <So101Icon className="w-4 h-4 shrink-0 text-yellow-400" />
           : <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />}
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
-        <button onClick={p.onFrame} title="Fit camera to selected object (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Focus className="w-3.5 h-3.5" /></button>
+        <button onClick={p.onFrame} title="Fit camera to selected object (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><FrameIcon className="w-3.5 h-3.5" /></button>
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
 
@@ -219,7 +224,7 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'X', v: p.arm.x, on: (v) => p.onArm({ x: v }) },
               { k: 'Y', v: p.arm.y, on: (v) => p.onArm({ y: v }) },
             ]} />
-          <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} />
+          <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} detentDeg={p.armYawDetentDeg ?? undefined} />
           <div className="flex gap-2">
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
             <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to corner · face in</button>
@@ -571,17 +576,22 @@ function WMSlider({ label, min, max, step, value, on, subtle, unit, def }: { lab
   );
 }
 
-function Angle({ label, deg, on, subtle }: { label: string; deg: number; on: (d: number) => void; subtle: string }) {
+/** Angle row. `detentDeg` (optional) gives a CAD-style soft detent — values within 4° snap to it
+ *  and a "⊥" flag shows when locked on (used for "perpendicular to the rail"). */
+function Angle({ label, deg, on, subtle, detentDeg }: { label: string; deg: number; on: (d: number) => void; subtle: string; detentDeg?: number | null }) {
+  const circDiff = (a: number, b: number) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return Math.min(d, 360 - d); };
+  const atDetent = detentDeg != null && circDiff(deg, detentDeg) < 1.5;
+  const snap = (d: number) => (detentDeg != null && circDiff(d, detentDeg) < 4 ? detentDeg : d);
   return (
     <label className="flex items-center gap-2">
-      <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[label] ?? subtle}`}>{label}</span>
+      <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${atDetent ? 'text-emerald-600' : (AXIS_HUE[label] ?? subtle)}`}>{label}</span>
       <input type="range" min={-180} max={180} step={1} value={Math.min(180, Math.max(-180, deg))}
-        onChange={(e) => on(parseFloat(e.target.value))}
+        onChange={(e) => on(snap(parseFloat(e.target.value)))}
         className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
       <input type="number" step={1} value={Number(deg.toFixed(0))}
-        onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(d); }}
-        className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
-      <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>°</span>
+        onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(snap(d)); }}
+        className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${atDetent ? 'border-emerald-400 text-emerald-600' : 'border-black/10'}`} />
+      <span className={`text-[10px] w-6 shrink-0 ${atDetent ? 'text-emerald-600 font-bold' : subtle}`}>{atDetent ? '⊥' : '°'}</span>
     </label>
   );
 }

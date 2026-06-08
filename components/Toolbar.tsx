@@ -4,9 +4,9 @@
 */
 
 
-import { Focus, GripVertical, Hand, House, Moon, Pause, Play, Redo2, RotateCcw, Ruler, Sliders, Sun, Undo2 } from 'lucide-react';
+import { GripVertical, Hand, House, Moon, Pause, Play, Redo2, RotateCcw, Ruler, Sliders, Sun, Undo2 } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { IconToolbar, JogIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
+import { FrameIcon, IconToolbar, JogIcon, ToolbarButton, ToolbarDivider } from './ui/toolbar';
 
 interface ToolbarProps {
   isPaused: boolean;
@@ -85,7 +85,7 @@ export function Toolbar({
           {onRedo && <ToolbarButton label="Redo (⇧⌘Z)" icon={Redo2} onClick={onRedo} disabled={!canRedo} isDarkMode={isDarkMode} />}
           {(onUndo || onRedo) && <ToolbarDivider isDarkMode={isDarkMode} />}
           <ToolbarButton label="Home view (ISO)" icon={House} onClick={onResetView} isDarkMode={isDarkMode} />
-          <ToolbarButton label="Fit camera to selected object" icon={Focus} onClick={onFrameSelection} isDarkMode={isDarkMode} />
+          <ToolbarButton label="Fit camera to selected object" icon={FrameIcon} onClick={onFrameSelection} isDarkMode={isDarkMode} />
           {(onToggleJog || onTogglePan || onToggleMeasure) && <ToolbarDivider isDarkMode={isDarkMode} />}
           {onToggleJog && <ToolbarButton label="Robot arm joints — drag a link to rotate" icon={JogIcon} isActive={jogActive} onClick={onToggleJog} isDarkMode={isDarkMode} />}
           {onTogglePan && <ToolbarButton label="Pan view — drag to move the camera" icon={Hand} isActive={panActive} onClick={onTogglePan} isDarkMode={isDarkMode} />}
@@ -135,7 +135,7 @@ export function Toolbar({
         className={`w-14 h-14 rounded-2xl glass-panel flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl ${panelStyle}`}
         title="Frame selection (F)"
       >
-        <Focus className="w-6 h-6" />
+        <FrameIcon className="w-6 h-6" />
       </button>
 
       {/* Pan view — Fusion-style hand: drag to move the camera (was the jog button) */}
