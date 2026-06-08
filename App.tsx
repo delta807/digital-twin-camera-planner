@@ -331,6 +331,9 @@ export function App() {
   const [reachResolution, setReachResolution] = useState(9);
   const [baseResult, setBaseResult] = useState<{ covered: number; total: number } | null>(null);
   const [computingReach, setComputingReach] = useState(false);
+  // A short message shown in a centre overlay while a main-thread-blocking job runs (the FK reach
+  // sweep), so users see "what's happening" instead of mistaking the freeze for lag.
+  const [busyMsg, setBusyMsg] = useState<string | null>(null);
   const [workcellConfig, setWorkcellConfig] = useState<WorkcellConfig>({ ...DEFAULT_WORKCELL_CONFIG });
   const workcellConfigRef = useRef(workcellConfig);
   workcellConfigRef.current = workcellConfig;
@@ -349,6 +352,14 @@ export function App() {
   const reachResolutionRef = useRef(reachResolution);
   reachResolutionRef.current = reachResolution;
   const planner = () => simRef.current?.planner ?? null;
+  // Show `msg`, let the browser paint it (two rAFs), THEN run the blocking work and clear. Without
+  // the paint-yield the synchronous FK sweep would freeze before the overlay ever shows.
+  const runHeavy = (msg: string, fn: () => void) => {
+    setBusyMsg(msg);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { fn(); } finally { setBusyMsg(null); }
+    }));
+  };
 
   // Deriving activeLog directly from the latest logs state ensures UI reactivity
   const activeLog = expandedLogId ? logs.find(l => l.id === expandedLogId) : null;
@@ -1255,7 +1266,7 @@ export function App() {
         if (p && plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
         refreshBaseResult();
       } else {
-        applyPlannerState();
+        runHeavy('Restoring layout…', applyPlannerState); // arm model changed → full re-sweep blocks
       }
     }));
     setTimeout(() => { restoringRef.current = false; }, 0);
@@ -1279,13 +1290,12 @@ export function App() {
     const p = planner();
     if (!p) return;
     setComputingReach(true);
-    // Defer so the spinner paints before the synchronous FK sweep blocks the main thread.
-    setTimeout(() => {
+    runHeavy('Recomputing reach…', () => {
       p.setObstacles(collectObstacles());
       p.computeReachability(reachResolutionRef.current);
       refreshBaseResult();
       setComputingReach(false);
-    }, 30);
+    });
   };
 
   const handleWorkcellChange = (next: WorkcellConfig) => {
@@ -1302,9 +1312,11 @@ export function App() {
     if (isLoading) return;
     const p = planner(); if (!p) return;
     const t = setTimeout(() => {
-      p.setObstacles(collectObstacles());
-      p.computeReachability(reachResolutionRef.current);
-      refreshBaseResult();
+      runHeavy('Updating reach for obstacles…', () => {
+        p.setObstacles(collectObstacles());
+        p.computeReachability(reachResolutionRef.current);
+        refreshBaseResult();
+      });
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1880,7 +1892,18 @@ export function App() {
       {/* Robot Info Overlay — only for the Franka demo (it shows IK gizmo stats); the SO-101
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
-      
+
+      {/* Busy pill — shown while a main-thread-blocking job (the FK reach sweep) runs, so the brief
+          freeze reads as "working" with a reason, not as lag. Top-centre, non-interactive. */}
+      {busyMsg && (
+        <div className="absolute inset-x-0 top-6 z-40 flex justify-center pointer-events-none">
+          <div className={`flex items-center gap-2.5 px-4 py-2 rounded-full shadow-lg glass-panel border text-xs font-semibold ${isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-700'}`}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+            {busyMsg}
+          </div>
+        </div>
+      )}
+
       {/* Loading Screen */}
       {isLoading && (
           <div className={`absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-md px-6 ${isDarkMode ? 'bg-slate-950/40' : 'bg-slate-50/20'}`}>
