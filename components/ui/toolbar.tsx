@@ -5,11 +5,14 @@
 
 import type { ComponentType, ReactNode } from 'react';
 
-/** Jog-joints glyph (filled, connected-nodes) — used for the jog toolbar toggle. */
+/** Jog-joints glyph — used for the jog toolbar toggle. */
 export function JogIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
-      <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M11 2.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3M14 4a3 3 0 1 0-5.895.79L6.15 5.908a3 3 0 1 0 0 4.185l1.955 1.117A3.003 3.003 0 0 0 11 15a3 3 0 1 0-2.15-5.092L6.895 8.79a3 3 0 0 0 0-1.58L8.85 6.092A3 3 0 0 0 14 4m-3 6.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3M2.5 8a1.5 1.5 0 1 1 3 0a1.5 1.5 0 0 1-3 0" />
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <g fill="currentColor">
+        <path d="M1.553 1.105a1 1 0 0 1 1.341.448L4.703 5.17A5.01 5.01 0 0 1 10.583 8H8.23A3 3 0 0 0 6 7c-1.63 0-3 1.365-3 3a3 3 0 0 0 3 3a3 3 0 0 0 2.231-1h2.352a5 5 0 1 1-7.67-5.934L1.106 2.447a1 1 0 0 1 .448-1.342" />
+        <path d="M6 8c.74 0 1.384.403 1.73 1H14a1 1 0 0 1 0 2H7.73A2 2 0 1 1 6 8" />
+      </g>
     </svg>
   );
 }

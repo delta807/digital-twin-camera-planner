@@ -35,11 +35,20 @@ interface UnifiedSidebarProps {
 }
 
 /** A labelled section in the stacked sidebar dashboard. */
-function Sec({ title, isDarkMode, children }: { title: string; isDarkMode: boolean; children: ReactNode }) {
+function Sec({ title, isDarkMode, children, collapsible = false, defaultOpen = true }: { title: string; isDarkMode: boolean; children: ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section className={`rounded-2xl border p-2.5 ${isDarkMode ? 'bg-white/[0.03] border-white/10' : 'bg-black/[0.015] border-black/5'}`}>
-      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">{title}</h3>
-      {children}
+      {collapsible ? (
+        <button type="button" onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">
+          <span>{title}</span>
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
+        </button>
+      ) : (
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-0.5 mb-1.5">{title}</h3>
+      )}
+      {(!collapsible || open) && children}
     </section>
   );
 }
@@ -110,8 +119,8 @@ export function UnifiedSidebar({
         {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode}>{feeds}</Sec>}
         {toolbar && <Sec title="Controls" isDarkMode={isDarkMode}>{toolbar}</Sec>}
 
-        {/* ── Embodied Reasoning ── */}
-        <Sec title="Embodied Reasoning" isDarkMode={isDarkMode}>
+        {/* ── Embodied Reasoning (collapsed by default — it's a deep panel) ── */}
+        <Sec title="Embodied Reasoning" isDarkMode={isDarkMode} collapsible defaultOpen={false}>
         <div className="space-y-2">
         <div className="relative">
           <select

@@ -1964,8 +1964,8 @@ export function App() {
                 workcell={{ config: workcellConfig, onChange: handleWorkcellChange }}
                 extraCamera={(() => {
                   const id = selection?.cameraId; if (!id) return null;
-                  if (id.startsWith('stationcam:')) { const sid = id.slice(11); const sp = stationCamPose(sid); if (!sp) return null; const st = workcellConfig.stations?.find((x) => x.id === sid); return { x: sp.x, y: sp.y, z: sp.z, fovDeg: st?.camFovDeg ?? D435I_PRESET.hFovDeg }; }
-                  const c = workcellConfig.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, fovDeg: c.fovDeg ?? D435I_PRESET.hFovDeg } : null;
+                  if (id.startsWith('stationcam:')) { const sid = id.slice(11); const sp = stationCamPose(sid); if (!sp) return null; const st = workcellConfig.stations?.find((x) => x.id === sid); return { x: sp.x, y: sp.y, z: sp.z, rotX: sp.rotX, rotY: sp.rotY, rotZ: sp.rotZ, fovDeg: st?.camFovDeg ?? D435I_PRESET.hFovDeg }; }
+                  const c = workcellConfig.extraCameras?.find((x) => x.id === id); return c ? { x: c.x, y: c.y, z: c.z, rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ, fovDeg: c.fovDeg ?? D435I_PRESET.hFovDeg } : null;
                 })()}
                 onExtraCamera={(patch) => {
                   const id = selection?.cameraId; if (!id) return;

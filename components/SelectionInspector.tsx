@@ -27,7 +27,7 @@ export interface InspectorProps {
   station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
   onCloneStation: () => void;
-  extraCamera: { x: number; y: number; z: number; fovDeg: number } | null;
+  extraCamera: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number; fovDeg?: number }) => void;
   // Decoupled prop (Three.js cube): full transform + size/colour + duplicate/delete.
   prop?: { x: number; y: number; z: number; yaw: number; size: number; color: string } | null;
@@ -198,6 +198,14 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.extraCamera.y, on: (v) => p.onExtraCamera({ y: v }) },
               { k: 'Z', v: p.extraCamera.z, on: (v) => p.onExtraCamera({ z: v }) },
             ]} />
+          {/* Aim (orbit) — euler degrees about each axis; 0,0,0 = looking straight down. */}
+          {(() => { const DEG = 180 / Math.PI; return (
+            <div className="space-y-1.5">
+              <Angle label="RX" deg={p.extraCamera!.rotX * DEG} on={(d) => p.onExtraCamera({ rotX: d / DEG })} subtle={subtle} />
+              <Angle label="RY" deg={p.extraCamera!.rotY * DEG} on={(d) => p.onExtraCamera({ rotY: d / DEG })} subtle={subtle} />
+              <Angle label="RZ" deg={p.extraCamera!.rotZ * DEG} on={(d) => p.onExtraCamera({ rotZ: d / DEG })} subtle={subtle} />
+            </div>
+          ); })()}
           <button onClick={() => p.onExtraCamera({ rotX: 0, rotY: 0, rotZ: 0 })} className="w-full text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim straight down</button>
           {/* Per-camera FOV + the same overhead D435i view toggles as the primary. */}
           {p.camera && (
