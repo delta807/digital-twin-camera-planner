@@ -149,6 +149,9 @@ export class MujocoJointDrag extends Base {
   onPosed?: () => void;
   /** Drag on a GHOST arm joint → set that arm's stored joint angle (no physics) + re-pose it. */
   onGhostJoint?: (armId: string, index: number, angle: number) => void;
+  /** Mode A: clamp a primary-arm joint angle to the last collision-free value before a post (the
+   *  owner does the binary search against the reach planner). Identity when contact mode is off. */
+  clampAngle?: (qadr: number, target: number) => number;
 
   static create(
     scene: THREE.Object3D, camera: THREE.Camera, dom: HTMLElement,
@@ -186,9 +189,10 @@ export class MujocoJointDrag extends Base {
     const a = Math.min(hi, Math.max(lo, angle));
     // Ghost arm joint → no physics; route to the per-arm angle store + an in-place re-pose.
     if (joint.__ghostArmId !== undefined) { this.onGhostJoint?.(joint.__ghostArmId, joint.__jointIndex ?? 0, a); return; }
-    this.data.qpos[joint.__qadr!] = a;
+    const a2 = this.clampAngle ? this.clampAngle(joint.__qadr!, a) : a; // Mode A: stop at the post
+    this.data.qpos[joint.__qadr!] = a2;
     (this.data as unknown as { qvel: Float64Array }).qvel[joint.__dofadr!] = 0;
-    if ((joint.__actId ?? -1) >= 0) this.data.ctrl[joint.__actId!] = a;
+    if ((joint.__actId ?? -1) >= 0) this.data.ctrl[joint.__actId!] = a2;
     this.mujoco.mj_forward(this.model, this.data);
   }
 

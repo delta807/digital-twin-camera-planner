@@ -341,6 +341,7 @@ export class MujocoSim {
             );
             this.jointDrag.onPosed = () => this.refreshGhostArms();
             this.jointDrag.onGhostJoint = (armId, index, angle) => this.poseGhostJoint(armId, index, angle);
+            this.jointDrag.clampAngle = (qadr, target) => this.clampJointAngle(qadr, target); // Mode A post-contact clamp
             tagGhostJoints(rs.planningArmsGroup, this.ghostJointDescByBody(), (id) => this.ghostJoints(id));
             rs.selection.setSkipArm(true); // arm-link clicks drive joints; other objects still select
         } else {
@@ -602,11 +603,41 @@ export class MujocoSim {
         return this.armJointDescs.map((j) => ({ name: j.name, lo: j.lo, hi: j.hi }));
     }
 
+    /** Contact behaviour when jogging the arm into a mount post.
+     *  'off'   = no constraint (jog passes through);
+     *  'clamp' = Mode A: clamp the jogged joint at the post-contact boundary (hard stop, like a joint limit). */
+    private contactMode: 'off' | 'clamp' | 'physics' = 'off';
+    setContactMode(mode: 'off' | 'clamp' | 'physics') { this.contactMode = mode; }
+
+    /** Mode A clamp: walk the joint at qpos addr `qadr` from its CURRENT angle toward `target` and
+     *  stop at the FIRST angle where the arm touches a post — a hard stop, like a joint limit. We
+     *  march (not bisect) because an obstacle makes a collision *band* in joint space: the far side
+     *  past the post is collision-free again, and a bisection on the endpoints would teleport the
+     *  joint straight through. If the start pose is already in contact we don't restrict (so you can
+     *  always jog back OUT). Mutates qpos during the walk, so callers re-write the returned angle. */
+    clampJointAngle(qadr: number, target: number): number {
+        if (this.contactMode !== 'clamp' || !this.planner) return target;
+        const m = this.mjModel, d = this.mjData, mj = this.mujoco;
+        const start = d.qpos[qadr], delta = target - start;
+        if (Math.abs(delta) < 1e-6) return target;
+        d.qpos[qadr] = start; mj.mj_forward(m, d);
+        if (this.planner.armCollidesLive(d)) return target;           // already touching → let them jog out
+        const steps = Math.min(96, Math.max(4, Math.ceil(Math.abs(delta) / 0.006))); // ~0.35° resolution
+        let lastFree = start;
+        for (let i = 1; i <= steps; i++) {
+            const a = start + delta * (i / steps);
+            d.qpos[qadr] = a; mj.mj_forward(m, d);
+            if (this.planner.armCollidesLive(d)) break;               // first contact → stop just before
+            lastFree = a;
+        }
+        return lastFree;
+    }
+
     /** Live-jog the PRIMARY physics arm's joint (writes qpos + ctrl so it holds through mj_step). */
     setPrimaryJoint(index: number, angle: number) {
         const m = this.mjModel, d = this.mjData; if (!m || !d) return;
         const j = this.armJointDescs[index]; if (!j) return;
-        const a = Math.min(j.hi, Math.max(j.lo, angle));
+        const a = this.clampJointAngle(j.qadr, Math.min(j.hi, Math.max(j.lo, angle)));
         d.qpos[j.qadr] = a; (d as unknown as { qvel: Float64Array }).qvel[j.dofadr] = 0;
         if (j.actId >= 0) d.ctrl[j.actId] = a;
         this.mujoco.mj_forward(m, d);

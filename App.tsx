@@ -168,6 +168,11 @@ export function App() {
   // Interactive joint posing (leLab-style): click a link of the arm + drag to rotate its joint.
   const [poseMode, setPoseMode] = useState(false);
   const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
+  // How the arm reacts when you jog it into a mount post. 'clamp' = hard-stop at the post (Mode A).
+  const [contactMode, setContactMode] = useState<'off' | 'clamp' | 'physics'>('off');
+  const handleContactMode = (m: 'off' | 'clamp' | 'physics') => { setContactMode(m); simRef.current?.setContactMode(m); };
+  // Re-apply the contact mode after a (re)load so it survives a model reload (sim defaults to 'off').
+  useEffect(() => { if (!isLoading) simRef.current?.setContactMode(contactMode); }, [contactMode, isLoading]);
   const togglePoseMode = () => {
     const next = !poseMode;
     setPoseMode(next);
@@ -2188,12 +2193,28 @@ export function App() {
                   measureActive={measureActive} onToggleMeasure={() => handleMeasureActive(!measureActive)}
                   onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
                 {poseMode && (
-                  <div className="flex flex-wrap items-center gap-2 px-0.5">
-                    <span className="text-[10px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>
-                    <button onClick={handleSaveRestPose} title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
-                      className={`ml-auto px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
-                      {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
-                    </button>
+                  <div className="space-y-1.5 px-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-mono whitespace-nowrap">{hoveredJoint ? <>Joint: <span className="text-indigo-500 font-bold">{hoveredJoint}</span></> : 'Hover a link, drag to rotate'}</span>
+                      <button onClick={handleSaveRestPose} title="Record the current jogged pose as the SO-101's default rest pose (persists across reloads)"
+                        className={`ml-auto px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border transition-colors ${restSaved ? 'bg-emerald-600 text-white border-emerald-500' : isDarkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-black/5 border-black/10 text-slate-700 hover:bg-black/10'}`}>
+                        {restSaved ? '✓ Saved as default' : 'Save as rest pose'}
+                      </button>
+                    </div>
+                    {/* Mount-post contact: how the arm reacts when jogged into a post. */}
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} title="How the arm reacts when you jog it into a mount post">Post contact</span>
+                      <div className={`flex gap-0.5 p-0.5 rounded-lg ${isDarkMode ? 'bg-slate-950/50' : 'bg-black/5'}`}>
+                        {([['off', 'Off'], ['clamp', 'Clamp'], ['physics', 'Physics']] as const).map(([mode, label]) => (
+                          <button key={mode} onClick={() => handleContactMode(mode)}
+                            title={mode === 'off' ? 'No constraint — jog passes through the post' : mode === 'clamp' ? 'Hard stop at the post, like a joint limit' : 'Physics contacts (coming soon)'}
+                            disabled={mode === 'physics'}
+                            className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wide transition-colors ${contactMode === mode ? (isDarkMode ? 'bg-indigo-500/30 text-indigo-200' : 'bg-indigo-600/15 text-indigo-700') : (isDarkMode ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-black/5')} ${mode === 'physics' ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
                 {measureActive && (

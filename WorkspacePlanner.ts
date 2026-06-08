@@ -218,6 +218,10 @@ export class WorkspacePlanner {
   /** Set the obstacle cylinders considered by the reach sweep (posts + other arms). */
   setObstacles(obs: Array<{ x: number; y: number; r: number; zTop: number }>) { this.obstacles = obs; }
 
+  /** Does the LIVE arm (in the given mjData pose) collide with a post? Used by the interactive jog
+   *  clamp (Mode A) to stop a joint at the post like a joint limit. Tests the current obstacle set. */
+  armCollidesLive(d: MujocoData): boolean { return this.armCollides(d, this.obstacles); }
+
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose
    *  swept geometry we collision-test. Memoised; falls back to [] if body_parentid isn't exposed. */
   private getArmBodies(): number[] {
