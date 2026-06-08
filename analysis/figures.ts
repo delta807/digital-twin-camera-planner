@@ -116,3 +116,36 @@ export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
   ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
 }
+
+// ── Figure 1: overhead depth map (normalized, with sensor-noise speckle) ──
+export interface DepthData { depth: Float32Array; w: number; h: number; }
+export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  const pad = { l: 12, r: 116, t: 30, b: 12 };
+  const x0 = pad.l, y0 = pad.t, x1 = W - pad.r, y1 = H - pad.b;
+  // Build the depth image at native res, then blit scaled into the frame.
+  const off = document.createElement('canvas'); off.width = d.w; off.height = d.h;
+  const octx = off.getContext('2d')!; const img = octx.createImageData(d.w, d.h);
+  for (let i = 0; i < d.depth.length; i++) {
+    const v = d.depth[i]; const o = i * 4;
+    if (Number.isNaN(v)) { img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = 255; continue; }
+    const c = TURBO(v); img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  // Sensor-noise speckle: scattered dark-red dropout pixels (like a real depth sensor).
+  octx.fillStyle = 'rgba(130,20,20,0.85)';
+  for (let k = 0; k < d.w * d.h * 0.012; k++) octx.fillRect((Math.random() * d.w) | 0, (Math.random() * d.h) | 0, 1, 1);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, x0, y0, x1 - x0, y1 - y0);
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.fillStyle = '#222'; ctx.font = '15px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Camera depth (overhead)', (x0 + x1) / 2, 14);
+  // colorbar (turbo, 0..1 normalized)
+  const bx = x1 + 18, bw = 18, bh = y1 - y0;
+  for (let i = 0; i < bh; i++) { ctx.fillStyle = css(TURBO(1 - i / bh)); ctx.fillRect(bx, y0 + i, bw, 1); }
+  ctx.strokeStyle = '#222'; ctx.strokeRect(bx, y0, bw, bh);
+  ctx.fillStyle = '#222'; ctx.textAlign = 'left'; const n = 5;
+  for (let k = 0; k <= n; k++) ctx.fillText((k / n).toFixed(2), bx + bw + 6, y1 - bh * k / n);
+  ctx.save(); ctx.translate(bx + bw + 56, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('depth (norm.)', 0, 0); ctx.restore();
+}

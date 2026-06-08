@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { X, Download } from 'lucide-react';
-import { drawReachability, type ReachData } from '../analysis/figures';
+import { drawReachability, drawDepth, type ReachData, type DepthData } from '../analysis/figures';
 
 interface Props {
   open: boolean;
@@ -12,6 +12,8 @@ interface Props {
   isDarkMode: boolean;
   /** Live reach grid + table metrics, computed by App from the current layout (null if not ready). */
   getReach: () => ReachData | null;
+  /** Live overhead depth image (null if no station camera). */
+  getDepth: () => DepthData | null;
 }
 
 /** Render one figure to a hi-DPI canvas via `draw`, with a "Download PNG" button. */
@@ -40,9 +42,10 @@ function Figure({ title, width, height, draw }: { title: string; width: number; 
 }
 
 /** Analysis overlay: matplotlib-style figures for the LIVE layout, each exportable as a PNG. */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth }: Props) {
   if (!open) return null;
   const reach = getReach();
+  const depth = getDepth();
   return (
     <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-6" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -55,6 +58,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach }: Props) {
           {reach
             ? <Figure title="SO-101 reachability" width={620} height={560} draw={(c) => drawReachability(c, reach)} />
             : <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Reach grid not ready — compute reachability first.</p>}
+          {depth && <Figure title="Camera depth (overhead)" width={620} height={400} draw={(c) => drawDepth(c, depth)} />}
         </div>
       </div>
     </div>

@@ -164,6 +164,7 @@ export class MujocoSim {
         this.renderSys.initScene(this.mjModel);
         this.renderSys.syncBodiesFromData(this.mjData);
         this.buildBlockPool();
+        this.initPostColliders();
 
         if (this.isFranka) {
             this.ikSys.init(this.mjModel, isDouble);
@@ -341,7 +342,7 @@ export class MujocoSim {
             );
             this.jointDrag.onPosed = () => this.refreshGhostArms();
             this.jointDrag.onGhostJoint = (armId, index, angle) => this.poseGhostJoint(armId, index, angle);
-            this.jointDrag.clampAngle = (qadr, target) => this.clampJointAngle(qadr, target); // Mode A post-contact clamp
+            this.jointDrag.applyPrimary = (qadr, dofadr, actId, target) => this.applyPrimaryJoint(qadr, dofadr, actId, target); // contact-aware write
             tagGhostJoints(rs.planningArmsGroup, this.ghostJointDescByBody(), (id) => this.ghostJoints(id));
             rs.selection.setSkipArm(true); // arm-link clicks drive joints; other objects still select
         } else {
@@ -553,6 +554,16 @@ export class MujocoSim {
         return this.planner?.suggestArmLayout(n) ?? null;
     }
 
+    /** Depth image from the overhead (first station) camera, for the analysis depth figure. Overlay
+     *  groups (ghost arms, planner tiles/outline/gizmo) are hidden so only real geometry shows. */
+    overheadDepth(w = 320, h = 180): { depth: Float32Array; w: number; h: number } | null {
+        const cam = this.renderSys.cameraRig?.sensorCamera; // the overhead D435i
+        if (!cam) return null;
+        const hide: THREE.Object3D[] = [this.renderSys.planningArmsGroup, ...this.renderSys.cameraRig.overlays];
+        if (this.planner) hide.push(this.planner.group, this.planner.gizmoHelper);
+        return this.renderSys.renderDepth(cam, w, h, hide);
+    }
+
     setArmInstances(instances: ArmInstance[]) {
         this.armInstances = instances.map((arm) => ({ ...arm }));
         this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));
@@ -607,7 +618,71 @@ export class MujocoSim {
      *  'off'   = no constraint (jog passes through);
      *  'clamp' = Mode A: clamp the jogged joint at the post-contact boundary (hard stop, like a joint limit). */
     private contactMode: 'off' | 'clamp' | 'physics' = 'off';
-    setContactMode(mode: 'off' | 'clamp' | 'physics') { this.contactMode = mode; }
+    private postColliders: { geomId: number; mocapId: number }[] = []; // baked postcol{i} mocap pool
+    setContactMode(mode: 'off' | 'clamp' | 'physics') {
+        this.contactMode = mode;
+        this.physicsTargets.clear();
+        if (mode === 'physics') { // seed each joint's target at its current angle so the arm holds, not drifts
+            const d = this.mjData;
+            if (d) for (const j of this.armJointDescs) if (j.actId >= 0) this.physicsTargets.set(j.actId, d.qpos[j.qadr]);
+        } else {
+            this.syncPostColliders([]); // park the colliders unless in physics mode
+        }
+    }
+
+    /** Per-frame (called before mj_step in 'physics' mode): walk each arm actuator's ctrl toward its
+     *  commanded target, but never more than LEAD ahead of the live qpos — so the servo torque stays
+     *  bounded and the post-contact geoms can stop the arm instead of being tunnelled through. */
+    private advancePhysicsCtrl() {
+        const d = this.mjData; if (this.contactMode !== 'physics' || !d) return;
+        const LEAD = 0.05;
+        for (const j of this.armJointDescs) {
+            if (j.actId < 0) continue;
+            const target = this.physicsTargets.get(j.actId); if (target == null) continue;
+            const cur = d.qpos[j.qadr];
+            d.ctrl[j.actId] = Math.max(cur - LEAD, Math.min(cur + LEAD, target));
+        }
+    }
+
+    /** Index the baked mocap post-collider pool (bodies/geoms named `postcol{i}`) and park them all. */
+    private initPostColliders() {
+        const m = this.mjModel; if (!m) return;
+        this.postColliders = [];
+        for (let g = 0; g < m.ngeom; g++) {
+            if (!/^postcol\d+$/.test(getName(m, m.name_geomadr[g]))) continue;
+            const bodyId = m.geom_bodyid[g];
+            this.postColliders.push({ geomId: g, mocapId: m.body_mocapid[bodyId] });
+        }
+        for (const c of this.postColliders) this.parkPostCollider(c);
+    }
+
+    private parkPostCollider(c: { geomId: number; mocapId: number }) {
+        const m = this.mjModel!, d = this.mjData!;
+        m.geom_contype[c.geomId] = 0; m.geom_conaffinity[c.geomId] = 0; // no collisions while parked
+        if (c.mocapId >= 0) d.mocap_pos[c.mocapId * 3 + 2] = -20; // sink the mocap body below the floor
+    }
+
+    /** Mode B: position/size/enable the mocap collider pool to match the given posts (world XY, r,
+     *  height 0→zTop) so the arm + cubes physically contact the posts during mj_step. Only active in
+     *  'physics' mode; otherwise every collider is parked (off). Mocap bodies move via data.mocap_pos
+     *  (dynamic broadphase → collisions update), with per-geom size set for the post's r/height. */
+    syncPostColliders(posts: Array<{ x: number; y: number; r: number; zTop: number }>) {
+        const m = this.mjModel, d = this.mjData; if (!m || !d) return;
+        if (!this.postColliders.length) this.initPostColliders();
+        const active = this.contactMode === 'physics' ? posts : [];
+        this.postColliders.forEach((c, i) => {
+            const post = active[i];
+            if (post && post.zTop > 0 && c.mocapId >= 0) {
+                m.geom_size[c.geomId * 3] = post.r; m.geom_size[c.geomId * 3 + 1] = post.zTop / 2; // radius, half-height
+                m.geom_pos[c.geomId * 3 + 2] = post.zTop / 2;                                      // base at body z=0 → top at zTop
+                d.mocap_pos[c.mocapId * 3] = post.x; d.mocap_pos[c.mocapId * 3 + 1] = post.y; d.mocap_pos[c.mocapId * 3 + 2] = 0;
+                m.geom_contype[c.geomId] = 1; m.geom_conaffinity[c.geomId] = 1;
+            } else {
+                this.parkPostCollider(c);
+            }
+        });
+        this.mujoco.mj_forward(m, d);
+    }
 
     /** Mode A clamp: walk the joint at qpos addr `qadr` from its CURRENT angle toward `target` and
      *  stop at the FIRST angle where the arm touches a post — a hard stop, like a joint limit. We
@@ -633,14 +708,36 @@ export class MujocoSim {
         return lastFree;
     }
 
-    /** Live-jog the PRIMARY physics arm's joint (writes qpos + ctrl so it holds through mj_step). */
-    setPrimaryJoint(index: number, angle: number) {
+    /** Apply a primary-arm joint target under the active contact mode. Shared by the slider
+     *  (setPrimaryJoint) and the link-drag (MujocoJointDrag.updateJoint):
+     *   • 'physics' → set ONLY the actuator target (ctrl); mj_step + post-contact geoms resolve it,
+     *     so the arm is stopped by real contact forces and never teleports into the post.
+     *   • 'clamp'   → kinematic hard-stop at the post-contact boundary, then write qpos+ctrl.
+     *   • 'off'     → write qpos+ctrl directly (teleport). */
+    // Physics-mode jog: the commanded target per arm actuator. Each frame we creep ctrl toward it,
+    // kept within LEAD of the live qpos (see advancePhysicsCtrl) so the servo can't overpower contact.
+    private physicsTargets = new Map<number, number>(); // actId → commanded joint angle
+
+    applyPrimaryJoint(qadr: number, dofadr: number, actId: number, target: number) {
         const m = this.mjModel, d = this.mjData; if (!m || !d) return;
-        const j = this.armJointDescs[index]; if (!j) return;
-        const a = this.clampJointAngle(j.qadr, Math.min(j.hi, Math.max(j.lo, angle)));
-        d.qpos[j.qadr] = a; (d as unknown as { qvel: Float64Array }).qvel[j.dofadr] = 0;
-        if (j.actId >= 0) d.ctrl[j.actId] = a;
+        if (this.contactMode === 'physics') {
+            // Record the target; advancePhysicsCtrl (per frame) walks ctrl toward it. We can't just set
+            // ctrl=target: the servo torque is gain·(ctrl−qpos), and a far target overpowers MuJoCo's
+            // soft contacts and tunnels through the post. Bounding the error per frame keeps the torque
+            // small enough that the post-contact geoms hold the arm; in free space qpos chases it home.
+            if (actId >= 0) this.physicsTargets.set(actId, target);
+            return;
+        }
+        const a = this.clampJointAngle(qadr, target);
+        d.qpos[qadr] = a; (d as unknown as { qvel: Float64Array }).qvel[dofadr] = 0;
+        if (actId >= 0) d.ctrl[actId] = a;
         this.mujoco.mj_forward(m, d);
+    }
+
+    /** Live-jog the PRIMARY physics arm's joint (slider path). */
+    setPrimaryJoint(index: number, angle: number) {
+        const j = this.armJointDescs[index]; if (!j) return;
+        this.applyPrimaryJoint(j.qadr, j.dofadr, j.actId, Math.min(j.hi, Math.max(j.lo, angle)));
     }
 
     /** FK ORACLE: base-relative transforms of every arm body (+ the TCP) at the given joint angles,
@@ -969,6 +1066,7 @@ export class MujocoSim {
                 const startSimTime = this.mjData.time;
                 // Allow simulation to run faster than real-time based on speedMultiplier
                 while (this.mjData.time - startSimTime < (1.0 / 60.0) * this.speedMultiplier) {
+                    this.advancePhysicsCtrl(); // Mode B: creep arm ctrl toward target (bounded for contact)
                     this.mujoco.mj_step(this.mjModel, this.mjData);
                 }
 

@@ -468,6 +468,56 @@ export class RenderSystem {
         this.simGroup.add(this.contactMarkers);
     }
 
+    private depthRT: THREE.WebGLRenderTarget | null = null;
+    // Linear-depth override: writes normalized view-space depth straight to the colour channel, so a
+    // byte readback IS the depth (no RGBA depth-packing → no precision loss, no colour-space/tone-map
+    // corruption). uNear/uFar bracket the scene; r=1 (white clear) = background/far.
+    private readonly depthMat = new THREE.ShaderMaterial({
+        uniforms: { uNear: { value: 0.3 }, uFar: { value: 1.8 } },
+        vertexShader: 'varying float vZ; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }',
+        fragmentShader: 'varying float vZ; uniform float uNear; uniform float uFar; void main(){ float d = clamp((vZ - uNear)/(uFar - uNear), 0.0, 1.0); gl_FragColor = vec4(d, d, d, 1.0); }',
+    });
+
+    /** Render a linearized, min-max-normalized depth image (w×h, row-major, y-down) of the scene from
+     *  `camera`. Used by the analysis "depth map" figure. `hide` lets the caller drop overlay groups
+     *  (planner tiles, ghosts) so only real geometry shows. Values: 0 = nearest geom, 1 = farthest
+     *  geom; background (no geometry) is returned as NaN so the figure can skip it. */
+    renderDepth(camera: THREE.PerspectiveCamera, w: number, h: number, hide: THREE.Object3D[] = [], near = 0.3, far = 1.8): { depth: Float32Array; w: number; h: number } {
+        if (!this.depthRT || this.depthRT.width !== w || this.depthRT.height !== h) {
+            this.depthRT?.dispose();
+            this.depthRT = new THREE.WebGLRenderTarget(w, h, { depthBuffer: true });
+        }
+        // Tighten the frustum to the scene's depth band — the camera's own far (≈100 m) would crush all
+        // table depth into the float LSBs and the packed-depth decode would be pure quantization noise.
+        const savedNear = camera.near, savedFar = camera.far;
+        camera.near = near; camera.far = far; camera.updateProjectionMatrix();
+        this.depthMat.uniforms.uNear.value = near; this.depthMat.uniforms.uFar.value = far;
+        const wasHidden = hide.map((o) => o.visible); hide.forEach((o) => (o.visible = false));
+        const prevTarget = this.renderer.getRenderTarget(), prevOverride = this.scene.overrideMaterial, prevBg = this.scene.background;
+        this.scene.overrideMaterial = this.depthMat;
+        this.scene.background = null;
+        this.renderer.setRenderTarget(this.depthRT);
+        this.renderer.setClearColor(0xffffff, 1); this.renderer.clear(); // white (r=1) = far / background
+        this.renderer.render(this.scene, camera);
+        this.renderer.setRenderTarget(prevTarget);
+        this.scene.overrideMaterial = prevOverride; this.scene.background = prevBg;
+        hide.forEach((o, i) => (o.visible = wasHidden[i]));
+        camera.near = savedNear; camera.far = savedFar; camera.updateProjectionMatrix(); // restore
+
+        const buf = new Uint8Array(w * h * 4);
+        this.renderer.readRenderTargetPixels(this.depthRT, 0, 0, w, h, buf);
+        const depth = new Float32Array(w * h);
+        let lo = Infinity, hi = -Infinity;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const d = buf[((h - 1 - y) * w + x) * 4] / 255; // R channel = normalized linear depth (readPixels is bottom-up)
+            if (d >= 0.999) { depth[y * w + x] = NaN; continue; }   // background / far → skip
+            depth[y * w + x] = d; if (d < lo) lo = d; if (d > hi) hi = d;
+        }
+        const span = hi - lo || 1;
+        for (let i = 0; i < depth.length; i++) if (!Number.isNaN(depth[i])) depth[i] = (depth[i] - lo) / span; // stretch to 0..1
+        return { depth, w, h };
+    }
+
     private updateContacts(mjData: MujocoData, show: boolean) {
         if (!show || !mjData.ncon) { this.contactMarkers.count = 0; return; }
         const count = Math.min(mjData.ncon, this.contactMarkers.instanceMatrix.count);
