@@ -284,7 +284,10 @@ export class WorkspacePlanner {
     mujoco.mj_forward(model, scratch);
     const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
     const radMax = makeRadial(), radPrec = makeRadial(), radBlocked = makeRadial();
-    const cells = new Map<string, number>(), cellsMax = new Map<string, number>(), blocked = new Map<string, number>();
+    // cells = graspable configs per cell (collision-ignored → kinematic outline/heatmap);
+    // free = the subset of those that are ALSO collision-free. A cell is truly blocked iff it is
+    // graspable but has ZERO free configs (every grasp there routes a link through an obstacle).
+    const cells = new Map<string, number>(), cellsMax = new Map<string, number>(), free = new Map<string, number>();
     const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
     const nArm = Math.max(2, resolution), nBase = Math.max(nArm, BASE_STEPS);
     const armTotal = Math.pow(nArm, armJoints.length);
@@ -309,10 +312,21 @@ export class WorkspacePlanner {
         cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1); accumRadial(radMax, ang, r);
         if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // graspable from above only
         cells.set(key, (cells.get(key) ?? 0) + 1); accumRadial(radPrec, ang, r);
-        // → red overlay. radBlocked shares radPrec's (ang,r) samples, so its per-bin band is nested
-        // INSIDE the precision fan by construction (blocked ⊆ reachable, no overhang after smoothing).
-        if (this.armCollides(scratch, obstacles)) { blocked.set(key, (blocked.get(key) ?? 0) + 1); accumRadial(radBlocked, ang, r); }
+        if (!this.armCollides(scratch, obstacles)) free.set(key, (free.get(key) ?? 0) + 1); // a collision-free way to grasp here
       }
+    }
+    // A cell is BLOCKED only if it is graspable but NO config reaches it collision-free — i.e. the
+    // obstacle removes EVERY grasp approach, not just some. (Flagging "any colliding config" over-
+    // reports: cells the arm can still grasp by swinging the links around / reaching over the post.)
+    // Build radBlocked from those cells' centres so the red wedge is the genuinely-lost region; it
+    // stays nested in the precision fan since every blocked cell is also a graspable (radPrec) cell.
+    const blocked = new Map<string, number>();
+    for (const [key, n] of cells) {
+      if (free.has(key)) continue;
+      blocked.set(key, n);
+      const [di, dj] = key.split(',').map(Number);
+      const ox = di * CELL, oy = dj * CELL;
+      accumRadial(radBlocked, Math.atan2(ox * sin + oy * cos, ox * cos - oy * sin), Math.hypot(ox, oy));
     }
     return { radMax, radPrec, radBlocked, cells, cellsMax, blocked, baseX, baseY };
   }
@@ -340,7 +354,7 @@ export class WorkspacePlanner {
         if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
           this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
           this.radMax = r.radMax; this.radPrec = r.radPrec; this.radBlocked = r.radBlocked; this.baseX = r.baseX; this.baseY = r.baseY;
-          this.lastBlocked = { blocked: r.blocked.size, graspable: r.cells.size + r.blocked.size };
+          this.lastBlocked = { blocked: r.blocked.size, graspable: r.cells.size }; // blocked ⊆ cells
         }
       }
     } finally {

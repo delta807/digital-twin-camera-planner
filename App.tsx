@@ -1294,6 +1294,22 @@ export function App() {
     simRef.current?.setWorkcell(next);
   };
 
+  // Re-sweep the ROM when OBSTACLES change. Base moves skip the re-sweep (the reachable set is
+  // base-relative, so a move can't change it) — but mount posts are obstacles, and adding/moving/
+  // resizing one genuinely changes what's blocked, so the red region must update. Debounced so a
+  // post drag doesn't fire the synchronous FK sweep every tick (only ~350ms after the last edit).
+  useEffect(() => {
+    if (isLoading) return;
+    const p = planner(); if (!p) return;
+    const t = setTimeout(() => {
+      p.setObstacles(collectObstacles());
+      p.computeReachability(reachResolutionRef.current);
+      refreshBaseResult();
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workcellConfig.extraPosts, workcellConfig.postX, workcellConfig.postY, workcellConfig.postHeight, isLoading]);
+
 
   // The PRIMARY arm's base now moves LIVE (body_pos + mj_forward, no reload) — so dragging the
   // slider moves the real arm in real time, no "apply pose" step needed.
