@@ -891,15 +891,20 @@ export function App() {
     const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.includes('Rail'));
     const near = nearestRod(new THREE.Vector3(a.x, a.y, 0), edges); if (!near) return;
     const edge = edges[near.index];
+    // Centre the arm on the MIDPOINT of the nearest edge (not the projected nearest point): the
+    // projection lands on a corner when the arm is near a vertex (e.g. a hexagon), where the edge
+    // normal is ambiguous and the facing comes out wrong. The midpoint gives a clean, predictable
+    // "arm centred on this side, facing in" for any polygon.
+    const mx = (edge.a.x + edge.b.x) / 2, my = (edge.a.y + edge.b.y) / 2;
     // Inward normal of the edge segment (perpendicular, pointing toward THIS worktop's centre —
     // the primary table is at the origin; satellite stations carry their own `center`).
     const cx = edge.center?.x ?? 0, cy = edge.center?.y ?? 0;
     const dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
     let nx = -dy, ny = dx;
-    if (nx * (cx - near.point.x) + ny * (cy - near.point.y) < 0) { nx = -nx; ny = -ny; }
+    if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }
     const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
     const yaw = Math.atan2(ny, nx) - fwd;
-    handleArmChange(a.id, { x: near.point.x, y: near.point.y, yaw });
+    handleArmChange(a.id, { x: mx, y: my, yaw });
     setRodSnap({ rodIndex: all.indexOf(edge), label: edge.label });
   };
 
