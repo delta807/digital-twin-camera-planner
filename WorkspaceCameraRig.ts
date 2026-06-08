@@ -221,6 +221,15 @@ export class WorkspaceCameraRig {
     return this.gizmo.position.clone();
   }
 
+  /** Aim (orbit) as XYZ euler radians — for the inspector's editable RX/RY/RZ fields. */
+  getAimEuler(): { x: number; y: number; z: number } {
+    const e = this.gizmo.rotation;
+    return { x: e.x, y: e.y, z: e.z };
+  }
+  setAimEuler(x: number, y: number, z: number) {
+    this.gizmo.rotation.set(x, y, z);
+  }
+
   /** Replace the placeholder box gizmo with the real Intel D435i mesh (public/d435i.stl). */
   private loadCameraMesh(...fallback: THREE.Object3D[]) {
     new STLLoader().load('/d435i.stl', (geo) => {

@@ -50,10 +50,12 @@ export interface InspectorProps {
   onCloneExtraPost?: () => void;
   onRemoveExtraPost?: () => void;
   cameraPos: { x: number; y: number; z: number } | null;
+  cameraRot: { x: number; y: number; z: number } | null;
   post: { x: number; y: number };
   // Write-backs.
   onArm: (p: { x?: number; y?: number; yaw?: number }) => void;
   onCamera: (x: number, y: number, z: number) => void;
+  onCameraAim: (rx: number, ry: number, rz: number) => void;
   onPost: (x: number, y: number) => void;
   onObject: (bodyId: number, x: number, y: number, z: number) => void;
   onAimDown: () => void;
@@ -194,11 +196,14 @@ export function SelectionInspector(p: InspectorProps) {
               <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><JogIcon className="w-3 h-3" /> Robot arm joints</span>
               {p.armJoints.info.map((j, i) => (
                 <div key={j.name} className="flex items-center gap-2">
-                  <span className={`text-[9px] font-bold uppercase w-16 shrink-0 truncate ${subtle}`}>{j.name}</span>
+                  <span className={`text-[9px] font-bold uppercase w-14 shrink-0 truncate ${subtle}`}>{j.name}</span>
                   <input type="range" min={j.lo} max={j.hi} step={(j.hi - j.lo) / 240} value={p.armJoints!.values[i] ?? 0}
                     onChange={(e) => p.armJoints!.onChange(i, parseFloat(e.target.value))}
-                    className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
-                  <span className={`text-[9px] tabular-nums w-8 text-right ${subtle}`}>{((p.armJoints!.values[i] ?? 0) * 180 / Math.PI).toFixed(0)}°</span>
+                    className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
+                  <input type="number" step={1} value={Number(((p.armJoints!.values[i] ?? 0) * 180 / Math.PI).toFixed(0))}
+                    onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) p.armJoints!.onChange(i, Math.min(j.hi, Math.max(j.lo, d * Math.PI / 180))); }}
+                    className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+                  <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>°</span>
                 </div>
               ))}
             </div>
@@ -251,6 +256,14 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Y', v: p.cameraPos.y, on: (v) => p.onCamera(p.cameraPos!.x, v, p.cameraPos!.z) },
               { k: 'Z', v: p.cameraPos.z, on: (v) => p.onCamera(p.cameraPos!.x, p.cameraPos!.y, v) },
             ]} />
+          {/* Aim (orbit) — euler degrees about each axis. */}
+          {p.cameraRot && (() => { const DEG = 180 / Math.PI; const r = p.cameraRot!; return (
+            <div className="space-y-1.5">
+              <Angle label="RX" deg={r.x * DEG} on={(d) => p.onCameraAim(d / DEG, r.y, r.z)} subtle={subtle} />
+              <Angle label="RY" deg={r.y * DEG} on={(d) => p.onCameraAim(r.x, d / DEG, r.z)} subtle={subtle} />
+              <Angle label="RZ" deg={r.z * DEG} on={(d) => p.onCameraAim(r.x, r.y, d / DEG)} subtle={subtle} />
+            </div>
+          ); })()}
           <div className="flex gap-2">
             <button onClick={p.onSnapToPost} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to post</button>
             <button onClick={p.onAimDown} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Aim down</button>
@@ -516,18 +529,19 @@ function WMSlider({ label, min, max, step, value, on, subtle, unit, def }: { lab
     <div className="space-y-0.5">
       <div className="flex justify-between items-center text-[10px] font-medium gap-2">
         <span className={changed ? 'text-orange-500' : undefined}>{label}</span>
-        <span className={`flex items-center gap-1 ${subtle}`}>
-          {changed && (
-            <button type="button" onClick={() => on(def!)} title={`Reset to default (${Number(def!.toFixed(0))})`}
-              className="text-orange-500 hover:text-orange-600"><RotateCcw className="w-3 h-3" /></button>
-          )}
-          <input type="number" min={min} max={max} step={step} value={Number(value.toFixed(0))}
-            onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(clamp(d)); }}
-            className={`w-11 bg-transparent text-right tabular-nums outline-none border-b focus:border-indigo-400 ${changed ? 'border-orange-300 text-orange-500' : 'border-transparent'}`} />
-          <span>{unit}</span>
-        </span>
+        {changed && (
+          <button type="button" onClick={() => on(def!)} title={`Reset to default (${Number(def!.toFixed(0))})`}
+            className="text-orange-500 hover:text-orange-600"><RotateCcw className="w-3 h-3" /></button>
+        )}
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => on(parseFloat(e.target.value))} className="w-full h-1 accent-indigo-600 cursor-pointer" />
+      {/* slider + boxed value (consistent with the X/Y/Z rows). */}
+      <div className="flex items-center gap-2">
+        <input type="range" min={min} max={max} step={step} value={clamp(value)} onChange={(e) => on(parseFloat(e.target.value))} className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
+        <input type="number" min={min} max={max} step={step} value={Number(value.toFixed(0))}
+          onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(clamp(d)); }}
+          className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${changed ? 'border-orange-300 text-orange-500' : 'border-black/10'}`} />
+        <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>{unit}</span>
+      </div>
     </div>
   );
 }

@@ -217,6 +217,7 @@ export function App() {
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('mm');
   const [axesVisible, setAxesVisible] = useState(true);
   const [cameraPos, setCameraPos] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [cameraRot, setCameraRot] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureActive, setMeasureActive] = useState(false);
   const [measureMode, setMeasureMode] = useState<'point' | 'gap'>('point');
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
@@ -438,10 +439,12 @@ export function App() {
               // Live sensor-camera world position (origin = table center). Only re-render the
               // HUD when it actually changes (rounded to mm) to avoid churn.
               const p = simRef.current.renderSys.cameraRig.sensorCamera.position;
-              const key = `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}`;
+              const er = simRef.current.renderSys.cameraRig.getAimEuler();
+              const key = `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}|${er.x.toFixed(3)},${er.y.toFixed(3)},${er.z.toFixed(3)}`;
               if (key !== lastCamKey) {
                   lastCamKey = key;
                   setCameraPos({ x: p.x, y: p.y, z: p.z });
+                  setCameraRot(er);
               }
           }
           animId = requestAnimationFrame(uiLoop);
@@ -834,6 +837,7 @@ export function App() {
     setCameraPos({ x, y, z });
   };
   const handleCameraAimDown = () => rig()?.aimDown();
+  const handleCameraAim = (rx: number, ry: number, rz: number) => { rig()?.setAimEuler(rx, ry, rz); setCameraRot({ x: rx, y: ry, z: rz }); };
 
   // ── Rod snapping: mount the selected object onto a rod and slide it ALONG it ──
   const [rodSnap, setRodSnap] = useState<{ rodIndex: number; label: string } | null>(null);
@@ -2002,6 +2006,8 @@ export function App() {
                 onCloneExtraPost={() => { if (selection?.postIndex !== undefined) handleCloneExtraPost(selection.postIndex); }}
                 onRemoveExtraPost={() => { if (selection?.postIndex !== undefined) handleRemoveExtraPost(selection.postIndex); }}
                 cameraPos={cameraPos}
+                cameraRot={cameraRot}
+                onCameraAim={handleCameraAim}
                 post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
                 onCamera={handleCameraMove}
