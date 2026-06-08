@@ -304,11 +304,12 @@ export class WorkspacePlanner {
         const ox = tx - baseX, oy = ty - baseY;
         const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
         const ang = Math.atan2(ly, lx), r = Math.hypot(lx, ly);
-        const collides = this.armCollides(scratch, obstacles); // a link would hit a post / another arm
-        if (!collides) { cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1); accumRadial(radMax, ang, r); }
+        // Outline + heatmap use the KINEMATIC reach (clean, obstacle-independent); obstacles are shown
+        // ONLY by the red blocked overlay (so the fan keeps its smooth shape — no double-encoding).
+        cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1); accumRadial(radMax, ang, r);
         if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // graspable from above only
-        if (collides) blocked.set(key, (blocked.get(key) ?? 0) + 1); // graspable kinematically, but blocked
-        else { cells.set(key, (cells.get(key) ?? 0) + 1); accumRadial(radPrec, ang, r); }
+        cells.set(key, (cells.get(key) ?? 0) + 1); accumRadial(radPrec, ang, r);
+        if (this.armCollides(scratch, obstacles)) blocked.set(key, (blocked.get(key) ?? 0) + 1); // → red overlay
       }
     }
     return { radMax, radPrec, cells, cellsMax, blocked, baseX, baseY };
