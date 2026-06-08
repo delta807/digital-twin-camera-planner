@@ -187,18 +187,16 @@ export function NavCube({ onView, onViewDir, isDarkMode, getOrbit, onDragRotate,
       </div>
       <button
         onClick={() => onView('iso')}
-        title="Reset to isometric view"
+        title="Home (reset to isometric view)"
         className={`flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-black/5'}`}
       >
-        {/* OrcaSlicer-style crosshair "recenter" glyph */}
-        <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden>
-          <circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-          <line x1="8" y1="0.5" x2="8" y2="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <line x1="8" y1="13" x2="8" y2="15.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <line x1="0.5" y1="8" x2="3" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <line x1="13" y1="8" x2="15.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        {/* Home glyph */}
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 9.5 12 3l9 6.5" />
+          <path d="M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10" />
+          <path d="M9 21v-6h6v6" />
         </svg>
-        Iso
+        Home
       </button>
     </div>
   );

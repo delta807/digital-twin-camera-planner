@@ -19,6 +19,7 @@ export interface PlannerToggles {
   basePlacement: boolean; // inverse-reachability (where to mount) heatmap
   tasks: boolean;       // task-point markers
   baseDrag: boolean;    // show the draggable base gizmo
+  blocked: boolean;     // red overlay: graspable cells lost to an obstacle (post / other arm)
 }
 
 export interface PlannerConfig {
@@ -68,12 +69,13 @@ export class WorkspacePlanner {
   private cfg: PlannerConfig;
   private reachTiles: THREE.InstancedMesh;
   private baseTiles: THREE.InstancedMesh;
+  private blockedTiles: THREE.InstancedMesh;
   private taskMarkers = new THREE.Group();
   private bestMarker: THREE.Mesh;
   private baseDisc: THREE.Mesh;
   private control: TransformControls;
 
-  private toggles: PlannerToggles = { outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false };
+  private toggles: PlannerToggles = { outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false, blocked: true };
 
   // Per-arm dashed reach outlines (color-coded), and the arm placements driving them.
   private readonly outlineGroup = new THREE.Group();
@@ -107,6 +109,10 @@ export class WorkspacePlanner {
    *  (primary) base; the base-relative cells are then reused for placement. */
   private obstacles: Array<{ x: number; y: number; r: number; zTop: number }> = [];
   private armBodies: number[] | null = null; // memoized arm subtree body ids (chain under baseBodyId)
+  // Per-arm cells that are kinematically graspable but lost to an obstacle (the red overlay).
+  private armBlocked = new Map<string, Map<string, number>>();
+  /** Last sweep's graspable-vs-blocked tally (primary arm), for the "% blocked" readout. */
+  lastBlocked: { blocked: number; graspable: number } | null = null;
 
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
@@ -115,7 +121,8 @@ export class WorkspacePlanner {
     this.cfg = cfg;
     this.reachTiles = this.makeTiles();
     this.baseTiles = this.makeTiles();
-    this.group.add(this.reachTiles, this.baseTiles, this.taskMarkers, this.outlineGroup);
+    this.blockedTiles = this.makeTiles();
+    this.group.add(this.reachTiles, this.baseTiles, this.blockedTiles, this.taskMarkers, this.outlineGroup);
 
     // Best-mount marker: a thin ring laid flat on the worktop.
     this.bestMarker = new THREE.Mesh(
@@ -274,7 +281,7 @@ export class WorkspacePlanner {
     mujoco.mj_forward(model, scratch);
     const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
     const radMax = makeRadial(), radPrec = makeRadial();
-    const cells = new Map<string, number>(), cellsMax = new Map<string, number>();
+    const cells = new Map<string, number>(), cellsMax = new Map<string, number>(), blocked = new Map<string, number>();
     const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
     const nArm = Math.max(2, resolution), nBase = Math.max(nArm, BASE_STEPS);
     const armTotal = Math.pow(nArm, armJoints.length);
@@ -287,21 +294,21 @@ export class WorkspacePlanner {
         for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
         for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); }
         mujoco.mj_forward(model, scratch);
-        if (this.armCollides(scratch, obstacles)) continue; // a link would hit a post / another arm
         const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
         if (tz < 0 || tz > Z_BAND) continue;
         const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
         const key = Math.round((tx - baseX) / CELL) + ',' + Math.round((ty - baseY) / CELL);
-        cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1);
         const ox = tx - baseX, oy = ty - baseY;
         const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
-        accumRadial(radMax, Math.atan2(ly, lx), Math.hypot(lx, ly));
-        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue;
-        cells.set(key, (cells.get(key) ?? 0) + 1);
-        accumRadial(radPrec, Math.atan2(ly, lx), Math.hypot(lx, ly));
+        const ang = Math.atan2(ly, lx), r = Math.hypot(lx, ly);
+        const collides = this.armCollides(scratch, obstacles); // a link would hit a post / another arm
+        if (!collides) { cellsMax.set(key, (cellsMax.get(key) ?? 0) + 1); accumRadial(radMax, ang, r); }
+        if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // graspable from above only
+        if (collides) blocked.set(key, (blocked.get(key) ?? 0) + 1); // graspable kinematically, but blocked
+        else { cells.set(key, (cells.get(key) ?? 0) + 1); accumRadial(radPrec, ang, r); }
       }
     }
-    return { radMax, radPrec, cells, cellsMax, baseX, baseY };
+    return { radMax, radPrec, cells, cellsMax, blocked, baseX, baseY };
   }
 
   computeReachability(resolution = 9) {
@@ -315,6 +322,8 @@ export class WorkspacePlanner {
     try {
       for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
       this.armRadials.clear();
+      this.armBlocked.clear();
+      this.lastBlocked = null;
       // Sweep each arm at its OWN base + obstacle set (DRY: the same sweepArm per arm). A single
       // fallback sweep at the current base when no arm list is set yet.
       const arms = this.arms.length ? this.arms : [{ id: '__single', x: savedP[0], y: savedP[1], yaw: this.primaryYaw, primary: true } as ArmInstance];
@@ -322,9 +331,11 @@ export class WorkspacePlanner {
         this.setSweepBase(arm.x, arm.y, arm.yaw);
         const r = this.sweepArm(scratch, resolution, arm.yaw, this.obstaclesFor(arm.id));
         this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
+        this.armBlocked.set(arm.id, r.blocked);
         if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
           this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
           this.radMax = r.radMax; this.radPrec = r.radPrec; this.baseX = r.baseX; this.baseY = r.baseY;
+          this.lastBlocked = { blocked: r.blocked.size, graspable: r.cells.size + r.blocked.size };
         }
       }
     } finally {
@@ -335,8 +346,31 @@ export class WorkspacePlanner {
       scratch.delete();
     }
     this.renderReachTiles();
+    this.renderBlockedTiles();
     this.renderOutlines();
     if (this.toggles.basePlacement) this.computeBasePlacement();
+  }
+
+  /** Red overlay: every arm's graspable-but-obstacle-blocked cells, each placed at its own base. */
+  private renderBlockedTiles() {
+    const red = new THREE.Color(0xef4444);
+    let i = 0;
+    for (const arm of this.arms) {
+      const cells = this.armBlocked.get(arm.id);
+      if (!cells) continue;
+      for (const key of cells.keys()) {
+        if (i >= MAX_TILES) break;
+        const [di, dj] = key.split(',').map(Number);
+        this.dummy.position.set(arm.x + di * CELL, arm.y + dj * CELL, 0.0042);
+        this.dummy.updateMatrix();
+        this.blockedTiles.setMatrixAt(i, this.dummy.matrix);
+        this.blockedTiles.setColorAt(i, red);
+        i++;
+      }
+    }
+    this.blockedTiles.count = i;
+    this.blockedTiles.instanceMatrix.needsUpdate = true;
+    if (this.blockedTiles.instanceColor) this.blockedTiles.instanceColor.needsUpdate = true;
   }
 
   // ── Inverse: for each candidate mount cell, how many task points become reachable? ──
@@ -425,6 +459,7 @@ export class WorkspacePlanner {
     // InstancedMesh.dispose() additionally frees the instanceMatrix/instanceColor buffers.
     this.reachTiles.dispose();
     this.baseTiles.dispose();
+    this.blockedTiles.dispose();
   }
 
   // ───────────────────────── internals ─────────────────────────
@@ -623,6 +658,7 @@ export class WorkspacePlanner {
   private applyToggles() {
     this.outlineGroup.visible = this.toggles.outline;
     this.reachTiles.visible = this.toggles.reach;
+    this.blockedTiles.visible = this.toggles.blocked;
     this.baseTiles.visible = this.toggles.basePlacement;
     this.bestMarker.visible = this.toggles.basePlacement && (this.lastBaseResult?.covered ?? 0) > 0;
     this.taskMarkers.visible = this.toggles.tasks;

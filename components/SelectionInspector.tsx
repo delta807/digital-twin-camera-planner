@@ -105,7 +105,7 @@ export interface InspectorProps {
   onResetWristMount?: () => void;
   // Migrated dock controls (#6): each renders inside the matching item's card.
   camera?: CameraCardControls;                                  // primary D435i optics/profile/toggles
-  armReach?: { toggles: PlannerToggles; onToggle: (k: keyof PlannerToggles, v: boolean) => void; canRemove: boolean; onRemove: () => void };
+  armReach?: { toggles: PlannerToggles; onToggle: (k: keyof PlannerToggles, v: boolean) => void; canRemove: boolean; onRemove: () => void; blockedPct?: number | null };
   // Per-arm joint jog: slider per actuated joint (primary drives live physics; others pose their ghost).
   armJoints?: { info: { name: string; lo: number; hi: number }[]; values: number[]; onChange: (index: number, angle: number) => void };
   workcell?: { config: WorkcellConfig; onChange: (next: WorkcellConfig) => void }; // primary table rail/post
@@ -143,6 +143,7 @@ const PLANNER_TOGGLE_ROWS: Array<{ key: keyof PlannerToggles; label: string }> =
   { key: 'outline', label: 'Reach envelope (outline)' },
   { key: 'reach', label: 'Reach heatmap (density)' },
   { key: 'basePlacement', label: 'Best-mount heatmap' },
+  { key: 'blocked', label: 'Obstacle-blocked area (red)' },
   { key: 'tasks', label: 'Task-point markers' },
   { key: 'baseDrag', label: 'Drag-to-move base' },
 ];
@@ -245,6 +246,9 @@ export function SelectionInspector(p: InspectorProps) {
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-1`}>
               <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><ReachIcon className="w-3 h-3" /> Reach views</span>
               {PLANNER_TOGGLE_ROWS.map((r) => <Check key={r.key} label={r.label} checked={p.armReach!.toggles[r.key]} onChange={(v) => p.armReach!.onToggle(r.key, v)} accent="emerald" />)}
+              {p.armReach.blockedPct != null && p.armReach.blockedPct > 0 && (
+                <p className="text-[9px] text-red-500 font-medium">⚠ Obstacles block ~{p.armReach.blockedPct}% of the graspable area.</p>
+              )}
               {p.armReach.canRemove && (
                 <button onClick={p.armReach.onRemove} className={`w-full mt-1 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 ${p.isDarkMode ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-3 h-3" /> Remove this arm</button>
               )}

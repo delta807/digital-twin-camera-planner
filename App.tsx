@@ -319,7 +319,7 @@ export function App() {
 
   // --- Reachability planner state (SO-101 only) ---
   const [sceneIsFranka, setSceneIsFranka] = useState(false);
-  const [plannerToggles, setPlannerToggles] = useState<PlannerToggles>({ outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false });
+  const [plannerToggles, setPlannerToggles] = useState<PlannerToggles>({ outline: true, reach: false, basePlacement: false, tasks: false, baseDrag: false, blocked: true });
   const [reachResolution, setReachResolution] = useState(9);
   const [baseResult, setBaseResult] = useState<{ covered: number; total: number } | null>(null);
   const [computingReach, setComputingReach] = useState(false);
@@ -872,14 +872,35 @@ export function App() {
     // Arms + mount posts sit on the worktop, so they slide along horizontal RAILS, not the vertical post.
     const candidates = selection?.kind === 'arm' || selection?.kind === 'post' ? all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05) : all;
     const near = nearestRod(pos, candidates); if (!near) return;
-    const fullIndex = all.indexOf(candidates[near.index]);
-    writeSelectedPos(near.point);
+    const rod = candidates[near.index];
+    const fullIndex = all.indexOf(rod);
+    // Arm: drop onto the rail's MIDPOINT facing perpendicular-in (then the Along slider repositions).
+    // Others: snap to the nearest point on the rail.
+    if (selection?.kind === 'arm') {
+      const a = armInstancesRef.current.find((x) => x.id === selectedArmId);
+      const mx = (rod.a.x + rod.b.x) / 2, my = (rod.a.y + rod.b.y) / 2;
+      if (a) handleArmChange(a.id, { x: mx, y: my, yaw: railInwardYaw(rod) });
+    } else writeSelectedPos(near.point);
     setRodSnap({ rodIndex: fullIndex, label: all[fullIndex]?.label ?? 'rod' });
+  };
+  // Inward-normal yaw for a rail: perpendicular to the rail, pointing at the worktop centre (so an
+  // arm snapped to any rail — even an angled N-gon rail — faces straight in). Minus the arm's
+  // reach-forward so its reach (not its model axis) points inward.
+  const railInwardYaw = (rod: Rod): number => {
+    const cx = rod.center?.x ?? 0, cy = rod.center?.y ?? 0;
+    const mx = (rod.a.x + rod.b.x) / 2, my = (rod.a.y + rod.b.y) / 2;
+    const dx = rod.b.x - rod.a.x, dy = rod.b.y - rod.a.y;
+    let nx = -dy, ny = dx;
+    if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }
+    return Math.atan2(ny, nx) - (simRef.current?.planner?.localForwardAngle() ?? 0);
   };
   const handleSlideAlongRod = (t: number) => {
     if (!rodSnap) return;
     const rod = rods()[rodSnap.rodIndex]; if (!rod) return;
-    writeSelectedPos(rod.a.clone().addScaledVector(rod.b.clone().sub(rod.a), t));
+    const pt = rod.a.clone().addScaledVector(rod.b.clone().sub(rod.a), t);
+    // Arms keep facing perpendicular-into-the-table as they slide; others just move.
+    if (selection?.kind === 'arm') { const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (a) handleArmChange(a.id, { x: pt.x, y: pt.y, yaw: railInwardYaw(rod) }); }
+    else writeSelectedPos(pt);
   };
   // Current t of the selection along its snapped rod (drives the slider).
   const rodT = (() => {
@@ -1998,6 +2019,7 @@ export function App() {
                   toggles: plannerToggles, onToggle: handlePlannerToggle,
                   canRemove: !(armInstances.find((a) => a.id === selectedArmId)?.primary),
                   onRemove: () => handleRemoveArm(selectedArmId),
+                  blockedPct: (() => { const lb = simRef.current?.planner?.lastBlocked; return lb && lb.graspable > 0 ? Math.round((lb.blocked / lb.graspable) * 100) : null; })(),
                 }}
                 armJoints={(() => {
                   const a = armInstances.find((x) => x.id === selectedArmId) ?? armInstances.find((x) => x.primary);
