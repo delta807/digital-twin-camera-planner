@@ -263,6 +263,9 @@ export interface MujocoModule {
   MjData: new (model: MujocoModel) => MujocoData;
   MjvOption: new () => { delete: () => void; [key: string]: unknown };
   mj_forward: (m: MujocoModel, d: MujocoData) => void;
+  /** Positions only (xpos/xquat/site_xpos/site_xmat) from qpos — no collision/dynamics. ~10× cheaper
+   *  than mj_forward for the FK reach sweep, which only reads positions + does its own collision. */
+  mj_kinematics: (m: MujocoModel, d: MujocoData) => void;
   mj_step: (m: MujocoModel, d: MujocoData) => void;
   mj_resetData: (m: MujocoModel, d: MujocoData) => void;
   mjtGeom: Record<string, number | {value: number}>;

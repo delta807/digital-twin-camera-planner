@@ -303,7 +303,7 @@ export class WorkspacePlanner {
    *  obstacles. Returns base-relative cells + radial profiles in the arm's local frame (yaw 0). */
   private sweepArm(scratch: MujocoData, resolution: number, yaw: number, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>) {
     const { mujoco, model, sweptJoints, tcpSiteId } = this.cfg;
-    mujoco.mj_forward(model, scratch);
+    mujoco.mj_kinematics(model, scratch); // positions only — the sweep never needs collision/dynamics
     const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
     const radMax = makeRadial(), radPrec = makeRadial();
     // cells = graspable configs per cell (collision-ignored → kinematic outline/heatmap);
@@ -321,7 +321,7 @@ export class WorkspacePlanner {
         let rem = c;
         for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
         for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); }
-        mujoco.mj_forward(model, scratch);
+        mujoco.mj_kinematics(model, scratch); // positions only (TCP site + body xyz) — no collision
         const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
         if (tz < 0 || tz > Z_BAND) continue;
         const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
