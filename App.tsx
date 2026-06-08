@@ -1458,11 +1458,19 @@ export function App() {
   const handleAddArm = () => {
     const armNumber = nextArmNumberRef.current++;
     const id = `so101-${armNumber}`;
+    // Spawn on the workstation the user is currently ON — the station of the selected arm, or a
+    // directly-selected station — not always the primary. (Adding a station selects its arm, so the
+    // "latest workstation you're on" is captured naturally.) Clamp to that station's near edge,
+    // facing in, like spawnStation does. Falls back to the primary worktop.
+    const wc = workcellConfigRef.current;
+    const selArm = armInstancesRef.current.find((a) => a.id === selectedArmId);
+    const stationId = selArm?.stationId ?? (selection?.kind === 'station' && selection.stationId !== 'primary' ? selection.stationId : undefined);
+    const st = stationId ? wc.stations?.find((s) => s.id === stationId) : null;
+    const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0), width = st ? st.width : wc.width;
+    const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
+    const arm: ArmInstance = { id, label: `SO101 ${armNumber}`, x: cx, y: cy - width / 2, yaw: Math.PI / 2 - fwd, ...(st ? { stationId } : {}) };
     setArmInstances(prev => {
-      const next: ArmInstance[] = [
-        ...prev,
-        { id, label: `SO101 ${armNumber}`, x: 0.18, y: -0.18 + prev.length * 0.08, yaw: Math.PI / 2 },
-      ];
+      const next: ArmInstance[] = [...prev, arm];
       setSelectedArmId(id);
       simRef.current?.setArmInstances(next);
       return next;
@@ -1492,10 +1500,20 @@ export function App() {
     const id = `station-${n}`;
     const wc = workcellConfigRef.current;
     const existing = wc.stations ?? [];
-    // Place at an explicit point (right-click → create here) or auto-tuck into the +X aisle.
-    const rightmost = existing.reduce((mx, s) => Math.max(mx, s.x + s.length / 2), wc.length / 2);
-    const sx = pos?.x ?? rightmost + 0.2 + src.length / 2;
-    const sy = pos?.y ?? 0;
+    // Place at an explicit point (right-click → create here), or pack into the first free grid slot
+    // WITHIN the floor bounds (±BOUND) nearest the origin — so workstations tile around the primary
+    // instead of marching off the 5 m grid into infinity.
+    const placeWithinBounds = (): { x: number; y: number } => {
+      const BOUND = 2.3, half = Math.max(src.length, src.width) / 2, step = Math.max(src.length, src.width) + 0.3;
+      const taken = [{ x: wc.originX ?? 0, y: wc.originY ?? 0, half: Math.max(wc.length, wc.width) / 2 },
+        ...existing.map((s) => ({ x: s.x, y: s.y, half: Math.max(s.length, s.width) / 2 }))];
+      const slots: Array<{ x: number; y: number }> = [];
+      for (let y = -BOUND + half; y <= BOUND - half + 1e-6; y += step)
+        for (let x = -BOUND + half; x <= BOUND - half + 1e-6; x += step) slots.push({ x: +x.toFixed(3), y: +y.toFixed(3) });
+      slots.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)); // cluster near the primary
+      return slots.find((s) => taken.every((t) => Math.hypot(t.x - s.x, t.y - s.y) > t.half + half + 0.15)) ?? slots[slots.length - 1] ?? { x: 0, y: 0 };
+    };
+    const { x: sx, y: sy } = pos ?? placeWithinBounds();
     // Seed the new cell with its own decoupled prop cubes (no physics, instant) so it isn't empty in
     // Compare — they ride this worktop (cell === id) when it's moved.
     const sz = 0.05;
