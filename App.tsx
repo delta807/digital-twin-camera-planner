@@ -850,6 +850,10 @@ export function App() {
     if (selection.kind === 'camera' && cameraPos) return new THREE.Vector3(cameraPos.x, cameraPos.y, cameraPos.z);
     if (selection.kind === 'arm') { const a = armInstancesRef.current.find((x) => x.id === selectedArmId); return a ? new THREE.Vector3(a.x, a.y, 0) : null; }
     if (selection.kind === 'object') return new THREE.Vector3(selection.x, selection.y, selection.z);
+    if (selection.kind === 'post') {
+      if (selection.postIndex !== undefined) { const ep = workcellConfigRef.current.extraPosts?.[selection.postIndex]; return ep ? new THREE.Vector3(ep.x, ep.y, 0) : null; }
+      return new THREE.Vector3(workcellConfigRef.current.postX, workcellConfigRef.current.postY, 0);
+    }
     return null;
   };
   const writeSelectedPos = (p: THREE.Vector3) => {
@@ -857,12 +861,16 @@ export function App() {
     if (selection.kind === 'camera') handleCameraMove(p.x, p.y, p.z);
     else if (selection.kind === 'arm') { const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (a) handleArmChange(a.id, { x: p.x, y: p.y }); }
     else if (selection.kind === 'object' && selection.bodyId !== undefined) simRef.current?.setTaskBodyPosition(selection.bodyId, p.x, p.y, p.z);
+    else if (selection.kind === 'post') {
+      if (selection.postIndex !== undefined) handleExtraPostChange(selection.postIndex, { x: p.x, y: p.y });
+      else handleWorkcellChange({ ...workcellConfigRef.current, postX: p.x, postY: p.y });
+    }
   };
   const handleSnapToRod = () => {
     const pos = getSelectedPos(); if (!pos) return;
     const all = rods();
-    // Arms stay on the floor, so they slide along horizontal RAILS, not the vertical post.
-    const candidates = selection?.kind === 'arm' ? all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05) : all;
+    // Arms + mount posts sit on the worktop, so they slide along horizontal RAILS, not the vertical post.
+    const candidates = selection?.kind === 'arm' || selection?.kind === 'post' ? all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05) : all;
     const near = nearestRod(pos, candidates); if (!near) return;
     const fullIndex = all.indexOf(candidates[near.index]);
     writeSelectedPos(near.point);
@@ -880,32 +888,25 @@ export function App() {
     return rod && pos ? projectToRod(pos, rod).t : 0;
   })();
 
-  // Snap an ARM base onto the nearest table EDGE (perimeter rail) AND rotate it to face INTO the
-  // table — mirrors the real rig, where the SO-101 is clamped to an edge pointing at the worktop.
-  // Reuses nearestRod (rail = rim edge) + the planner's reach-derived forward so we never hardcode
-  // the model's facing convention. After snapping it still slides along the edge via the Along slider.
+  // Snap an ARM base onto the nearest worktop CORNER (rim vertex) AND rotate it to face INTO the
+  // table — mirrors the real rig, where the SO-101 is clamped to a corner pointing at the worktop
+  // (a rectangle → TL/TR/BL/BR at a ~45° inward yaw; same for any N-gon). Reuses the rail list (their
+  // endpoints ARE the corners) + the planner's reach-derived forward so we never hardcode the model's
+  // facing convention. After snapping it still slides along the adjoining rail via the Along slider.
   const handleSnapArmToEdge = () => {
     if (selection?.kind !== 'arm') return;
     const a = armInstancesRef.current.find((x) => x.id === selectedArmId); if (!a) return;
     const all = rods();
     const edges = all.filter((r) => Math.abs(r.b.z - r.a.z) < 0.05 && r.label.includes('Rail'));
-    const near = nearestRod(new THREE.Vector3(a.x, a.y, 0), edges); if (!near) return;
-    const edge = edges[near.index];
-    // Centre the arm on the MIDPOINT of the nearest edge (not the projected nearest point): the
-    // projection lands on a corner when the arm is near a vertex (e.g. a hexagon), where the edge
-    // normal is ambiguous and the facing comes out wrong. The midpoint gives a clean, predictable
-    // "arm centred on this side, facing in" for any polygon.
-    const mx = (edge.a.x + edge.b.x) / 2, my = (edge.a.y + edge.b.y) / 2;
-    // Inward normal of the edge segment (perpendicular, pointing toward THIS worktop's centre —
-    // the primary table is at the origin; satellite stations carry their own `center`).
-    const cx = edge.center?.x ?? 0, cy = edge.center?.y ?? 0;
-    const dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
-    let nx = -dy, ny = dx;
-    if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }
+    if (edges.length === 0) return;
+    // Corners = the rail endpoints (rail i's start = a rim vertex; the set covers every corner).
+    let best = edges[0], bestD = Infinity;
+    for (const e of edges) { const d = Math.hypot(e.a.x - a.x, e.a.y - a.y); if (d < bestD) { bestD = d; best = e; } }
+    const cx = best.center?.x ?? 0, cy = best.center?.y ?? 0; // worktop centre (origin for the primary)
     const fwd = simRef.current?.planner?.localForwardAngle() ?? 0;
-    const yaw = Math.atan2(ny, nx) - fwd;
-    handleArmChange(a.id, { x: mx, y: my, yaw });
-    setRodSnap({ rodIndex: all.indexOf(edge), label: edge.label });
+    const yaw = Math.atan2(cy - best.a.y, cx - best.a.x) - fwd; // face the centre (diagonal at a corner)
+    handleArmChange(a.id, { x: best.a.x, y: best.a.y, yaw });
+    setRodSnap({ rodIndex: all.indexOf(best), label: best.label });
   };
 
   // Snap the camera onto the top of the aluminium post and aim it straight down —

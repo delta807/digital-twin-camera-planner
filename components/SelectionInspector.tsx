@@ -4,7 +4,7 @@
  */
 import { useState } from 'react';
 import { ChevronDown, Focus, RotateCcw, Trash2, X } from 'lucide-react';
-import { JogIcon } from './ui/toolbar';
+import { JogIcon, So101Icon } from './ui/toolbar';
 
 /** Reach glyph (double-headed arrow = range of motion). */
 function ReachIcon({ className }: { className?: string }) {
@@ -12,6 +12,35 @@ function ReachIcon({ className }: { className?: string }) {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden="true">
       <path fill="currentColor" d="M5.825 13L7.7 14.875q.275.3.288.713T7.7 16.3t-.7.3t-.7-.3l-3.6-3.6q-.15-.15-.213-.325T2.426 12t.063-.375t.212-.325l3.6-3.6q.3-.3.7-.3t.7.3t.3.713t-.3.712L5.825 11h12.35L16.3 9.125q-.275-.3-.287-.712T16.3 7.7t.7-.3t.7.3l3.6 3.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-3.6 3.6q-.3.3-.7.3t-.7-.3t-.3-.712t.3-.713L18.175 13z" />
     </svg>
+  );
+}
+
+/** Move/Tilt glyph (3-axis move gizmo). */
+function MoveTiltIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path fill="currentColor" d="M11.5 2.134a1 1 0 0 1 1 0l2 1.155a1 1 0 0 1-1 1.732l-.5-.289V6a1 1 0 0 1-2 0V4.732l-.5.289a1 1 0 0 1-1-1.732zM7.072 5.845a1 1 0 0 1-.366 1.366l-.5.289l1.098.634a1 1 0 1 1-1 1.732l-1.098-.634v.577a1 1 0 0 1-2 0V7.5a1 1 0 0 1 .5-.865l2-1.155a1 1 0 0 1 1.366.366Zm9.856 0a1 1 0 0 1 1.366-.366l2 1.155a1 1 0 0 1 .5.866v2.31a1 1 0 0 1-2 0v-.578l-1.098.634a1 1 0 0 1-1-1.732l1.098-.634l-.5-.289a1 1 0 0 1-.366-1.366M8.536 10a1 1 0 0 1 1.366-.366L12 10.845l2.098-1.211a1 1 0 0 1 1 1.732L13 12.577V15a1 1 0 1 1-2 0v-2.423l-2.098-1.211A1 1 0 0 1 8.536 10m-4.33 3.19a1 1 0 0 1 1 1v.578l1.098-.634a1 1 0 0 1 1 1.732l-1.098.634l.5.289a1 1 0 1 1-1 1.732l-2-1.155a1 1 0 0 1-.5-.866v-2.31a1 1 0 0 1 1-1m15.588 0a1 1 0 0 1 1 1v2.31a1 1 0 0 1-.5.866l-2 1.155a1 1 0 1 1-1-1.732l.5-.289l-1.098-.634a1 1 0 1 1 1-1.732l1.098.634v-.577a1 1 0 0 1 1-1ZM12 17a1 1 0 0 1 1 1v1.268l.5-.289a1 1 0 1 1 1 1.732l-2 1.155a1 1 0 0 1-1 0l-2-1.155a1 1 0 1 1 1-1.732l.5.289V18a1 1 0 0 1 1-1" />
+    </svg>
+  );
+}
+
+/** Mount-on-a-rail/base + slide-along control (DRY: same block for arm/camera/post/object). */
+function RodSnap({ p, subtle }: { p: InspectorProps; subtle: string }) {
+  return (
+    <div className="space-y-1.5">
+      <button onClick={p.onSnapToRod} className={`w-full text-[9px] font-bold uppercase tracking-wide py-1 rounded-md ${p.isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>
+        {p.rodLabel ? `Snapped to ${p.rodLabel} — re-snap` : 'Snap to nearest rail / base'}
+      </button>
+      {p.rodLabel && (
+        <label className="flex items-center gap-2">
+          <span className={`text-[9px] font-bold uppercase ${subtle}`}>Along</span>
+          <input type="range" min={0} max={1} step={0.01} value={p.rodT}
+            onChange={(e) => p.onSlideAlongRod(parseFloat(e.target.value))}
+            className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
+          <span className={`text-[9px] tabular-nums w-7 text-right ${subtle}`}>{Math.round(p.rodT * 100)}%</span>
+        </label>
+      )}
+    </div>
   );
 }
 import type { SelectionInfo } from '../SelectionController';
@@ -140,7 +169,9 @@ export function SelectionInspector(p: InspectorProps) {
   return (
     <div className={rootClass} style={p.inline ? undefined : p.floatStyle}>
       <div className="flex items-center gap-2 mb-2">
-        <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
+        {sel.kind === 'arm'
+          ? <So101Icon className="w-4 h-4 shrink-0 text-yellow-400" />
+          : <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />}
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
         <button onClick={p.onFrame} title="Fit camera to selected object (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Focus className="w-3.5 h-3.5" /></button>
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
@@ -181,6 +212,7 @@ export function SelectionInspector(p: InspectorProps) {
 
       {sel.kind === 'arm' && p.arm && (
         <div className="space-y-1.5">
+          <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><MoveTiltIcon className="w-3 h-3" /> Move / Tilt</span>
           <Row3 unit={p.unit} subtle={subtle}
             fields={[
               { k: 'X', v: p.arm.x, on: (v) => p.onArm({ x: v }) },
@@ -189,8 +221,9 @@ export function SelectionInspector(p: InspectorProps) {
           <Angle subtle={subtle} label="Yaw" deg={p.arm.yaw * 180 / Math.PI} on={(d) => p.onArm({ yaw: d * Math.PI / 180 })} />
           <div className="flex gap-2">
             <button onClick={() => p.onArm({ x: 0, y: 0, yaw: 0 })} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Centre on origin</button>
-            <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to edge · face in</button>
+            <button onClick={p.onSnapToEdge} className="flex-1 text-[9px] font-bold uppercase tracking-wide text-indigo-500 hover:text-indigo-400 py-1">Snap to corner · face in</button>
           </div>
+          <RodSnap p={p} subtle={subtle} />
           {p.armJoints && p.armJoints.info.length > 0 && (
             <div className={`pt-1.5 mt-1 border-t ${p.isDarkMode ? 'border-white/10' : 'border-black/10'} space-y-0.5`}>
               <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${subtle}`}><JogIcon className="w-3 h-3" /> Robot arm joints</span>
@@ -359,22 +392,10 @@ export function SelectionInspector(p: InspectorProps) {
           ]} />
       )}
 
-      {/* Mount on a rod (post / rail) and slide along it — mimics moving along the alu extrusion. */}
-      {(sel.kind === 'camera' || sel.kind === 'arm' || sel.kind === 'object') && (
-        <div className="mt-2 pt-2 border-t border-black/5 space-y-1.5">
-          <button onClick={p.onSnapToRod} className={`w-full text-[9px] font-bold uppercase tracking-wide py-1 rounded-md ${p.isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-black/5 text-indigo-600 hover:bg-black/10'}`}>
-            {p.rodLabel ? `Snapped to ${p.rodLabel} — re-snap` : 'Snap to nearest rod'}
-          </button>
-          {p.rodLabel && (
-            <label className="flex items-center gap-2">
-              <span className={`text-[9px] font-bold uppercase ${subtle}`}>Along</span>
-              <input type="range" min={0} max={1} step={0.01} value={p.rodT}
-                onChange={(e) => p.onSlideAlongRod(parseFloat(e.target.value))}
-                className="flex-1 h-1 accent-indigo-600 cursor-pointer" />
-              <span className={`text-[9px] tabular-nums w-7 text-right ${subtle}`}>{Math.round(p.rodT * 100)}%</span>
-            </label>
-          )}
-        </div>
+      {/* Mount on a rod (post / rail / workstation base) and slide along it. The arm has its own
+          copy up in Move/Tilt; camera/post/object keep it here as a footer. */}
+      {(sel.kind === 'camera' || sel.kind === 'post' || sel.kind === 'object') && (
+        <div className="mt-2 pt-2 border-t border-black/5"><RodSnap p={p} subtle={subtle} /></div>
       )}
     </div>
   );

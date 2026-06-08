@@ -119,8 +119,9 @@ export function UnifiedSidebar({
         {inspector && <Sec title="Selection" isDarkMode={isDarkMode} icon={<MousePointer2 className="w-3.5 h-3.5 text-indigo-500" />}>{inspector}</Sec>}
         {feeds && <Sec title="Camera Feeds" isDarkMode={isDarkMode} icon={<Camera className="w-3.5 h-3.5 text-indigo-500" />}>{feeds}</Sec>}
         {toolbar && <Sec title="Controls" isDarkMode={isDarkMode} icon={<Wrench className="w-3.5 h-3.5 text-indigo-500" />}>{toolbar}</Sec>}
+        {overlays && <Sec title="Legends" isDarkMode={isDarkMode} icon={<Palette className="w-3.5 h-3.5 text-indigo-500" />}>{overlays}</Sec>}
 
-        {/* ── Gemini ER 1.6 (collapsed by default — it's a deep panel) ── */}
+        {/* ── Gemini ER 1.6 (collapsed by default — it's a deep panel; sits below Legends) ── */}
         <Sec title="Gemini ER 1.6" isDarkMode={isDarkMode} collapsible defaultOpen={false} icon={<Sparkles className="w-3.5 h-3.5 text-indigo-500" />}>
         <div className="space-y-2">
         <div className="relative">
@@ -350,7 +351,6 @@ export function UnifiedSidebar({
         </div>
         </Sec>
 
-        {overlays && <Sec title="Legends" isDarkMode={isDarkMode} icon={<Palette className="w-3.5 h-3.5 text-indigo-500" />}>{overlays}</Sec>}
       </div>
     </div>
   );

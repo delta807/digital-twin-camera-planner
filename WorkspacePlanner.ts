@@ -488,19 +488,35 @@ export class WorkspacePlanner {
     for (let k = 1; k <= occ.length; k++) ordered.push(occ[(gapAt + k) % occ.length]);
 
     const pt = (b: number, r: number): [number, number] => [r * Math.cos(ang(b)), r * Math.sin(ang(b))];
-    const hasHole = ordered.some((b) => rad.rMin[b] > CELL * 1.5);
-    const outer = ordered.map((b) => pt(b, rad.rMax[b]));
 
     if (gapLen <= 2) {
       // Full ring: outer + (optional) inner boundary as separate closed loops.
+      const outer = ordered.map((b) => pt(b, rad.rMax[b]));
+      const hasHole = ordered.some((b) => rad.rMin[b] > CELL * 1.5);
       const loops = [chaikin(outer, 1)];
       if (hasHole) loops.push(chaikin(ordered.map((b) => pt(b, Math.max(0, rad.rMin[b]))), 1));
       return loops;
     }
-    // Sector: one closed loop = outer arc forward + inner arc back.
-    const inner: Array<[number, number]> = [];
-    for (let i = ordered.length - 1; i >= 0; i--) inner.push(pt(ordered[i], Math.max(0, rad.rMin[ordered[i]])));
-    return [chaikin(outer.concat(inner), 1)];
+    // An obstacle can carve the fan into SEVERAL disconnected arcs. Split `ordered` into contiguous
+    // runs (bridging tiny ≤2-bin gaps) and emit one sector per run, so a fully-blocked wedge reads as
+    // a clean gap — not a straight chord/spike across it (the old single-sector bug).
+    const BRIDGE = 2;
+    const runs: number[][] = [];
+    let cur: number[] = [ordered[0]];
+    for (let i = 1; i < ordered.length; i++) {
+      if ((ordered[i] - ordered[i - 1] + N) % N <= BRIDGE) cur.push(ordered[i]);
+      else { runs.push(cur); cur = [ordered[i]]; }
+    }
+    runs.push(cur);
+    const loops: Array<Array<[number, number]>> = [];
+    for (const run of runs) {
+      if (run.length < 2) continue;
+      const outer = run.map((b) => pt(b, rad.rMax[b]));
+      const inner: Array<[number, number]> = [];
+      for (let i = run.length - 1; i >= 0; i--) inner.push(pt(run[i], Math.max(0, rad.rMin[run[i]])));
+      loops.push(chaikin(outer.concat(inner), 1));
+    }
+    return loops;
   }
 
   /**
