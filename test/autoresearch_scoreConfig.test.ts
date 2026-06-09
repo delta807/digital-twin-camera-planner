@@ -73,4 +73,22 @@ describe('pareto', () => {
     expect(paretoFront([mk(0.6, 0.6), mk(0.5, 0.5)])).toHaveLength(1);  // strict domination drops the worse
     expect(knee(front)).not.toBeNull();
   });
+
+  it('knee prefers the balanced interior point over the extremes', () => {
+    const front = [mk(0.9, 0.1), mk(0.1, 0.9), mk(0.5, 0.5)];
+    expect(knee(front)).toBe(front[2]); // worst-norm 0.5 beats the endpoints' 0
+  });
+
+  it('knee 2-point front: deterministic + order-independent (DIRECTION 2)', () => {
+    // Symmetric in normalized space: A=(1,0), B=(0,1) → equal worst-norm AND mean-norm. Without the
+    // raw-sum tier the winner would flip with array order. B has the higher raw total (0.71 vs 0.70).
+    const A = mk(0.30, 0.40), B = mk(0.26, 0.45);
+    expect(knee([A, B])).toBe(knee([B, A])); // order-independent
+    expect(knee([A, B])).toBe(B);            // picks higher total value, not array position
+  });
+
+  it('knee is deterministic on an all-equal front', () => {
+    const a = mk(0.5, 0.5), b = mk(0.5, 0.5);
+    expect(knee([a, b])).toBe(a);            // span 0 → neutral; first stays best, never undefined
+  });
 });

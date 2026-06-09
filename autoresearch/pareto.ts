@@ -30,16 +30,29 @@ export function knee<T extends Trial>(front: T[]): T | null {
     const vals = front.map((t) => t.result.objectives[k] as number);
     lo[k] = Math.min(...vals); hi[k] = Math.max(...vals);
   }
-  let best: T | null = null, bestScore = -Infinity;
+  // Primary key = worst normalized objective (the knee). TIE-BREAK = highest MEAN normalized objective:
+  // a 2-point front gives BOTH endpoints worst-norm 0 (each is min on some objective), so without a
+  // tie-break array order would decide the winner — non-deterministic and wrong (DIRECTION 2). Mean-norm
+  // picks the more balanced of the tied points deterministically and order-independently.
+  let best: T | null = null, bestWorst = -Infinity, bestMean = -Infinity, bestRaw = -Infinity;
+  const EPS = 1e-12;
   for (const t of front) {
-    let worst = Infinity;
+    let worst = Infinity, normSum = 0, rawSum = 0;
     for (const k of active) {
       const v = t.result.objectives[k] as number;
       const span = hi[k] - lo[k];
       const norm = span > 1e-9 ? (v - lo[k]) / span : 1; // all-equal objective → neutral 1
       if (norm < worst) worst = norm;
+      normSum += norm; rawSum += v;
     }
-    if (worst > bestScore) { bestScore = worst; best = t; }
+    const meanNorm = normSum / active.length;
+    // Lexicographic, deterministic: worst-norm, then mean-norm, then raw objective sum. A 2-objective
+    // 2-point front is symmetric in normalized space (both (1,0)/(0,1) → equal worst AND mean), so the
+    // raw-sum tier is what makes the pick order-independent there. (DIRECTION 2)
+    const better = worst > bestWorst + EPS
+      || (Math.abs(worst - bestWorst) <= EPS && (meanNorm > bestMean + EPS
+        || (Math.abs(meanNorm - bestMean) <= EPS && rawSum > bestRaw + EPS)));
+    if (better) { bestWorst = worst; bestMean = meanNorm; bestRaw = rawSum; best = t; }
   }
   return best;
 }

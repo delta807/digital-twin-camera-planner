@@ -69,6 +69,9 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       (everything within the measured noise band of the knee), not a single knee.
       Metric: summary.md shows σ per objective + boundary flags; re-run on full_a3 manifest must flag
       camera z (winner at sweep floor 0.70). Verify: unit tests on the flag logic + one real run.
+      PROGRESS (a) DONE: calibrate() reports BOTH determinism (1 apply, K scores) and pipeline (re-apply
+      per score) σ + inter-page σ + instantiation wobble (raw.arms/bothReachFrac/collab null↔num), 2-arm
+      ref (DIRECTION 2b/5). Pending: (b) boundary-hugging flag, (c) winner-SET within noise band.
 - [ ] **#A7 Unfreeze dead axes + auto-refine (P2)** — camera x/y (or aimAt = blob), arm `yawOffset`,
       INDEPENDENT 2nd-arm edge+t (current: locked opposite-edge same-t). Avoid factorial blowup: new
       axes sweep only in follow-up campaigns SEEDED from each region's grid winner (the cam_bracket
@@ -87,6 +90,11 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       all-region feasibility → Pareto+knee on that = THE buildable-rig answer, computed (today it's
       eyeballed from 7 per-region tables in ANSWER.md). Metric: `summary.md` gains a "single-rig"
       section whose winner is reproducible from results.json.
+      PROGRESS: n=3..10 sweep DONE (shapes_3_10, recorded in ANSWER.md as a negative result — per-vertex
+      winners are a selection artifact). Single-rig DONE: top-K by fast maximin → FULL re-score across
+      all regions → Pareto+knee on full vectors (DIRECTION 2c, not fast — avoids triage bias); writes
+      winner-single-rig.json + reports Pareto-front size + tie status. Spot-verified: 4-gon 2-arm,
+      feasible 5/5, front=2 (knee tie-break exercised). Remaining: odd-n convention doc + n≥8 blob dedup.
 
 ## ACTIVE — new issues (reported Jun 2026, this batch)
 - [x] **#1 Joint jog doesn't respond to real clicks** — FIXED (29520b5): rewired the vendored
