@@ -310,8 +310,10 @@ export class WorkspacePlanner {
   /** #11 layout optimizer — score every candidate base position (cx,cy) by how many worktop cells the
    *  arm could reach if mounted there (using the base-relative reach grid), so the best cell = the
    *  optimal mount. No task points needed — it optimises raw worktop coverage. */
-  getLayoutScores(half: number, hx: number, hy: number, cell = CELL): { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number } | null {
-    if (this.reachCells.size === 0) return null;
+  getLayoutScores(half: number, hx: number, hy: number, cell = CELL, armId?: string): { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number } | null {
+    // Use a specific arm's reach when scoped to a station; else the primary's reach grid.
+    const reach = (armId && this.armCells.get(armId)) || this.reachCells;
+    if (reach.size === 0) return null;
     const targets: Array<[number, number]> = [];
     for (let wx = -hx; wx <= hx + 1e-6; wx += cell) for (let wy = -hy; wy <= hy + 1e-6; wy += cell) targets.push([wx, wy]);
     const scored: Array<{ x: number; y: number; cov: number }> = [];
@@ -319,7 +321,7 @@ export class WorkspacePlanner {
     for (let cx = -half; cx <= half + 1e-6; cx += cell) {
       for (let cy = -half; cy <= half + 1e-6; cy += cell) {
         let cov = 0;
-        for (const [wx, wy] of targets) if ((this.reachCells.get(Math.round((wx - cx) / CELL) + ',' + Math.round((wy - cy) / CELL)) ?? 0) > 0) cov++;
+        for (const [wx, wy] of targets) if ((reach.get(Math.round((wx - cx) / CELL) + ',' + Math.round((wy - cy) / CELL)) ?? 0) > 0) cov++;
         scored.push({ x: cx, y: cy, cov });
         if (cov > best.cov) best = { x: cx, y: cy, cov };
         if (cov > maxCov) maxCov = cov;

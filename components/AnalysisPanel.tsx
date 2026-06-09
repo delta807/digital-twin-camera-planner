@@ -37,6 +37,8 @@ interface Props {
   scope: string;
   onScope: (id: string) => void;
   stations: { id: string; label: string }[];
+  /** Arm count in the current scope — drives the per-scope catalog (#7/#8 need ≥2). */
+  armsInScope: number;
 }
 
 /** Render one figure to a hi-DPI canvas via `draw`, redrawing ONLY when `rev` changes (not on every
@@ -73,7 +75,8 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
+  const scopeLabel = scope === 'all' ? 'all workstations' : (stations.find((s) => s.id === scope)?.label ?? 'workstation');
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
@@ -125,7 +128,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
       )}
       <div ref={scrollRef} className="p-3 overflow-auto custom-scrollbar space-y-3">
         {/* Catalog grid of every layout analysis; live/basic cards jump to (and flash) their figure below. */}
-        <AnalysisCatalog isDarkMode={isDarkMode} onSelect={jumpTo} />
+        <AnalysisCatalog isDarkMode={isDarkMode} onSelect={jumpTo} scopeLabel={scopeLabel} armsInScope={armsInScope} />
         <div className="flex flex-wrap gap-3 items-start pt-1 border-t border-black/5">
           {/* Full-width zero-height anchors so the catalog cards can scrollIntoView to each figure. */}
           <div data-figure="reach" className="w-full h-0 -mt-1" />

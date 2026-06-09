@@ -270,23 +270,32 @@ export function App() {
     return simRef.current?.coverageGrids(0.4, 0.025, analysisStation, armIdsAt(analysisStation), st ? [st.x, st.y] : [0, 0]) ?? null;
   };
   // #8 inter-arm conflict — the overlap zone (cells reachable by ≥2 arms) is where the arms share space
-  // and can collide. Whole-layout view (All scope, ≥2 arms).
+  // and can collide. Scope-aware: All = the whole layout; a station = just its arms (needs ≥2 there).
   const getConflict = (): ReachData | null => {
-    if (analysisStation !== 'all' || armInstancesRef.current.length < 2) return null;
     const p = planner(); if (!p) return null;
-    const w = p.getReachWorld();
+    const armIds = analysisStation === 'all' ? undefined : armIdsAt(analysisStation);
+    const count = armIds ? armIds.length : armInstancesRef.current.length;
+    if (count < 2) return null;
+    const w = p.getReachWorld(undefined, armIds);
     if (!w || w.cellsMax.size === 0) return null;
+    const st = analysisStation === 'all' ? null : analysisStationList().find((s) => s.id === analysisStation);
     let half = 0.4;
-    for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell), Math.abs(dj * w.cell)); }
-    return { ...w, half: Math.min(1.3, half + 0.05), reachPct: 0, center: [0, 0], arms: w.arms };
+    if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
+    else for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell), Math.abs(dj * w.cell)); }
+    return { ...w, half: Math.min(1.3, half + (st ? 0 : 0.05)), reachPct: 0, center: st ? [st.x, st.y] : [0, 0], arms: w.arms };
   };
   // #11 layout optimizer — score candidate base positions by worktop coverage (best mount = brightest).
+  // Scope-aware: All = the primary worktop + primary reach; a station = that station's worktop + its arm.
   const getLayout = (): LayoutData | null => {
-    if (analysisStation !== 'all') return null;
     const p = planner(); if (!p) return null;
-    const wc = workcellConfigRef.current;
-    const s = p.getLayoutScores(0.45, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
-    return s ? { ...s, center: [0, 0] } : null;
+    if (analysisStation === 'all') {
+      const wc = workcellConfigRef.current;
+      const s = p.getLayoutScores(0.45, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
+      return s ? { ...s, center: [0, 0] } : null;
+    }
+    const st = analysisStationList().find((s) => s.id === analysisStation); if (!st) return null;
+    const s = p.getLayoutScores(0.45, st.len / 2, st.wid / 2, undefined, armIdsAt(st.id)[0]);
+    return s ? { ...s, center: [0, 0] } : null; // station-relative (origin = this worktop's centre)
   };
   // #7 high-detail snapshot is OPT-IN (a 1 s sweep can't run on every move). The live dock uses the
   // fast grid; this re-sweeps the primary finely for a crisp figure/PNG. Cleared whenever the layout
@@ -2147,6 +2156,7 @@ export function App() {
 
       <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
+        armsInScope={analysisStation === 'all' ? armInstances.length : armIdsAt(analysisStation).length}
         sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
 
       {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
