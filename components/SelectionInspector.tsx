@@ -70,8 +70,8 @@ export interface InspectorProps {
   armYawDetentDeg?: number | null;
   station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] }) => void;
-  /** #6 Metrics card: worktop area (m²) + ROM coverage (0..1) + inter-arm overlap (0..1). */
-  metrics?: { area: number; coveragePct: number; overlapPct: number } | null;
+  /** #6 Metrics card: worktop L/W/area (m), ROM coverage + reached area + inter-arm overlap. */
+  metrics?: { area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null;
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number; fovDeg?: number }) => void;
@@ -418,11 +418,17 @@ export function SelectionInspector(p: InspectorProps) {
       {p.metrics && (
         <div className={`mt-3 rounded-xl border px-3 py-2 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`}>
           <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Metrics</span>
-          <div className="mt-1.5 space-y-1">
-            <Metric label="Workstation area" value={`${p.metrics.area.toFixed(2)} m²`} subtle={subtle} />
-            <Metric label="ROM coverage" value={`${Math.round(p.metrics.coveragePct * 100)}%`} hint="of the worktop the arm(s) can grasp" subtle={subtle} accent />
-            <Metric label="Arm ROM overlap" value={`${Math.round(p.metrics.overlapPct * 100)}%`} hint="of reached area shared by ≥2 arms" subtle={subtle} accent />
-          </div>
+          {p.metrics.hidden
+            ? <p className={`mt-1.5 text-[10px] ${subtle}`}>Worktop hidden — no area / reach.</p>
+            : (
+              <div className="mt-1.5 space-y-1">
+                <Metric label="Length × Width" value={`${(p.metrics.length * 1000).toFixed(0)} × ${(p.metrics.width * 1000).toFixed(0)} mm`} subtle={subtle} />
+                <Metric label="Workstation area" value={`${p.metrics.area.toFixed(2)} m²`} subtle={subtle} />
+                <Metric label="ROM coverage" value={`${Math.round(p.metrics.coveragePct * 100)}%`} hint="of the worktop the arm(s) can grasp" subtle={subtle} accent />
+                <Metric label="ROM area" value={`${p.metrics.romArea.toFixed(2)} m²`} hint="graspable reachable area" subtle={subtle} accent />
+                <Metric label="Arm ROM overlap" value={`${Math.round(p.metrics.overlapPct * 100)}%`} hint="of reached area shared by ≥2 arms" subtle={subtle} accent />
+              </div>
+            )}
         </div>
       )}
     </div>

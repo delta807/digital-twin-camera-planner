@@ -227,7 +227,7 @@ export class WorkspacePlanner {
    *   • coveragePct — fraction of the worktop's cells graspably reachable by ANY arm;
    *   • overlapPct  — of the reached cells, the fraction reachable by ≥2 arms (shared workspace).
    *  Built from each arm's graspable cells projected to a shared world grid. */
-  workspaceMetrics(cx: number, cy: number, hx: number, hy: number): { coveragePct: number; overlapPct: number } {
+  workspaceMetrics(cx: number, cy: number, hx: number, hy: number): { coveragePct: number; overlapPct: number; romArea: number } {
     const wk = (x: number, y: number) => Math.round(x / CELL) + ',' + Math.round(y / CELL);
     const count = new Map<string, number>(); // world cell → how many arms reach it
     for (const [id, cells] of this.armCells) {
@@ -244,7 +244,7 @@ export class WorkspacePlanner {
         total++; const c = count.get(wk(x, y)) ?? 0;
         if (c >= 1) covered++; if (c >= 2) shared++;
       }
-    return { coveragePct: total ? covered / total : 0, overlapPct: covered ? shared / covered : 0 };
+    return { coveragePct: total ? covered / total : 0, overlapPct: covered ? shared / covered : 0, romArea: covered * CELL * CELL };
   }
 
   /** Snapshot of the primary arm's reach grid for the analysis figures (base-relative cells, world
@@ -278,6 +278,13 @@ export class WorkspacePlanner {
     const par = this.cfg.model.body_parentid as Int32Array | undefined;
     const ids = this.getArmBodies();
     const xp = d.xpos;
+    // Skip any obstacle whose footprint CONTAINS the arm's own base: the base is fixed, so the base/
+    // shoulder links sit inside that obstacle for EVERY configuration → it would block the entire
+    // reach (the "whole fan goes red" bug). Happens when another arm is stacked on / right next to
+    // this one (its r=0.09 footprint engulfs this base). A normal nearby post (base outside it) still blocks.
+    const bx0 = xp[this.cfg.baseBodyId * 3], by0 = xp[this.cfg.baseBodyId * 3 + 1];
+    obstacles = obstacles.filter((o) => { const dx = bx0 - o.x, dy = by0 - o.y; return dx * dx + dy * dy > o.r * o.r; });
+    if (obstacles.length === 0) return false;
     // Fallback when the body tree isn't available: a single base→TCP capsule.
     const segs: Array<[number, number, number, number, number, number]> = [];
     if (par && ids.length) {

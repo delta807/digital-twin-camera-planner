@@ -212,15 +212,23 @@ export function App() {
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
   // #6 Metrics card: area of the selected station's worktop + ROM coverage % + inter-arm overlap %.
-  const getMetrics = (): { area: number; coveragePct: number; overlapPct: number } | null => {
+  const getMetrics = (): { area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null => {
     const p = planner(); if (!p) return null;
     const wc = workcellConfigRef.current;
     const sid = selection?.stationId ?? armInstancesRef.current.find((a) => a.id === selectedArmId)?.stationId ?? 'primary';
-    let cx: number, cy: number, len: number, wid: number;
-    if (!sid || sid === 'primary') { cx = wc.originX ?? 0; cy = wc.originY ?? 0; len = wc.length; wid = wc.width; }
-    else { const s = wc.stations?.find((x) => x.id === sid); if (!s) return null; cx = s.x; cy = s.y; len = s.length; wid = s.width; }
-    const m = p.workspaceMetrics(cx, cy, len / 2, wid / 2);
-    return { area: len * wid, coveragePct: m.coveragePct, overlapPct: m.overlapPct };
+    let cx: number, cy: number, len: number, wid: number, sides: number, sideExtents: [number, number, number, number] | undefined, cornerRadii: number[] | undefined, hideKey: string;
+    if (!sid || sid === 'primary') { cx = wc.originX ?? 0; cy = wc.originY ?? 0; len = wc.length; wid = wc.width; sides = wc.shapeSides; sideExtents = wc.sideExtents; cornerRadii = wc.cornerRadii; hideKey = 'station:primary'; }
+    else { const s = wc.stations?.find((x) => x.id === sid); if (!s) return null; cx = s.x; cy = s.y; len = s.length; wid = s.width; sides = s.shapeSides; sideExtents = s.sideExtents; cornerRadii = s.cornerRadii; hideKey = `station:${s.id}`; }
+    // TRUE worktop area: shoelace of the actual rim polygon (so a hexagon ≠ a rectangle of the same L×W).
+    const hx = len / 2, hy = wid / 2; let pts: Array<[number, number]>;
+    if (Math.round(sides) === 4) { const e = sideExtents; const xMax = e ? e[0] : hx, xMin = e ? -e[1] : -hx, yMax = e ? e[2] : hy, yMin = e ? -e[3] : -hy; pts = [[xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]]; }
+    else { const n = Math.round(sides), useR = !!cornerRadii && cornerRadii.length === n; pts = []; for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + (i * Math.PI * 2) / n; const rx = useR ? cornerRadii![i] : hx, ry = useR ? cornerRadii![i] : hy; pts.push([Math.cos(a) * rx, Math.sin(a) * ry]); } }
+    let A = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; A += x1 * y2 - x2 * y1; }
+    const area = Math.abs(A) / 2;
+    // A hidden ("deleted") worktop has no area / reach to report.
+    if (hiddenKeys.has(hideKey)) return { area: 0, length: 0, width: 0, coveragePct: 0, overlapPct: 0, romArea: 0, hidden: true };
+    const m = p.workspaceMetrics(cx, cy, hx, hy);
+    return { area, length: len, width: wid, coveragePct: m.coveragePct, overlapPct: m.overlapPct, romArea: m.romArea, hidden: false };
   };
   const togglePoseMode = () => {
     const next = !poseMode;
@@ -1507,15 +1515,20 @@ export function App() {
     const selArm = armInstancesRef.current.find((a) => a.id === selectedArmId);
     const stationId = selArm?.stationId ?? (selection?.kind === 'station' && selection.stationId !== 'primary' ? selection.stationId : undefined);
     const st = stationId ? wc.stations?.find((s) => s.id === stationId) : null;
-    const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0), width = st ? st.width : wc.width;
+    const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0), width = st ? st.width : wc.width, len = st ? st.length : wc.length;
     const fwd = simRef.current?.planner?.localForwardAngle() ?? -Math.PI / 2;
-    const arm: ArmInstance = { id, label: `SO101 ${armNumber}`, x: cx, y: cy - width / 2, yaw: Math.PI / 2 - fwd, ...(st ? { stationId } : {}) };
+    // Offset along the near edge so a new arm never STACKS on an existing one (stacked arms give
+    // nonsense metrics + a fully-blocked ROM, since each is inside the other's obstacle footprint).
+    const onStation = armInstancesRef.current.filter((a) => (a.stationId ?? 'primary') === (stationId ?? 'primary')).length;
+    const offset = Math.max(-len / 2 + 0.1, Math.min(len / 2 - 0.1, onStation * 0.16));
+    const arm: ArmInstance = { id, label: `SO101 ${armNumber}`, x: cx + offset, y: cy - width / 2, yaw: Math.PI / 2 - fwd, ...(st ? { stationId } : {}) };
     setArmInstances(prev => {
       const next: ArmInstance[] = [...prev, arm];
       setSelectedArmId(id);
       simRef.current?.setArmInstances(next);
       return next;
     });
+    handleRecompute(); // a new arm has no reach cells yet — sweep so its ROM/metrics show (fast via mj_kinematics)
   };
 
   const handleRemoveArm = (id: string) => {
