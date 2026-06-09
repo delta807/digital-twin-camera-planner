@@ -254,6 +254,33 @@ export class WorkspacePlanner {
     return { cells: this.reachCells, cellsMax: this.reachCellsMax, baseX: this.baseX, baseY: this.baseY, cell: CELL };
   }
 
+  /** #7 — a one-off HIGH-DETAIL reach grid for the analysis figure: re-sweep the primary arm at a
+   *  finer cell + denser base-rotation sampling so the heatmap reads like the matplotlib reference
+   *  (fine cells, dense fill) instead of the coarse 0.03 m live overlay. Heavier than getReachGrid
+   *  (the caller should run it off the render path), so it's opt-in, not the default. */
+  getReachFigure(cell = 0.015, baseSteps = 480, resolution = 9): { cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number } | null {
+    const { mujoco, model, sweptJoints, zeroQposAdr } = this.cfg;
+    if (sweptJoints.length === 0) return null;
+    const scratch: MujocoData = new mujoco.MjData(model);
+    const b = this.cfg.baseBodyId;
+    const bp = model.body_pos as unknown as Float32Array, bq = model.body_quat as unknown as Float32Array;
+    const savedP = [bp[b * 3], bp[b * 3 + 1], bp[b * 3 + 2]];
+    const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
+    try {
+      for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
+      const primary = this.arms.find((a) => a.primary) ?? this.arms[0];
+      const yaw = primary?.yaw ?? this.primaryYaw;
+      if (primary) this.setSweepBase(primary.x, primary.y, yaw);
+      const r = this.sweepArm(scratch, resolution, yaw, this.obstaclesFor(primary?.id ?? '__single'), cell, baseSteps);
+      return { cells: r.cells, cellsMax: r.cellsMax, baseX: r.baseX, baseY: r.baseY, cell };
+    } finally {
+      bp[b * 3] = savedP[0]; bp[b * 3 + 1] = savedP[1]; bp[b * 3 + 2] = savedP[2];
+      bq[b * 4] = savedQ[0]; bq[b * 4 + 1] = savedQ[1]; bq[b * 4 + 2] = savedQ[2]; bq[b * 4 + 3] = savedQ[3];
+      mujoco.mj_forward(model, scratch);
+      scratch.delete();
+    }
+  }
+
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose
    *  swept geometry we collision-test. Memoised; falls back to [] if body_parentid isn't exposed. */
   private getArmBodies(): number[] {
@@ -356,7 +383,7 @@ export class WorkspacePlanner {
 
   /** One forward-kinematics sweep with the base WHERE IT CURRENTLY IS in the model + the given
    *  obstacles. Returns base-relative cells + radial profiles in the arm's local frame (yaw 0). */
-  private sweepArm(scratch: MujocoData, resolution: number, yaw: number, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>) {
+  private sweepArm(scratch: MujocoData, resolution: number, yaw: number, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>, cell = CELL, baseSteps = BASE_STEPS) {
     const { mujoco, model, sweptJoints, tcpSiteId } = this.cfg;
     mujoco.mj_kinematics(model, scratch); // positions only — the sweep never needs collision/dynamics
     const baseX = scratch.xpos[this.cfg.baseBodyId * 3], baseY = scratch.xpos[this.cfg.baseBodyId * 3 + 1];
@@ -366,7 +393,7 @@ export class WorkspacePlanner {
     // graspable but has ZERO free configs (every grasp there routes a link through an obstacle).
     const cells = new Map<string, number>(), cellsMax = new Map<string, number>(), free = new Map<string, number>();
     const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
-    const nArm = Math.max(2, resolution), nBase = Math.max(nArm, BASE_STEPS);
+    const nArm = Math.max(2, resolution), nBase = Math.max(nArm, baseSteps);
     const armTotal = Math.pow(nArm, armJoints.length);
     const idx = new Array(armJoints.length).fill(0);
     const cos = Math.cos(-yaw), sin = Math.sin(-yaw); // un-rotate hits into the arm's local frame
@@ -380,7 +407,7 @@ export class WorkspacePlanner {
         const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
         if (tz < 0 || tz > Z_BAND) continue;
         const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
-        const key = Math.round((tx - baseX) / CELL) + ',' + Math.round((ty - baseY) / CELL);
+        const key = Math.round((tx - baseX) / cell) + ',' + Math.round((ty - baseY) / cell);
         const ox = tx - baseX, oy = ty - baseY;
         const lx = ox * cos - oy * sin, ly = ox * sin + oy * cos;
         const ang = Math.atan2(ly, lx), r = Math.hypot(lx, ly);

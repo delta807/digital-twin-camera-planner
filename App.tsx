@@ -192,10 +192,13 @@ export function App() {
   const handleContactMode = (m: 'off' | 'clamp' | 'physics') => { setContactMode(m); simRef.current?.setContactMode(m); };
   // Analysis figures (reachability / depth / coverage) overlay for the live layout.
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  // #7 — high-detail reach grid for the analysis figure (finer cell + denser sampling than the live
+  // 0.03 m overlay), computed once when the panel opens so the heatmap matches the matplotlib reference.
+  const [fineReach, setFineReach] = useState<{ cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number } | null>(null);
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {
     const p = planner(); if (!p) return null;
-    const g = p.getReachGrid();
+    const g = fineReach ?? p.getReachGrid(); // prefer the high-detail figure grid once it's ready
     if (g.cellsMax.size === 0) return null;
     const wc = workcellConfigRef.current;
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
@@ -211,6 +214,14 @@ export function App() {
   };
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
+  // #7 — when the analysis panel opens, compute the high-detail reach figure once (off the render
+  // path via runHeavy); clear it on close so it re-renders fresh against the current layout next time.
+  useEffect(() => {
+    if (!analysisOpen) { setFineReach(null); return; }
+    const p = planner(); if (!p) return;
+    runHeavy('Rendering high-detail figure…', () => setFineReach(p.getReachFigure()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisOpen]);
   // #6 Metrics card: area of the selected station's worktop + ROM coverage % + inter-arm overlap %.
   const getMetrics = (): { label: string; area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null => {
     const p = planner(); if (!p) return null;
