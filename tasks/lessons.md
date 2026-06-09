@@ -54,15 +54,24 @@ RULES:
   (clear of the mechanism) and expose pos+tilt so it's tunable, not hardcoded-perfect.
 - If a mount "works," verify it in MULTIPLE poses (home + a Wrist_Roll-jogged pose), not just home.
 
-## Analysis figures — frame discipline (layout optimizer "looks weird", 2026-06)
-- The per-arm reach grids (`armCells`/`reachCells`) are stored in the arm's LOCAL frame: `sweepArm`
-  un-rotates each TCP hit by the arm's yaw (`cos(-yaw)/sin(-yaw)`). ANY consumer that sweeps/queries
-  in the WORLD/worktop frame MUST rotate the world offset by −yaw before indexing the grid.
-- `suggestArmLayout` did this (`angle = primaryYaw − yaw`, rotate task into cell frame); `getLayoutScores`
-  (which feeds the #11 figure) did NOT → the recommended mount was spun away from the arm's facing
-  whenever yaw≠0. Fix: rotate `(target − candidate)` by −yaw in getLayoutScores too.
-- Lesson: when two code paths consume the same stored grid, check they agree on the frame. A figure that
-  "looks weird" but doesn't crash is often a silent frame/orientation mismatch, not a value bug.
+## Analysis figures — frame discipline (layout optimizer "looks weird", 2026-06; CORRECTED)
+- CORRECTION (a QA audit caught me): the reach-grid CELLS (`armCells`/`reachCells`/`cellsMax`) are stored
+  in the WORLD-AXIS base-relative frame — `sweepArm` keys them by the raw world offset `(tx−baseX,ty−baseY)`
+  with the arm's yaw ALREADY baked into the world TCP `tx,ty` (`setSweepBase` rotates the base body before
+  the sweep). The `cos(-yaw)/sin(-yaw)` un-rotation feeds ONLY the radial OUTLINE (`accumRadial`), NOT the
+  cell keys. So consumers project with the RAW world offset and must NOT rotate: `getReachWorld`,
+  `workspaceMetrics`, `getHandoff`, `computeBasePlacement`, `getManipulability/Effort/CycleTime` are all
+  correct as-is. `suggestArmLayout` rotates by `primaryYaw − yaw` only because it tests DIFFERENT candidate
+  yaws (net 0 at the swept yaw).
+- My first "fix" to `getLayoutScores` added a −yaw rotation on the FALSE premise that cells were local-frame.
+  That REGRESSED #11 for any yaw≠0 arm; it only looked fine because the primary's yaw≈0 (rotation→identity).
+  Correct fix: index the RAW world offset (reverted). The UX additions (current-mount marker, star offset
+  label, current→best delta, axis labels) were the real answer to the user's "where exactly?" — keep those.
+- Lessons: (1) VERIFY the stored frame by reading the line that builds the KEY, not a nearby rotation that
+  may feed a different structure. (2) A change that's a no-op at yaw=0 will pass a yaw=0 spot-check — test
+  the actual failing condition (a yawed arm), not just the convenient one. (3) When two paths consume one
+  grid and disagree, the MAJORITY that's visually validated (renderers/overlays) is usually the source of
+  truth — reconcile toward it, don't "fix" it to match the outlier.
 - UX: an optimizer figure must be ACTIONABLE — show the CURRENT state, the recommended state, the delta,
   and concrete coordinates (cm from a marked reference), not just an abstract optimum blob.
 

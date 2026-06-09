@@ -627,15 +627,12 @@ export class WorkspacePlanner {
     // Use a specific arm's reach when scoped to a station; else the primary's reach grid.
     const reach = (armId && this.armCells.get(armId)) || this.reachCells;
     if (reach.size === 0) return null;
-    // The reach grid is stored in the arm's LOCAL frame (sweepArm un-rotates hits by the arm's yaw), so
-    // a WORLD offset (target − candidate base) must be rotated by −yaw before indexing it — otherwise
-    // the recommended placement is spun away from where the arm actually faces (the "looks weird" bug).
-    const armYaw = armId ? (this.armPose.get(armId)?.yaw ?? 0) : (this.arms.find((a) => a.primary)?.yaw ?? this.primaryYaw);
-    const cy0 = Math.cos(armYaw), sy0 = Math.sin(armYaw);
-    const reaches = (dx: number, dy: number): boolean => {
-      const lx = dx * cy0 + dy * sy0, ly = -dx * sy0 + dy * cy0; // world → arm-local
-      return (reach.get(Math.round(lx / CELL) + ',' + Math.round(ly / CELL)) ?? 0) > 0;
-    };
+    // The reach grid cells are stored in the WORLD-axis base-relative frame: sweepArm keys them by the
+    // raw world offset (tx−baseX, ty−baseY) with the arm's yaw already baked into tx,ty (setSweepBase
+    // physically rotates the base before the sweep). Only the radial OUTLINE is un-rotated to local. So a
+    // candidate at the arm's own orientation indexes the grid with the RAW world offset — no rotation
+    // (matching computeBasePlacement / suggestArmLayout at angle 0). Rotating here double-counts yaw.
+    const reaches = (dx: number, dy: number): boolean => (reach.get(Math.round(dx / CELL) + ',' + Math.round(dy / CELL)) ?? 0) > 0;
     const targets: Array<[number, number]> = [];
     for (let wx = -hx; wx <= hx + 1e-6; wx += cell) for (let wy = -hy; wy <= hy + 1e-6; wy += cell) targets.push([wx, wy]);
     const score = (cx: number, cy: number): number => { let cov = 0; for (const [wx, wy] of targets) if (reaches(wx - cx, wy - cy)) cov++; return cov; };
