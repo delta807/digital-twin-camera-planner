@@ -163,5 +163,5 @@ so QA doesn't contend with your dev-server load; a QA spot-run overlapped your s
 - 2026-06-10 03:18 · shipped #A6a (pipeline-vs-determinism noise split + instantiation-wobble, 2-arm
   ref — 2b/5) + #A8 single-rig (top-K fast-maximin → FULL re-score → Pareto+knee — 2c) + DIRECTION 2
   knee() tie-break (worst-norm→mean-norm→raw-sum, +3 unit tests). tsc✓ vitest 24/24✓; spot_out
-  verified (single-rig 4-gon 2-arm feasible 5/5, front=2 → tie-break exercised). commit 52dc2bd ·
+  verified (single-rig 4-gon 2-arm feasible 5/5, front=2 → tie-break exercised). commit 4c1ecc3 ·
   running none. Next: DIRECTION 1 (per-region top-K full re-score).
