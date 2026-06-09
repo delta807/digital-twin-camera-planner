@@ -197,6 +197,11 @@ export function SelectionInspector(p: InspectorProps) {
               { k: 'Sides', v: p.station.shapeSides, min: 3, max: 8, on: (v) => p.onStation({ shapeSides: Math.round(v) }) },
               { k: 'Length', v: p.station.length * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ length: v / 1000 }) },
               { k: 'Width', v: p.station.width * 1000, min: 400, max: 1400, unit: 'mm', on: (v) => p.onStation({ width: v / 1000 }) },
+              // Area (cm²): adjusting it scales Length & Width together, keeping the aspect ratio.
+              { k: 'Area', v: p.station.length * p.station.width * 1e4, min: 1600, max: 19600, unit: 'cm²', on: (cm2) => {
+                const cur = p.station!.length * p.station!.width, s = Math.sqrt(Math.max(1e-4, cm2 / 1e4) / Math.max(1e-4, cur));
+                p.onStation({ length: p.station!.length * s, width: p.station!.width * s });
+              } },
             ]} />
             {/* Per-rail sizing: 4-sided → independent edge distances from centre; N>4 → per-corner radius. */}
             <RailSizers station={p.station} subtle={subtle} onStation={p.onStation} />
