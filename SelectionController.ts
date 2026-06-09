@@ -705,7 +705,13 @@ export class SelectionController {
         if (!isArm) return;
         if (armId === undefined ? meshArmId !== undefined : meshArmId !== armId) return; // physics vs a specific ghost
         this.box2.setFromObject(m);
-        if (!this.box2.isEmpty()) box.union(this.box2);
+        if (this.box2.isEmpty()) return;
+        // Skip non-link helpers that inherit selectable='arm' from a parent link and would balloon the
+        // framing box (the arm "zooms out"): an oversized mesh (> 1.5 m — a real link is < 0.5 m) or a
+        // mesh parked entirely below the floor (z < 0 — e.g. a pooled/unposed ghost mesh at z≈-20).
+        const sz = this.box2.getSize(this.vSize);
+        if (sz.x > 1.5 || sz.y > 1.5 || sz.z > 1.5 || this.box2.max.z < -0.05) return;
+        box.union(this.box2);
       });
     }
     return box.isEmpty() ? null : box;
