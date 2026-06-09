@@ -276,10 +276,12 @@ export class WorkspacePlanner {
     const wk = (x: number, y: number) => Math.round(x / CELL) + ',' + Math.round(y / CELL);
     const count = new Map<string, number>(); // world cell → how many arms reach it
     for (const [id, cells] of this.armCells) {
-      const arm = this.arms.find((a) => a.id === id); if (!arm) continue;
+      // Use the pose captured WITH this cell set (armPose), not this.arms — the latter can be updated by
+      // setArms between sweeps, which would project stale cells against a fresh base position.
+      const pose = this.armPose.get(id); if (!pose) continue;
       for (const key of cells.keys()) {
         const [di, dj] = key.split(',').map(Number);
-        const k = wk(arm.x + di * CELL, arm.y + dj * CELL);
+        const k = wk(pose.x + di * CELL, pose.y + dj * CELL);
         count.set(k, (count.get(k) ?? 0) + 1);
       }
     }
@@ -444,6 +446,7 @@ export class WorkspacePlanner {
         if (!this.armPose.has(arm.id)) continue;
         arms++;
         this.setSweepBase(arm.x, arm.y, arm.yaw);
+        const obs = this.obstaclesFor(arm.id); // grade only poses the arm can actually strike (collision-free)
         for (let bi = 0; bi < nBase; bi++) {
           scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
           for (let c = 0; c < armTotal; c++) {
@@ -454,6 +457,7 @@ export class WorkspacePlanner {
             const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
             if (tz < 0 || tz > Z_BAND) continue;
             if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            if (this.armCollides(scratch, obs)) continue;                   // skip self/obstacle-colliding poses
             const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
             const d = this.cellDexterity(scratch, sweptJoints, tcpSiteId, 1e-4);
             if (!d) continue;
@@ -501,6 +505,7 @@ export class WorkspacePlanner {
         if (!this.armPose.has(arm.id)) continue;
         arms++;
         this.setSweepBase(arm.x, arm.y, arm.yaw);
+        const obs = this.obstaclesFor(arm.id); // grade only poses the arm can actually strike (collision-free)
         for (let bi = 0; bi < nBase; bi++) {
           scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
           for (let c = 0; c < armTotal; c++) {
@@ -511,6 +516,7 @@ export class WorkspacePlanner {
             const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
             if (tz < 0 || tz > Z_BAND) continue;
             if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            if (this.armCollides(scratch, obs)) continue;                   // skip self/obstacle-colliding poses
             const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
             let head = 1; // min headroom over the driving joints (the most-stressed joint sets the limit)
             for (const sj of sweptJoints) { const h = 1 - Math.abs(scratch.qfrc_bias[sj.dofAdr]) / tauMax; if (h < head) head = h; }
@@ -559,6 +565,7 @@ export class WorkspacePlanner {
         if (!this.armPose.has(arm.id)) continue;
         arms++;
         this.setSweepBase(arm.x, arm.y, arm.yaw);
+        const obs = this.obstaclesFor(arm.id); // time only poses the arm can actually strike (collision-free)
         for (let bi = 0; bi < nBase; bi++) {
           const baseVal = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
           scratch.qpos[base.qposAdr] = baseVal; q[0] = baseVal;
@@ -570,6 +577,7 @@ export class WorkspacePlanner {
             const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
             if (tz < 0 || tz > Z_BAND) continue;
             if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            if (this.armCollides(scratch, obs)) continue;                   // skip self/obstacle-colliding poses
             const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
             const cyc = 2 * moveTime(home, q) + GRIP_DWELL; // pick (home→cell) + retreat (cell→home) + dwell
             const key = Math.round(tx / cell) + ',' + Math.round(ty / cell);
