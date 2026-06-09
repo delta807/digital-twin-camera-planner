@@ -198,30 +198,31 @@ export function App() {
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {
     const p = planner(); if (!p) return null;
-    const g = fineReach ?? p.getReachGrid(); // prefer the high-detail figure grid once it's ready
+    const g = fineReach ?? p.getReachGrid(); // high-detail snapshot if the user asked for it, else the live grid
     if (g.cellsMax.size === 0) return null;
     const wc = workcellConfigRef.current;
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
     const halfL = (wc.length ?? 0.6) / 2, halfW = (wc.width ?? 0.4) / 2; // worktop rectangle (X=length, Y=width)
+    // Reach is base-relative → re-centre on the primary arm's CURRENT position so the live dock's
+    // figure (and reachPct) FOLLOW the arm between sweeps. (Yaw changes still need a Recompute to
+    // reshape; the high-detail snapshot uses its own sweep base.)
+    const primary = armInstancesRef.current.find((a) => a.primary);
+    const baseX = fineReach ? g.baseX : (primary?.x ?? g.baseX), baseY = fineReach ? g.baseY : (primary?.y ?? g.baseY);
     let total = 0, grasp = 0;
     for (let x = cx - halfL; x <= cx + halfL + 1e-6; x += g.cell)
       for (let y = cy - halfW; y <= cy + halfW + 1e-6; y += g.cell) {
         total++;
-        const di = Math.round((x - g.baseX) / g.cell), dj = Math.round((y - g.baseY) / g.cell);
+        const di = Math.round((x - baseX) / g.cell), dj = Math.round((y - baseY) / g.cell);
         if ((g.cells.get(di + ',' + dj) ?? 0) > 0) grasp++;
       }
-    return { ...g, half: Math.max(0.4, halfL, halfW), reachPct: total ? grasp / total : 0, center: [cx, cy] };
+    return { ...g, baseX, baseY, half: Math.max(0.4, halfL, halfW), reachPct: total ? grasp / total : 0, center: [cx, cy] };
   };
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
-  // #7 — when the analysis panel opens, compute the high-detail reach figure once (off the render
-  // path via runHeavy); clear it on close so it re-renders fresh against the current layout next time.
-  useEffect(() => {
-    if (!analysisOpen) { setFineReach(null); return; }
-    const p = planner(); if (!p) return;
-    runHeavy('Rendering high-detail figure…', () => setFineReach(p.getReachFigure()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisOpen]);
+  // #7 high-detail snapshot is OPT-IN (a 1 s sweep can't run on every move). The live dock uses the
+  // fast grid; this re-sweeps the primary finely for a crisp figure/PNG. Cleared whenever the layout
+  // changes (or the panel closes) so the dock falls back to the live grid until asked again.
+  const handleHighDetailFigure = () => { const pl = planner(); if (pl) runHeavy('Rendering high-detail figure…', () => setFineReach(pl.getReachFigure())); };
   // #6 Metrics card: area of the selected station's worktop + ROM coverage % + inter-arm overlap %.
   const getMetrics = (): { label: string; area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null => {
     const p = planner(); if (!p) return null;
@@ -420,6 +421,9 @@ export function App() {
     { id: 'so101-1', label: 'SO101 1', x: 0, y: 0, yaw: 0, primary: true },
   ]);
   const [selectedArmId, setSelectedArmId] = useState('so101-1');
+  // Clear the high-detail reach snapshot when the panel closes or the layout changes, so the live
+  // dock falls back to the fast grid (which follows the arm) until "High detail" is pressed again.
+  useEffect(() => { setFineReach(null); }, [analysisOpen, armInstances, reachResolution, workcellConfig]);
   // Next arm number starts past the highest restored arm so names don't collide after a refresh.
   const nextArmNumberRef = useRef((persistedCurrent?.arms?.reduce((m, a) => Math.max(m, parseInt(a.label.replace(/\D/g, '') || '1', 10)), 1) ?? 1) + 1);
   const armInstancesRef = useRef(armInstances);
@@ -2072,7 +2076,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} />
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} />
 
       {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
           sim and show a spinner that KEEPS SPINNING through the freeze: the .busy-spin animation runs
