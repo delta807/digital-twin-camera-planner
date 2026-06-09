@@ -20,18 +20,24 @@ interface Props {
   onHighDetail: () => void;
   /** True while the high-detail snapshot is the active reach figure (vs the live grid). */
   highDetail: boolean;
+  /** A cheap signature of the scene state that affects the figures (arm + sensor-camera poses). The
+   *  figures recompute (debounced) only when this CHANGES — orbiting the VIEW doesn't change it, so it
+   *  no longer triggers the heavy depth readback + coverage raycasts on every frame. */
+  sig: string;
 }
 
-/** Render one figure to a hi-DPI canvas via `draw`, redrawing whenever `rev` changes. */
+/** Render one figure to a hi-DPI canvas via `draw`, redrawing ONLY when `rev` changes (not on every
+ *  parent render — `draw` is captured in a ref so a new closure each render doesn't force a redraw). */
 function Figure({ title, width, height, draw, rev }: { title: string; width: number; height: number; draw: (c: HTMLCanvasElement) => void; rev: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const drawRef = useRef(draw); drawRef.current = draw;
   useEffect(() => {
     const c = ref.current; if (!c) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     c.width = width * dpr; c.height = height * dpr;
     c.style.width = `${width}px`; c.style.height = `${height}px`;
-    draw(c);
-  }, [rev, width, height, draw]);
+    drawRef.current(c);
+  }, [rev, width, height]);
   const download = () => {
     const c = ref.current; if (!c) return;
     c.toBlob((b) => { if (!b) return; const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `${title.replace(/\s+/g, '_').toLowerCase()}.png`; a.click(); URL.revokeObjectURL(u); });
@@ -53,19 +59,20 @@ function Figure({ title, width, height, draw, rev }: { title: string; width: num
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage, onHighDetail, highDetail }: Props) {
-  // Live refresh: bump a revision ~2.5×/s while open so the figures redraw against the current scene.
-  const [rev, setRev] = useState(0);
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage, onHighDetail, highDetail, sig }: Props) {
+  // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
+  // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
+  // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
+  const [snap, setSnap] = useState<{ reach: ReachData | null; depth: DepthData | null; coverage: CoverageData | null; rev: number }>({ reach: null, depth: null, coverage: null, rev: 0 });
   useEffect(() => {
     if (!open) return;
-    const iv = setInterval(() => setRev((r) => r + 1), 400);
-    return () => clearInterval(iv);
-  }, [open]);
+    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), depth: getDepth(), coverage: getCoverage(), rev: s.rev + 1 })), 160);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sig, highDetail]);
   if (!open) return null;
 
-  const reach = getReach();
-  const depth = getDepth();
-  const coverage = getCoverage();
+  const { reach, depth, coverage, rev } = snap;
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (

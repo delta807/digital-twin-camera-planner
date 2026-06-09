@@ -2084,7 +2084,8 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} />
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null}
+        sig={`${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
 
       {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
           sim and show a spinner that KEEPS SPINNING through the freeze: the .busy-spin animation runs
