@@ -95,6 +95,7 @@ export interface ReachData {
   reachPct: number;        // graspable fraction of the table (0..1)
   center: [number, number]; // table-centre marker (world)
   arms?: number;           // >1 → combined multi-arm figure (cell value = # arms reaching, not samples)
+  label?: string;          // per-workstation figure title (e.g. "Workstation 2")
 }
 export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
@@ -103,15 +104,20 @@ export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   const multi = (d.arms ?? 1) > 1;
   const vmax = multi ? Math.max(2, d.arms!) : 4;
   const a = frame(ctx, W, H, {
-    title: multi
-      ? `${d.arms} arms · combined reach\nreach ${Math.round(d.reachPct * 100)}% of table`
-      : `SO-101 reachability\nreach ${Math.round(d.reachPct * 100)}% of table`,
-    xlabel: 'X (m)', ylabel: 'Y (m)', xr: [-d.half, d.half], yr: [-d.half, d.half],
+    title: d.label
+      ? `${d.label} · ${d.arms} arm${d.arms === 1 ? '' : 's'}\nreach ${Math.round(d.reachPct * 100)}% of worktop`
+      : multi
+        ? `${d.arms} arms · combined reach\nreach ${Math.round(d.reachPct * 100)}% of table`
+        : `SO-101 reachability\nreach ${Math.round(d.reachPct * 100)}% of table`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    // Axes centred on the figure's centre marker — origin for the primary/combined view, the station
+    // origin for a per-workstation figure (B3).
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
     colorbar: { label: multi ? 'arms reaching / cell' : 'tool-down samples / cell', vr: [1, vmax], cmap: MAGMA },
   });
   const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5; // one cell in px (+overlap to avoid seams)
-  for (let x = -d.half; x <= d.half + 1e-6; x += d.cell) {
-    for (let y = -d.half; y <= d.half + 1e-6; y += d.cell) {
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
       const di = Math.round((x - d.baseX) / d.cell), dj = Math.round((y - d.baseY) / d.cell);
       const key = di + ',' + dj;
       const reach = d.cellsMax.has(key), grasp = d.cells.get(key);

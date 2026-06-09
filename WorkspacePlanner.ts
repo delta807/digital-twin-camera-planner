@@ -286,12 +286,16 @@ export class WorkspacePlanner {
   /** #4 — combined MULTI-ARM reach in WORLD coordinates: every arm's cells projected to the shared
    *  table frame, each world cell counting HOW MANY arms can reach it (1..N). Lets the figure show all
    *  arms at once + where their workspaces overlap, instead of only the primary arm's base-relative dome. */
-  getReachWorld(cell = CELL): { cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number; arms: number } | null {
+  getReachWorld(cell = CELL, armIds?: string[]): { cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number; arms: number } | null {
     if (this.armCells.size === 0) return null;
+    const only = armIds ? new Set(armIds) : null; // #4/B3 — restrict to one workstation's arms when given
     const reach = new Map<string, Set<string>>(), envelope = new Map<string, Set<string>>();
     const add = (m: Map<string, Set<string>>, k: string, id: string) => { let s = m.get(k); if (!s) m.set(k, s = new Set()); s.add(id); };
     const proj = (pose: { x: number; y: number }, key: string) => { const [di, dj] = key.split(',').map(Number); return Math.round((pose.x + di * CELL) / cell) + ',' + Math.round((pose.y + dj * CELL) / cell); };
+    let n = 0;
     for (const [id, cells] of this.armCells) {
+      if (only && !only.has(id)) continue;
+      n++;
       const pose = this.armPose.get(id); if (!pose) continue;
       for (const key of cells.keys()) add(reach, proj(pose, key), id);
       const env = this.armCellsMax.get(id);
@@ -300,7 +304,7 @@ export class WorkspacePlanner {
     const cells = new Map<string, number>(), cellsMax = new Map<string, number>();
     for (const [k, s] of reach) cells.set(k, s.size);          // # arms that can GRASP this world cell
     for (const [k, s] of envelope) cellsMax.set(k, s.size);    // # arms whose envelope reaches it
-    return { cells, cellsMax, baseX: 0, baseY: 0, cell, arms: this.armCells.size };
+    return { cells, cellsMax, baseX: 0, baseY: 0, cell, arms: only ? n : this.armCells.size };
   }
 
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose

@@ -12,6 +12,8 @@ interface Props {
   isDarkMode: boolean;
   /** Live reach grid + table metrics, computed by App from the current layout (null if not ready). */
   getReach: () => ReachData | null;
+  /** Per-workstation reach figures (empty unless there are multiple workstations). */
+  getReachStations: () => { label: string; data: ReachData }[];
   /** Live overhead depth image (null if no station camera). */
   getDepth: () => DepthData | null;
   /** Live per-camera table coverage (null if no camera). */
@@ -61,20 +63,20 @@ function Figure({ title, width, height, draw, rev }: { title: string; width: num
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage, onHighDetail, highDetail, sig, onOpenDock }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, onHighDetail, highDetail, sig, onOpenDock }: Props) {
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
-  const [snap, setSnap] = useState<{ reach: ReachData | null; depth: DepthData | null; coverage: CoverageData | null; rev: number }>({ reach: null, depth: null, coverage: null, rev: 0 });
+  const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, rev: 0 });
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), depth: getDepth(), coverage: getCoverage(), rev: s.rev + 1 })), 160);
+    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), rev: s.rev + 1 })), 160);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sig, highDetail]);
   if (!open) return null;
 
-  const { reach, depth, coverage, rev } = snap;
+  const { reach, stations, depth, coverage, rev } = snap;
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
@@ -95,6 +97,8 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, g
         {reach
           ? <Figure title="SO-101 reachability" width={420} height={380} draw={(c) => drawReachability(c, reach)} rev={rev} />
           : <p className={`text-xs ${subtle}`}>Reach grid not ready — compute reachability first.</p>}
+        {/* B3 — per-workstation reach (only when there are multiple workstations). */}
+        {stations.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} />)}
         {depth && <Figure title="Camera depth (overhead)" width={420} height={270} draw={(c) => drawDepth(c, depth)} rev={rev} />}
         {coverage && <Figure title="Camera coverage" width={630} height={235} draw={(c) => drawCoverage(c, coverage)} rev={rev} />}
       </div>
