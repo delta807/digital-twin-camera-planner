@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, useRef } from 'react';
 import { X, Download, Sparkles, Radio, PanelLeft } from 'lucide-react';
-import { drawReachability, drawDepth, drawCoverage, drawConflict, drawLayout, type ReachData, type DepthData, type CoverageData, type LayoutData } from '../analysis/figures';
+import { drawReachability, drawDepth, drawCoverage, drawConflict, drawLayout, drawManipulability, type ReachData, type DepthData, type CoverageData, type LayoutData, type ManipData } from '../analysis/figures';
 import { AnalysisCatalog, type FigureKey } from './AnalysisCatalog';
 
 interface Props {
@@ -19,6 +19,8 @@ interface Props {
   getConflict: () => ReachData | null;
   /** #11 layout optimizer — base-placement coverage scores; null unless All-scope. */
   getLayout: () => LayoutData | null;
+  /** #1 manipulability/dexterity — per-cell inverse condition number of the TCP Jacobian. */
+  getManip: () => ManipData | null;
   /** Live overhead depth image (null if no station camera). */
   getDepth: () => DepthData | null;
   /** Live per-camera table coverage (null if no camera). */
@@ -75,17 +77,17 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, getManip, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
   const scopeLabel = scope === 'all' ? 'all workstations' : (stations.find((s) => s.id === scope)?.label ?? 'workstation');
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
-  const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; conflict: ReachData | null; layout: LayoutData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, conflict: null, layout: null, rev: 0 });
+  const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; conflict: ReachData | null; layout: LayoutData | null; manip: ManipData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, conflict: null, layout: null, manip: null, rev: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [flash, setFlash] = useState<string | null>(null); // #2 — briefly ring the figure a card jumps to
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), conflict: getConflict(), layout: getLayout(), rev: s.rev + 1 })), 160);
+    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), conflict: getConflict(), layout: getLayout(), manip: getManip(), rev: s.rev + 1 })), 160);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sig, highDetail]);
@@ -97,7 +99,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
   };
   if (!open) return null;
 
-  const { reach, stations: stationFigs, depth, coverage, conflict, layout, rev } = snap;
+  const { reach, stations: stationFigs, depth, coverage, conflict, layout, manip, rev } = snap;
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
@@ -137,6 +139,9 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
             : <p className={`text-xs ${subtle}`}>Reach grid not ready — compute reachability first.</p>}
           {/* B3 — per-workstation reach (only when there are multiple workstations). */}
           {stationFigs.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} flash={flash === 'reach'} />)}
+          {/* #1 manipulability/dexterity — per-cell inverse condition number of the TCP Jacobian. */}
+          <div data-figure="manip" className="w-full h-0" />
+          {manip && <Figure title="Manipulability" width={420} height={380} draw={(c) => drawManipulability(c, manip)} rev={rev} flash={flash === 'manip'} />}
           {/* #8 inter-arm conflict + #11 layout optimizer (All-scope). */}
           <div data-figure="conflict" className="w-full h-0" />
           {conflict && <Figure title="Inter-arm conflict" width={420} height={380} draw={(c) => drawConflict(c, conflict)} rev={rev} flash={flash === 'conflict'} />}

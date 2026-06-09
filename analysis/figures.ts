@@ -182,6 +182,34 @@ export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
   ctx.closePath(); ctx.fill();
 }
 
+// ── #1 Manipulability / dexterity map: per top-down-graspable cell, the BEST inverse condition number
+//    (σ_min/σ_max) of the TCP translational Jacobian — 1 (bright) = isotropic/agile, →0 (dark) =
+//    near-singular (the arm is stretched out or folded, fine moves cost large joint motion). ──
+export interface ManipData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; wMax: number; meanDex: number; arms: number; label?: string; }
+export function drawManipulability(canvas: HTMLCanvasElement, d: ManipData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const meanPct = Math.round(d.meanDex * 100);
+  const a = frame(ctx, W, H, {
+    title: (d.label ? `${d.label} · ` : '') + `Manipulability · dexterity\nmean isotropy ${meanPct}%  ·  peak w ${d.wMax.toFixed(3)}`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'dexterity  σ_min / σ_max', vr: [0, 1], cmap: VIRIDIS },
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
+      const v = d.cells.get(Math.round(x / d.cell) + ',' + Math.round(y / d.cell));
+      if (v === undefined) continue;                    // not graspable top-down → leave white
+      ctx.fillStyle = css(VIRIDIS(Math.max(0, Math.min(1, v))));
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+  // table-centre marker (cyan +)
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
+  const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
+  ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
+}
+
 // ── Figure 1: overhead depth map (normalized, with sensor-noise speckle) ──
 export interface DepthData { depth: Float32Array; w: number; h: number; }
 export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {

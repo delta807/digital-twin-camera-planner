@@ -51,6 +51,26 @@ const BASE_STEPS = 160; // base-rotation joint samples (dominates the angular sw
 const LINK_R = 0.035;   // arm link half-thickness (m) — capsule radius for collision tests
 const SEG_SAMPLES = 3;  // points sampled along each arm link segment for the collision test
 
+/** Eigenvalues (descending) of a symmetric 3×3 matrix [[a00,a01,a02],[a01,a11,a12],[a02,a12,a22]],
+ *  via the closed-form trig method (Smith 1961) — no iteration, stable for the small JJᵀ matrices the
+ *  manipulability metric needs. Returns [λ1 ≥ λ2 ≥ λ3]. */
+function sym3eig(a00: number, a01: number, a02: number, a11: number, a12: number, a22: number): [number, number, number] {
+  const p1 = a01 * a01 + a02 * a02 + a12 * a12;
+  if (p1 < 1e-20) { const d = [a00, a11, a22].sort((x, y) => y - x); return [d[0], d[1], d[2]]; } // already diagonal
+  const q = (a00 + a11 + a22) / 3;
+  const b00 = a00 - q, b11 = a11 - q, b22 = a22 - q;
+  const p2 = b00 * b00 + b11 * b11 + b22 * b22 + 2 * p1;
+  const p = Math.sqrt(p2 / 6);
+  // det(B)/2 where B = (A − qI)/p
+  const detB = (b00 * (b11 * b22 - a12 * a12) - a01 * (a01 * b22 - a12 * a02) + a02 * (a01 * a12 - b11 * a02)) / (p * p * p);
+  const r = Math.max(-1, Math.min(1, detB / 2));
+  const phi = Math.acos(r) / 3;
+  const e1 = q + 2 * p * Math.cos(phi);
+  const e3 = q + 2 * p * Math.cos(phi + (2 * Math.PI) / 3);
+  const e2 = 3 * q - e1 - e3; // trace invariant
+  return [e1, e2, e3];
+}
+
 /**
  * WorkspacePlanner
  *
@@ -305,6 +325,92 @@ export class WorkspacePlanner {
     for (const [k, s] of reach) cells.set(k, s.size);          // # arms that can GRASP this world cell
     for (const [k, s] of envelope) cellsMax.set(k, s.size);    // # arms whose envelope reaches it
     return { cells, cellsMax, baseX: 0, baseY: 0, cell, arms: only ? n : this.armCells.size };
+  }
+
+  /** Dexterity of ONE joint config: the translational manipulability of the TCP, taken from a central
+   *  finite-difference Jacobian J (3×k) of the site position vs each driving joint — so it needs only
+   *  the positions-only mj_kinematics the rest of the sweep uses (no mj_jacSite buffer marshalling).
+   *  From the SVD of J (via eigenvalues of JJᵀ): w = Πσᵢ (Yoshikawa volume) and invCond = σ_min/σ_max
+   *  ∈ [0,1] (1 = isotropic/agile, →0 = near-singular). Perturbations are clamped to each joint's
+   *  limit and the joint is restored after, so the caller's config is left intact. */
+  private cellDexterity(scratch: MujocoData, joints: SweptJoint[], tcpSiteId: number, delta: number): { w: number; invCond: number } | null {
+    const { mujoco, model } = this.cfg;
+    const k = joints.length;
+    const J = new Array<number>(3 * k); // row-major 3×k: [x0..x(k-1), y0.., z0..]
+    for (let j = 0; j < k; j++) {
+      const adr = joints[j].qposAdr, q0 = scratch.qpos[adr];
+      const hi = Math.min(joints[j].hi, q0 + delta), lo = Math.max(joints[j].lo, q0 - delta);
+      const span = hi - lo; if (span < 1e-9) return null; // joint pinned at a limit → ill-defined column
+      scratch.qpos[adr] = hi; mujoco.mj_kinematics(model, scratch);
+      const px = scratch.site_xpos[tcpSiteId * 3], py = scratch.site_xpos[tcpSiteId * 3 + 1], pz = scratch.site_xpos[tcpSiteId * 3 + 2];
+      scratch.qpos[adr] = lo; mujoco.mj_kinematics(model, scratch);
+      const mx = scratch.site_xpos[tcpSiteId * 3], my = scratch.site_xpos[tcpSiteId * 3 + 1], mz = scratch.site_xpos[tcpSiteId * 3 + 2];
+      const inv = 1 / span;
+      J[j] = (px - mx) * inv; J[k + j] = (py - my) * inv; J[2 * k + j] = (pz - mz) * inv;
+      scratch.qpos[adr] = q0; // restore
+    }
+    // JJᵀ (symmetric 3×3) → singular values²
+    let a00 = 0, a01 = 0, a02 = 0, a11 = 0, a12 = 0, a22 = 0;
+    for (let j = 0; j < k; j++) { const x = J[j], y = J[k + j], z = J[2 * k + j]; a00 += x * x; a01 += x * y; a02 += x * z; a11 += y * y; a12 += y * z; a22 += z * z; }
+    const [l1, l2, l3] = sym3eig(a00, a01, a02, a11, a12, a22);
+    const s1 = Math.sqrt(Math.max(0, l1)); if (s1 <= 1e-9) return { w: 0, invCond: 0 };
+    const s3 = Math.sqrt(Math.max(0, l3));
+    return { w: Math.sqrt(Math.max(0, l1 * l2 * l3)), invCond: s3 / s1 };
+  }
+
+  /** #1 Manipulability / dexterity map — for each top-down graspable WORLD cell, the BEST dexterity
+   *  (inverse condition number) achievable by any joint config that reaches it (same "best grasp"
+   *  semantics as the reach map). Combines every arm in scope. Coarse by design (off the render path,
+   *  debounced in the panel); shares the FK sweep structure but is independent of the live reach grid. */
+  getManipulability(armIds?: string[], cell = CELL, baseSteps = 56, resolution = 6): { cells: Map<string, number>; cell: number; wMax: number; meanDex: number; arms: number } | null {
+    const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
+    if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
+    const only = armIds ? new Set(armIds) : null;
+    const scratch: MujocoData = new mujoco.MjData(model);
+    const b = this.cfg.baseBodyId;
+    const bp = model.body_pos as unknown as Float32Array, bq = model.body_quat as unknown as Float32Array;
+    const savedP = [bp[b * 3], bp[b * 3 + 1], bp[b * 3 + 2]];
+    const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
+    const best = new Map<string, number>();
+    let wMax = 0, dexSum = 0, dexN = 0, arms = 0;
+    try {
+      for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
+      const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
+      const nArm = Math.max(2, resolution), nBase = Math.max(nArm, baseSteps);
+      const armTotal = Math.pow(nArm, armJoints.length);
+      const idx = new Array(armJoints.length).fill(0);
+      for (const arm of this.arms) {
+        if (only && !only.has(arm.id)) continue;
+        if (!this.armPose.has(arm.id)) continue;
+        arms++;
+        this.setSweepBase(arm.x, arm.y, arm.yaw);
+        for (let bi = 0; bi < nBase; bi++) {
+          scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
+          for (let c = 0; c < armTotal; c++) {
+            let rem = c;
+            for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
+            for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); }
+            mujoco.mj_kinematics(model, scratch);
+            const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
+            if (tz < 0 || tz > Z_BAND) continue;
+            if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
+            const d = this.cellDexterity(scratch, sweptJoints, tcpSiteId, 1e-4);
+            if (!d) continue;
+            const key = Math.round(tx / cell) + ',' + Math.round(ty / cell);
+            if (d.invCond > (best.get(key) ?? -1)) best.set(key, d.invCond);
+            if (d.w > wMax) wMax = d.w; dexSum += d.invCond; dexN++;
+          }
+        }
+      }
+    } finally {
+      bp[b * 3] = savedP[0]; bp[b * 3 + 1] = savedP[1]; bp[b * 3 + 2] = savedP[2];
+      bq[b * 4] = savedQ[0]; bq[b * 4 + 1] = savedQ[1]; bq[b * 4 + 2] = savedQ[2]; bq[b * 4 + 3] = savedQ[3];
+      mujoco.mj_forward(model, scratch);
+      scratch.delete();
+    }
+    if (best.size === 0) return null;
+    return { cells: best, cell, wMax, meanDex: dexN ? dexSum / dexN : 0, arms };
   }
 
   /** #11 layout optimizer — score every candidate base position (cx,cy) by how many worktop cells the
