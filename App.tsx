@@ -456,7 +456,7 @@ export function App() {
           simRef.current = new MujocoSim(containerRef.current, mujocoModuleRef.current);
           simRef.current.renderSys.setDarkMode(isDarkMode);
           // Re-apply planner UI state whenever the SO-101 scene (re)loads (e.g. base relocation).
-          simRef.current.onSceneReload = applyPlannerState;
+          simRef.current.onSceneReload = () => { applyPlannerState(); reapplyHidden(); }; // recreated meshes → restore hides
 
           // Default to the SO-101 workspace twin (Franka demo stays available via "franka_panda_stack").
           simRef.current.init("so_arm100", "scene.xml", (msg) => {
@@ -807,12 +807,12 @@ export function App() {
       { id: 'delete', label: 'Delete', icon: Trash2 },
     ];
     if (kind === 'post') {
-      // Posts are vertical + symmetric → no Aim. Extra mount posts can be deleted; the main cam post can't.
+      // Posts are vertical + symmetric → no Aim. Extra mount posts delete; the main cam post Hides (restorable).
       const isExtra = selection?.postIndex !== undefined;
       return [
         { id: 'move', label: 'Move', icon: MoveIcon },
         { id: 'duplicate', label: 'Duplicate', icon: Copy },
-        ...(isExtra ? [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem] : []),
+        isExtra ? { id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem : { id: 'delete', label: 'Hide', icon: EyeOff } as RadialItem,
       ];
     }
     if (kind === 'wristcam') return [
@@ -826,7 +826,8 @@ export function App() {
         { id: 'move', label: 'Move', icon: MoveIcon },
         { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
         { id: 'duplicate', label: 'Duplicate', icon: Copy },
-        ...(isPrimary ? [] : [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem]),
+        // The primary arm can't be removed (it's the physics body) → Delete HIDES it (restore via the tree eye).
+        isPrimary ? { id: 'delete', label: 'Hide', icon: EyeOff } as RadialItem : { id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem,
       ];
     }
     if (kind === 'station') {
@@ -835,7 +836,7 @@ export function App() {
         { id: 'move', label: 'Move', icon: MoveIcon },
         { id: 'aim', label: 'Aim · yaw', icon: RotateCw },
         { id: 'duplicate', label: 'Duplicate', icon: Copy },
-        ...(isPrimary ? [] : [{ id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem]),
+        isPrimary ? { id: 'delete', label: 'Hide', icon: EyeOff } as RadialItem : { id: 'delete', label: 'Delete', icon: Trash2 } as RadialItem,
       ];
     }
     // camera: Move/Aim/Duplicate for all; Delete only for an extra (the primary D435i is the base cam).
@@ -882,11 +883,23 @@ export function App() {
       return;
     }
     if (id === 'delete') {
-      if (kind === 'arm' && selectedArmId) handleRemoveArm(selectedArmId);
-      else if (kind === 'station' && selection?.stationId && selection.stationId !== 'primary') handleRemoveStation(selection.stationId);
+      // Primaries can't be removed (the physics arm / the worktop / its camera post are foundational),
+      // so "delete" on a primary HIDES it instead (restore via the BODIES-list eye). Extras are removed.
+      if (kind === 'arm' && selectedArmId) {
+        const a = armInstancesRef.current.find((x) => x.id === selectedArmId);
+        if (a?.primary) { toggleVisible({ key: `arm:${a.id}`, kind: 'arm', armId: a.id }); sel?.deselect(); }
+        else handleRemoveArm(selectedArmId);
+      }
+      else if (kind === 'station' && selection?.stationId) {
+        if (selection.stationId === 'primary') { toggleVisible({ key: 'station:primary', kind: 'station', stationId: 'primary' }); sel?.deselect(); }
+        else handleRemoveStation(selection.stationId);
+      }
       else if (kind === 'camera' && selection?.cameraId) handleRemoveExtraCamera(selection.cameraId);
       else if (kind === 'prop' && selection?.propId) handleRemoveProp(selection.propId);
-      else if (kind === 'post' && selection?.postIndex !== undefined) handleRemoveExtraPost(selection.postIndex);
+      else if (kind === 'post') {
+        if (selection?.postIndex !== undefined) handleRemoveExtraPost(selection.postIndex);
+        else { toggleVisible({ key: 'post', kind: 'post' }); sel?.deselect(); } // primary camera post → hide
+      }
       return;
     }
     if (id === 'hide') {
@@ -1074,11 +1087,22 @@ export function App() {
   const deleteSelection = (sel: SelectionInfo | null) => {
     if (!sel) return;
     const k = sel.kind;
-    if (k === 'arm' && (sel.armId ?? selectedArmId)) handleRemoveArm(sel.armId ?? selectedArmId);
-    else if (k === 'station' && sel.stationId && sel.stationId !== 'primary') handleRemoveStation(sel.stationId);
+    const selDeselect = () => simRef.current?.renderSys.selection?.deselect();
+    // Primaries hide (restore via the tree eye) instead of being removed; extras are removed.
+    if (k === 'arm' && (sel.armId ?? selectedArmId)) {
+      const aid = sel.armId ?? selectedArmId; const a = armInstancesRef.current.find((x) => x.id === aid);
+      if (a?.primary) { toggleVisible({ key: `arm:${aid}`, kind: 'arm', armId: aid }); selDeselect(); } else handleRemoveArm(aid);
+    }
+    else if (k === 'station' && sel.stationId) {
+      if (sel.stationId === 'primary') { toggleVisible({ key: 'station:primary', kind: 'station', stationId: 'primary' }); selDeselect(); }
+      else handleRemoveStation(sel.stationId);
+    }
     else if (k === 'camera' && sel.cameraId) handleRemoveExtraCamera(sel.cameraId);
     else if (k === 'prop' && sel.propId) handleRemoveProp(sel.propId);
-    else if (k === 'post' && sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
+    else if (k === 'post') {
+      if (sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
+      else { toggleVisible({ key: 'post', kind: 'post' }); selDeselect(); }
+    }
     else if (k === 'object' && sel.bodyId !== undefined) {
       // Pool cubes despawn live; baked task objects hide (re-showable via the tree eye).
       if (simRef.current?.despawnBlock(sel.bodyId)) { simRef.current?.renderSys.selection?.deselect(); setTaskBodies(simRef.current?.getTaskBodies() ?? []); applyPlannerState(); pushHistoryRef.current(); }
@@ -1218,16 +1242,21 @@ export function App() {
 
   // Per-object visibility: eye toggle in the tree hides/shows an entity in the 3D view.
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const toggleVisible = (e: { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number }) => {
+  type VisEntity = { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number };
+  const hiddenEntitiesRef = useRef<Map<string, VisEntity>>(new Map()); // key → entity, for re-applying after a rebuild
+  const visId = (e: VisEntity) => e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.kind === 'post' ? e.postIndex : e.armId;
+  const toggleVisible = (e: VisEntity) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
       const willHide = !next.has(e.key);
-      if (willHide) next.add(e.key); else next.delete(e.key);
-      const id = e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.kind === 'post' ? e.postIndex : e.armId;
-      simRef.current?.setEntityVisible(e.kind, id, !willHide);
+      if (willHide) { next.add(e.key); hiddenEntitiesRef.current.set(e.key, e); } else { next.delete(e.key); hiddenEntitiesRef.current.delete(e.key); }
+      simRef.current?.setEntityVisible(e.kind, visId(e), !willHide);
       return next;
     });
   };
+  // Re-apply hidden visibility after the worktop / model rebuilds (which recreates meshes visible).
+  // Without this, hiding the primary worktop/post/arm would silently come back on any slider edit.
+  const reapplyHidden = () => { for (const e of hiddenEntitiesRef.current.values()) simRef.current?.setEntityVisible(e.kind, visId(e), false); };
 
   const handleMeasureActive = (v: boolean) => {
     setMeasureActive(v);
@@ -1379,6 +1408,7 @@ export function App() {
     setWorkcellConfig(next);
     // Worktop is Three.js-only now → live rebuild on every slider change, no reload.
     simRef.current?.setWorkcell(next);
+    reapplyHidden(); // the rebuild recreates meshes visible — restore any hidden worktop/post/arm
   };
 
   // Re-sweep the ROM when OBSTACLES change. Base moves skip the re-sweep (the reachable set is
