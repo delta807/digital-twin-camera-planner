@@ -166,7 +166,7 @@ const PLANNER_TOGGLE_ROWS: Array<{ key: keyof PlannerToggles; label: string }> =
   { key: 'outline', label: 'Reach envelope (outline)' },
   { key: 'reach', label: 'Reach heatmap (density)' },
   { key: 'basePlacement', label: 'Best-mount heatmap' },
-  { key: 'blocked', label: 'Obstacle-blocked area (red)' },
+  { key: 'blocked', label: 'Obstacle-blocked area (per-arm)' },
   { key: 'tasks', label: 'Task-point markers' },
   { key: 'baseDrag', label: 'Drag-to-move base' },
 ];

@@ -450,21 +450,24 @@ export class WorkspacePlanner {
    *  while sparse blockage stays honestly sparse. Cell keys are world-aligned base-relative (the
    *  sweep ran at the arm's real x/y/yaw), so they place directly at arm.x/arm.y + di/dj·CELL. */
   private renderBlockedTiles() {
-    const red = new THREE.Color(0xef4444);
     let i = 0;
-    for (const arm of this.arms) {
+    // #5 — each arm's blocked cells take THAT arm's ROM colour (the same ARM_PALETTE index its reach
+    // contour uses), so a blocked region reads as "arm N can't grasp here" rather than a generic red.
+    const col = new THREE.Color();
+    this.arms.forEach((arm, ai) => {
       const cells = this.armBlocked.get(arm.id);
-      if (!cells) continue;
+      if (!cells) return;
+      col.set(WorkspacePlanner.ARM_PALETTE[ai % WorkspacePlanner.ARM_PALETTE.length]);
       for (const key of cells.keys()) {
         if (i >= MAX_TILES) break;
         const [di, dj] = key.split(',').map(Number);
         this.dummy.position.set(arm.x + di * CELL, arm.y + dj * CELL, 0.0046);
         this.dummy.updateMatrix();
         this.blockedTiles.setMatrixAt(i, this.dummy.matrix);
-        this.blockedTiles.setColorAt(i, red);
+        this.blockedTiles.setColorAt(i, col);
         i++;
       }
-    }
+    });
     this.blockedTiles.count = i;
     this.blockedTiles.instanceMatrix.needsUpdate = true;
     if (this.blockedTiles.instanceColor) this.blockedTiles.instanceColor.needsUpdate = true;
