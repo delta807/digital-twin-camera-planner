@@ -100,3 +100,19 @@ RULES:
      n=3/5/6. Verifying only on the convenient symmetric case (n=4) hid it. Lesson: when generating geometry
      for a renderer, grep the renderer's actual angle/origin convention and reuse it (shared constant), and
      verify on an ASYMMETRIC case (a non-square polygon), not just the easy one.
+
+## autoresearch — a "magic number" override was a preset, not a stale read (Jun 2026, /goal #A3)
+QA found ~6.7% of trials logged camera z ≈ 0.9796930009124906 regardless of the requested z. I FIRST
+assumed a stale world-matrix read and added `gizmo.updateMatrixWorld(true)` to `setPose` — it fixed
+nothing (z=0.45 still read 0.98), because the hypothesis was wrong. Grepping the literal value
+(`grep 0.9796`) pointed straight at `presets.ts` — it's the built-in IRL-layout preset camera height.
+ROOT CAUSE: an async startup profile-load re-applies that preset AFTER the autoresearch readiness gate
+(`scoreCurrentScene()!=null`) passes, clobbering the FIRST `applyConfig`'s camera on each fresh page.
+The count was the tell: 14/210 = exactly workers(2)×regions(7) → one clobbered candidate per worker.
+FIX: a discarded warm-up `applyConfig` in `newReadyPage` consumes the race (verified: 2nd+ applies
+stick). RULES: (1) before "fixing" a suspicious constant, GREP THE LITERAL VALUE — it often names its
+own source (a preset/default), which is faster and truer than guessing a mechanism. (2) A no-op "fix"
+that doesn't change the symptom means the hypothesis is wrong — re-test the symptom immediately, don't
+assume. (3) An error count that factors cleanly into run parameters (workers×regions) is a structural
+clue (per-page init race), not random noise. (4) A readiness gate that checks signal A doesn't
+guarantee async init B has settled; gate on the thing you actually depend on, or consume the race.

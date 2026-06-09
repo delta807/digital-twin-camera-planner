@@ -26,13 +26,20 @@ const nums = (s?: string) => (s ? s.split(',').map(Number) : []);
 
 // NB: anything passed to page.evaluate runs in the BROWSER — it can only use its args + browser globals,
 // never Node-scope helpers. So window.__autoresearch is accessed inline (cast) inside each closure.
-interface RegionTrial { ci: number; cfg: Cfg; region: Zone; result: Result; }
+interface RegionTrial { ci: number; cfg: Cfg; region: Zone; result: Result; fidelity: 'fast' | 'full'; }
 
 async function newReadyPage(browser: Awaited<ReturnType<typeof chromium.launch>>, baseUrl: string): Promise<Page> {
   const page = await browser.newPage();
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await page.waitForFunction(() => { const ar = (window as any).__autoresearch; return !!ar && ar.scoreCurrentScene() != null; }, { timeout: 120_000 });
+  // Warm-up apply (result discarded). On a fresh page the FIRST applyConfig races an async startup
+  // profile-load that re-applies the built-in IRL-layout camera (z≈0.98), clobbering the requested
+  // camera pose; the 2nd+ applies stick (verified). Consuming one apply here guarantees every REAL
+  // candidate's camera takes effect. Root cause is the startup ordering in App.tsx; this is the
+  // minimal harness-side guard that avoids touching the interactive twin's load sequence.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await page.evaluate(async () => { await (window as any).__autoresearch.applyConfig({ shapeSides: 4, size: 0.4, arms: 1, armBases: [{ x: 0, y: 0.3, yaw: -Math.PI / 2 }], camera: { x: 0, y: 0, z: 0.7, tilt: 0 }, taskDistribution: { kind: 'grid' } }, { fast: true }); });
   return page;
 }
 
@@ -44,7 +51,7 @@ async function sweepCandidate(page: Page, ci: number, cfg: Cfg, regions: Zone[],
   for (const region of regions) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await page.evaluate(({ region, fast }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast, zone: region }), { region, fast }) as Result | null;
-    if (result) out.push({ ci, cfg, region, result });
+    if (result) out.push({ ci, cfg, region, result, fidelity: fast ? 'fast' : 'full' });
   }
   return out;
 }
@@ -80,8 +87,11 @@ async function main() {
   }));
 
   // group by region label → per-region candidate trials; full-fidelity re-score of each region's finalists.
-  const byRegion = new Map<string, Trial[]>();
-  for (const t of all) { const a = byRegion.get(t.region.label) ?? []; a.push({ cfg: t.cfg, result: t.result }); byRegion.set(t.region.label, a); }
+  // NB: store the SAME RegionTrial objects (not copies) so the full-fidelity re-score below mutates the
+  // entries that get serialised to results.json — otherwise results.json keeps the coarse triage scores
+  // while summary.md/winners report the full-fidelity ones (a silent reproducibility gap).
+  const byRegion = new Map<string, RegionTrial[]>();
+  for (const t of all) { const a = byRegion.get(t.region.label) ?? []; a.push(t); byRegion.set(t.region.label, a); }
 
   // GSD/λ OUTER sweep settings — re-score each region's WINNER across the D435i RGB/depth bands + a
   // no-torque variant, to check the recommendation is robust to the objective-parameters (#A2). Cheap:
@@ -104,7 +114,7 @@ async function main() {
       await page0.evaluate(async (c) => { await (window as any).__autoresearch.applyConfig(c, { fast: false }); }, t.cfg);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = await page0.evaluate(({ region }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast: false, zone: region }), { region }) as Result | null;
-      if (r) t.result = r;
+      if (r) { t.result = r; t.fidelity = 'full'; }
     }
     // sensitivity sweep on this region's winner (knee): score it under every GSD/λ setting.
     const best = knee(paretoFront(trialsForRegion));
@@ -126,7 +136,10 @@ async function main() {
 
   // report: per-region pareto csv + a cross-region summary (does the winner change by region?).
   mkdirSync(out, { recursive: true });
-  writeFileSync(`${out}/results.json`, JSON.stringify(all.map((t) => ({ ci: t.ci, region: t.region.label, cfg: t.cfg, result: t.result })), null, 2));
+  // results.json carries every region-trial at its scored fidelity: 'fast' for the triage majority,
+  // 'full' for the per-region Pareto finalists re-scored above (so the reported winners ARE reproducible
+  // from this file — recompute the front from the 'full' entries).
+  writeFileSync(`${out}/results.json`, JSON.stringify(all.map((t) => ({ ci: t.ci, region: t.region.label, fidelity: t.fidelity, cfg: t.cfg, result: t.result })), null, 2));
   const summary: string[] = ['# /autoresearch — per-region winners', ''];
   const cfgLabel = (c: Cfg) => `${c.shapeSides}-gon r${c.size.toFixed(2)} · ${c.arms}arm · cam z${c.camera.z.toFixed(2)} tilt${c.camera.tilt}°`;
   for (const [label, trialsForRegion] of byRegion) {

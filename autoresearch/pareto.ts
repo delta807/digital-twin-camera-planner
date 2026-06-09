@@ -9,15 +9,16 @@ import { dominates } from './scoreConfig';
 
 export interface Trial { cfg: Cfg; result: Result; }
 
-/** The non-dominated, FEASIBLE trials (the Pareto front). */
-export function paretoFront(trials: Trial[]): Trial[] {
+/** The non-dominated, FEASIBLE trials (the Pareto front). Generic so callers keep their richer trial
+ *  type (e.g. RegionTrial) through the front — important when the caller mutates front entries. */
+export function paretoFront<T extends Trial>(trials: T[]): T[] {
   const feasible = trials.filter((t) => t.result.feasible);
   return feasible.filter((a) => !feasible.some((b) => b !== a && dominates(b.result, a.result)));
 }
 
 /** A single "recommended" trial from a front: the knee = max of the minimum normalized objective
  *  (the most balanced point — best worst-objective after min-max normalizing each objective across the front). */
-export function knee(front: Trial[]): Trial | null {
+export function knee<T extends Trial>(front: T[]): T | null {
   if (front.length === 0) return null;
   if (front.length === 1) return front[0];
   const keys: Array<'taskGrasp' | 'perception' | 'collaboration'> = ['taskGrasp', 'perception', 'collaboration'];
@@ -29,7 +30,7 @@ export function knee(front: Trial[]): Trial | null {
     const vals = front.map((t) => t.result.objectives[k] as number);
     lo[k] = Math.min(...vals); hi[k] = Math.max(...vals);
   }
-  let best: Trial | null = null, bestScore = -Infinity;
+  let best: T | null = null, bestScore = -Infinity;
   for (const t of front) {
     let worst = Infinity;
     for (const k of active) {

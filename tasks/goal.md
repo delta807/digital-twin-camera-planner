@@ -34,8 +34,15 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       gen-campaign --sizes. Added a GSD/λ OUTER-sweep sensitivity pass: each region's winner is re-scored
       across the D435i bands (rgb-tight/mid/loose) + a no-torque variant; summary.md reports feasibility +
       scores per setting. Verified (pentagon): all winners feasible in 4/4 settings → robust to GSD/λ.
-- [ ] **#A3 Full campaign + the answer** — run the real campaign (finer placements, sizes, all shapes,
-      regions) and write the optimal: best polygon, arm clamp positions, 1-vs-2, camera pose, per region.
+- [x] **#A3 Full campaign + the answer** — DONE. Ran 480-candidate campaign (shapes 4/5/6 × sizes
+      0.40/0.50 × 1/2 arms × near-vertex mounts × camera z0.70/0.85 × tilt 0/20°) → 2944 region-trials
+      over centre+6 corners (`full_a3/`), plus a 30-candidate camera-height bracket 0.45–0.85 m
+      (`cam_bracket/`). ANSWER in `tasks/autoresearch_runs/ANSWER.md`: **2 arms on opposite edges of a
+      ~0.40 m polygon** (centre is INFEASIBLE 1-arm — 0/79; corners scored identically 1-vs-2-arm with
+      collab=0 ⇒ arms partition, not collaborate); **square≈pentagon≈hexagon** (Δ<0.02, within noise);
+      **smaller table wins** (r0.40); **camera nadir, as low as FOV allows** (perception rises
+      monotonically to GSD ceiling by ~0.45 m; height doesn't affect grasp feasibility — z0.70 was a
+      sweep-floor artifact). Winners robust in 4/4 GSD/λ settings.
 - [ ] **#A4 (nice-to-have) UI import** of `winner-<region>.json` so a winning layout loads in the twin.
 
 ## ACTIVE — new issues (reported Jun 2026, this batch)
