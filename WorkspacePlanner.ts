@@ -814,7 +814,7 @@ export class WorkspacePlanner {
     return { radMax, radPrec, cells, cellsMax, blocked, baseX, baseY };
   }
 
-  computeReachability(resolution = 9) {
+  computeReachability(resolution = 9, baseSteps = BASE_STEPS) {
     const { mujoco, model, sweptJoints, zeroQposAdr } = this.cfg;
     if (sweptJoints.length === 0) return;
     const scratch: MujocoData = new mujoco.MjData(model);
@@ -837,7 +837,7 @@ export class WorkspacePlanner {
       for (const arm of arms) {
         this.setSweepBase(arm.x, arm.y, arm.yaw);
         const obs = this.obstaclesFor(arm.id);
-        const r = this.sweepArm(scratch, resolution, arm.yaw, obs);
+        const r = this.sweepArm(scratch, resolution, arm.yaw, obs, CELL, baseSteps);
         this.checkReachInvariants(arm.id, r.cells, r.blocked, obs.length);
         this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
         this.armBlocked.set(arm.id, r.blocked);

@@ -51,22 +51,31 @@ async function main() {
     console.warn('[autoresearch] window.__autoresearch.applyConfig MISSING (slice 2). Scoring the CURRENT scene once as a smoke test — NOT a real sweep.');
   }
 
+  type AR = { applyConfig?: (c: Cfg, o?: { fast?: boolean }) => Promise<boolean>; scoreCurrentScene: (o?: unknown, opts?: { fast?: boolean }) => Result | null };
+  const scoreAt = (c: Cfg, fast: boolean) => page.evaluate(async ({ c, fast }: { c: Cfg; fast: boolean }) => {
+    const ar = (window as unknown as { __autoresearch: AR }).__autoresearch;
+    if (ar.applyConfig) await ar.applyConfig(c, { fast });
+    return ar.scoreCurrentScene(undefined, { fast });
+  }, { c, fast });
+
+  // ── Triage pass: every candidate at COARSE fidelity (fast). ──
   const out_trials: Trial[] = [];
   const loop = hasApply ? candidates : candidates.slice(0, 1);
   for (let i = 0; i < loop.length; i++) {
-    const cfg = loop[i];
-    const result = await page.evaluate(async (c: Cfg) => {
-      const ar = (window as unknown as { __autoresearch: { applyConfig?: (c: Cfg) => Promise<void>; scoreCurrentScene: () => Result | null } }).__autoresearch;
-      if (ar.applyConfig) await ar.applyConfig(c);
-      return ar.scoreCurrentScene();
-    }, cfg);
-    if (result) out_trials.push({ cfg, result });
-    if ((i + 1) % 25 === 0) console.log(`[autoresearch] ${i + 1}/${loop.length}`);
+    const result = await scoreAt(loop[i], true);
+    if (result) out_trials.push({ cfg: loop[i], result });
+    if ((i + 1) % 10 === 0) console.log(`[autoresearch] triage ${i + 1}/${loop.length}`);
   }
-  await browser.close();
 
-  const front = paretoFront(out_trials);
+  // ── Verdict pass: re-score the Pareto front at FULL fidelity, then re-rank. ──
+  let front = paretoFront(out_trials);
+  if (hasApply && front.length) {
+    console.log(`[autoresearch] re-scoring ${front.length} Pareto finalists at full fidelity…`);
+    for (const t of front) { const r = await scoreAt(t.cfg, false); if (r) t.result = r; }
+    front = paretoFront(out_trials); // re-derive after the finalists' fidelity changed
+  }
   const best = knee(front);
+  await browser.close();
   mkdirSync(out, { recursive: true });
   writeFileSync(`${out}/results.json`, resultsJson(out_trials));
   writeFileSync(`${out}/pareto.csv`, paretoCsv(front));

@@ -607,9 +607,10 @@ export function App() {
   // ── /autoresearch slice 1: score the CURRENT scene (lean, headless). Gathers the raw planner/camera
   // metrics directly (NOT the analysis-panel snapshot), builds a MetricsBag over the object zone, and
   // runs the pure scorer. Exposed on window for the Playwright CLI. See tasks/autoresearch_scoreconfig.md.
-  const scoreCurrentScene = (override?: Partial<ScoreParams>): Result | null => {
+  const scoreCurrentScene = (override?: Partial<ScoreParams>, opts?: { fast?: boolean }): Result | null => {
     const p = planner(); const sim = simRef.current; if (!p || !sim) return null;
     const params: ScoreParams = { ...DEFAULT_PARAMS, ...override };
+    const fast = opts?.fast ?? false;
     const wc = workcellConfigRef.current;
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
     const inscribed = 0.5 * Math.min(wc.length ?? 0.6, wc.width ?? 0.4);  // ≈ apothem (work-zone radius basis)
@@ -617,8 +618,9 @@ export function App() {
     const arms = armInstancesRef.current.length;
 
     const reach = p.getReachWorld();                       // cells: # arms reaching (graspable)
-    const manip = p.getManipulability();                   // cells: best inverse-condition dexterity 0..1
-    const effort = p.getEffort();                          // cells: best torque headroom 0..1
+    // fast mode → coarse manip/effort sweeps (triage for the optimizer); full fidelity is the default.
+    const manip = fast ? p.getManipulability(undefined, undefined, 24, 4) : p.getManipulability();
+    const effort = fast ? p.getEffort(undefined, undefined, 20, 4) : p.getEffort();
     const handoff = arms >= 2 ? p.getHandoff() : null;     // cells: dexterity-weighted handoff quality
     const cov = sim.coverageGrids();                       // overhead boolean[] over n×n grid (centred 0,0)
     const gsd = sim.gsdGrid();                             // RGB GSD mm/px over n×n grid
@@ -665,7 +667,7 @@ export function App() {
   // ── /autoresearch slice 2: apply an arbitrary cfg headlessly, then await the rebuild + reachability
   // re-sweep so scoreCurrentScene reads a settled scene. Bypasses React state (writes the refs the
   // scorer reads directly) to avoid re-render storms — headless-only, the UI isn't updated.
-  const applyConfig = async (cfg: AutoCfg, opts?: { reachResolution?: number }): Promise<boolean> => {
+  const applyConfig = async (cfg: AutoCfg, opts?: { reachResolution?: number; reachBaseSteps?: number; fast?: boolean }): Promise<boolean> => {
     const sim = simRef.current; const p = planner(); if (!sim || !p) return false;
     // 1. table: rebuild the worktop as the cfg's polygon (length=width=2·circumradius keeps it regular).
     const wc: WorkcellConfig = { ...workcellConfigRef.current, shapeSides: cfg.shapeSides, length: 2 * cfg.size, width: 2 * cfg.size };
@@ -679,13 +681,18 @@ export function App() {
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
     const aim = cfg.camera.z * Math.tan((cfg.camera.tilt ?? 0) * Math.PI / 180);
     sim.renderSys.cameraRig?.setPose(new THREE.Vector3(cfg.camera.x, cfg.camera.y, cfg.camera.z), new THREE.Vector3(cx + aim, cy, 0), 0);
-    // 4. recompute reach (synchronous FK sweep) at the cfg's base + obstacles.
+    // 4. recompute reach (synchronous FK sweep) at the cfg's base + obstacles. fast mode → coarse base
+    //    sweep (48 vs 160 steps) + res 4: ~6× fewer poses, for the optimizer's triage pass.
     p.setObstacles(collectObstacles());
-    p.computeReachability(opts?.reachResolution ?? reachResolutionRef.current);
-    // 5. sync the refs the scorer reads, then yield two frames so camera matrices settle.
+    const res = opts?.reachResolution ?? (opts?.fast ? 4 : reachResolutionRef.current);
+    const baseSteps = opts?.reachBaseSteps ?? (opts?.fast ? 48 : undefined);
+    p.computeReachability(res, baseSteps);
+    // 5. sync the refs the scorer reads. Yield via setTimeout (NOT rAF — rAF is paused when the headless/
+    //    background preview tab isn't rendering, which would hang this promise forever). The scorer's
+    //    coverage/GSD refresh camera matrices internally, so a microtask flush is all that's needed.
     workcellConfigRef.current = wc;
     armInstancesRef.current = arms;
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    await new Promise<void>((r) => setTimeout(r, 0));
     return true;
   };
 
@@ -693,8 +700,8 @@ export function App() {
   const applyRef = useRef(applyConfig); applyRef.current = applyConfig;
   useEffect(() => {
     (window as unknown as { __autoresearch?: unknown }).__autoresearch = {
-      scoreCurrentScene: (o?: Partial<ScoreParams>) => scoreRef.current(o),
-      applyConfig: (c: AutoCfg, opts?: { reachResolution?: number }) => applyRef.current(c, opts),
+      scoreCurrentScene: (o?: Partial<ScoreParams>, opts?: { fast?: boolean }) => scoreRef.current(o, opts),
+      applyConfig: (c: AutoCfg, opts?: { reachResolution?: number; reachBaseSteps?: number; fast?: boolean }) => applyRef.current(c, opts),
       DEFAULT_PARAMS,
     };
   }, []);

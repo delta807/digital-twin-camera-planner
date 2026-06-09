@@ -165,13 +165,14 @@ shrink the zone, loosen the GSD target, zero-out λ).
    re-sweep before reading metrics (the recompute clears `armCells` mid-flight — reading early = half-built scene).
 3. **Headless harness** — expose `window.scoreConfig(cfg)` (async, awaits settle); drive via Playwright. Later: port the
    pure geometry/scoring to a faster Node/MuJoCo runner once the metrics are validated against the visual twin.
-   STATUS: window.__autoresearch.scoreCurrentScene (slice 1) + applyConfig (slice 2) DONE + verified (a 1-arm apply
-   correctly rebuilt the scene + recomputed + scored). ⚠ PERF: a full-fidelity applyConfig is SLOW — it does a
-   relocateBase MuJoCo model reload + a 160×N³-per-arm FK reach sweep (2-arm measured >80 s). Too slow for a 200-trial
-   sweep. FAST-MODE follow-up (own slice): (a) SKIP relocateBase for headless scoring — computeReachability already
-   moves each base via setSweepBase (no recompile); the only cost is the primary arm's mesh staying at its old spot,
-   a bounded coverage-occlusion approximation; (b) expose a reduced BASE_STEPS / coarse reach grid for autoresearch;
-   (c) eventually the pure-geometry headless runner. Until then keep sweeps SMALL (handful of configs).
+   STATUS: scoreCurrentScene (slice 1) + applyConfig (slice 2) + fast mode (slice 3) DONE + verified end-to-end —
+   the CLI ran a real 6-config sweep, scores varied physically (perception peaks at z=0.7 nadir; tilt lowers it),
+   coarse-triage→full-verdict re-score worked. CORRECTION: relocateBase does NOT reload the model (just sets
+   body_pos+mj_forward) — the apparent "80 s" hang was actually a `requestAnimationFrame` settle that never fired
+   because rAF is paused in the headless/background preview tab. Fixes shipped: (a) settle via setTimeout, not rAF;
+   (b) fast mode = scoreCurrentScene/applyConfig accept {fast} → coarse computeReachability (baseSteps 48, res 4)
+   + coarse getManipulability(24,4)/getEffort(20,4) for triage; full fidelity is the default + used to re-score the
+   Pareto finalists. Fast score ≈ 0.4 s. (Pure-geometry headless runner still a future option for very large sweeps.)
 4. **Optimizer loop** — start dumb: grid-sweep `shapeSides × {1,2 arms}` (+ candidate arm/camera poses on mount rings/edges).
    Then Ax (qNEHVI) over the continuous knobs; keep the grid for the tiny discrete axes.
 
