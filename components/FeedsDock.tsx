@@ -41,23 +41,37 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
   const railBtn = (on: boolean) =>
     `relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${on ? 'bg-indigo-600 text-white' : isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10'}`;
 
-  const Check = ({ label, v, on }: { label: string; v: boolean; on: (b: boolean) => void }) => (
+  // `indeterminate` can only be set imperatively (no HTML attribute) — hence the ref callback.
+  const Check = ({ label, v, on, indeterminate }: { label: string; v: boolean; on: (b: boolean) => void; indeterminate?: boolean }) => (
     <label className="flex items-center justify-between gap-2 px-1 py-0.5 cursor-pointer">
       <span className="text-[10px] font-medium">{label}</span>
-      <input type="checkbox" checked={v} onChange={(e) => on(e.target.checked)} className="accent-indigo-600 w-3.5 h-3.5" />
+      <input type="checkbox" checked={v} ref={(el) => { if (el) el.indeterminate = !!indeterminate; }} onChange={(e) => on(e.target.checked)} className="accent-indigo-600 w-3.5 h-3.5" />
     </label>
+  );
+
+  // All D435i feeds (overhead + workstation + extra) collapse into ONE master toggle; the wrist
+  // cams stay separate (they're not D435i). The master is tri-state: on if every present feed is on,
+  // indeterminate if only some are, and toggling it drives all present D435i feeds together.
+  const d435i = [
+    { on: toggles.overhead, set: toggles.onOverhead },
+    ...(toggles.station ? [{ on: toggles.station.on, set: toggles.station.onToggle }] : []),
+    ...(toggles.extraCam ? [{ on: toggles.extraCam.on, set: toggles.extraCam.onToggle }] : []),
+  ];
+  const d435iAny = d435i.some((t) => t.on);
+  const d435iAll = d435i.every((t) => t.on);
+  const setD435i = (v: boolean) => d435i.forEach((t) => t.set(v));
+  const feedToggles = (
+    <div className="space-y-0.5">
+      <Check label="D435i cameras" v={d435iAny} on={() => setD435i(!d435iAny)} indeterminate={d435iAny && !d435iAll} />
+      <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
+    </div>
   );
 
   // Inline (inside the sidebar dashboard): just the per-feed toggles + the stacked feed cards.
   if (inline) {
     return (
       <div className="space-y-2">
-        <div className="space-y-0.5">
-          <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
-          <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
-          {toggles.station && <Check label="Workstation D435i" v={toggles.station.on} on={toggles.station.onToggle} />}
-          {toggles.extraCam && <Check label="Extra D435i" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
-        </div>
+        {feedToggles}
         <div className="space-y-2">
           {children}
           {feedCount === 0 && <p className={`text-[10px] text-center py-3 ${subtle}`}>No feeds enabled. Tick one above.</p>}
@@ -87,10 +101,7 @@ export function FeedsDock({ isDarkMode, open, onToggle, reasoningOpen, onReasoni
             <button onClick={onToggle} title="Collapse" className="opacity-60 hover:opacity-100"><ChevronRight className="w-3.5 h-3.5" /></button>
           </div>
           <div className="px-2 py-1.5 border-b border-black/5 shrink-0">
-            <Check label="Overhead D435i" v={toggles.overhead} on={toggles.onOverhead} />
-            <Check label="Wrist cameras" v={toggles.wrist} on={toggles.onWrist} />
-            {toggles.station && <Check label="Workstation D435i" v={toggles.station.on} on={toggles.station.onToggle} />}
-            {toggles.extraCam && <Check label="Extra D435i" v={toggles.extraCam.on} on={toggles.extraCam.onToggle} />}
+            {feedToggles}
           </div>
           <div className="p-2 space-y-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
             {children}

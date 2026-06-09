@@ -2293,6 +2293,15 @@ export function App() {
                 onSnapToPost={handleSnapCameraToPost}
                 onDeselect={() => simRef.current?.renderSys.selection?.deselect()}
                 onFrame={handleFrameSelection}
+                onDuplicate={() => duplicateSelection(selection)}
+                onDelete={() => deleteSelection(selection)}
+                deleteIsHide={(() => {
+                  if (!selection) return false;
+                  if (selection.kind === 'arm') { const aid = selection.armId ?? selectedArmId; return !!armInstances.find((x) => x.id === aid)?.primary; }
+                  if (selection.kind === 'station') return selection.stationId === 'primary';
+                  if (selection.kind === 'post') return selection.postIndex === undefined;
+                  return false; // extras (camera/prop/extra-post/pool cube) are removed
+                })()}
                 onSnapToRod={handleSnapToRod}
                 onSnapToEdge={handleSnapArmToEdge}
                 onSlideAlongRod={handleSlideAlongRod}

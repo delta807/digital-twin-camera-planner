@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useState } from 'react';
-import { ChevronDown, Link2, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
+import { ChevronDown, Copy, EyeOff, Link2, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
 import { FrameIcon, JogIcon, So101Icon } from './ui/toolbar';
 
 /** Reach glyph (double-headed arrow = range of motion). */
@@ -98,6 +98,10 @@ export interface InspectorProps {
   onSnapToPost: () => void;
   onDeselect: () => void;
   onFrame: () => void;
+  // Header quick-actions: duplicate the current object, and delete/hide it (primaries hide).
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+  deleteIsHide?: boolean;
   // Rod snapping: mount the selection on a rod, then slide it along (0..1).
   onSnapToRod: () => void;
   onSnapToEdge: () => void;
@@ -176,12 +180,18 @@ export function SelectionInspector(p: InspectorProps) {
 
   return (
     <div className={rootClass} style={p.inline ? undefined : p.floatStyle}>
-      <div className="flex items-center gap-2 mb-2">
+      <div className={p.inline
+        ? 'flex items-center gap-1 mb-2'
+        // Sticky header: stays pinned at the top of the (scrollable) float panel. -mt/-mx pull it
+        // flush to the panel edges; pt/px restore the inner padding; rounded-t matches the panel.
+        : `sticky top-0 z-20 -mt-3 -mx-4 px-4 pt-3 pb-2 mb-2 rounded-t-2xl flex items-center gap-1 border-b ${p.isDarkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-black/[0.06]'}`}>
         {sel.kind === 'arm'
           ? <So101Icon className="w-4 h-4 shrink-0 text-yellow-400" />
           : <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />}
         <span className="font-bold text-[12px] flex-1 truncate">{sel.label}</span>
         <button onClick={p.onFrame} title="Fit camera to selected object (F)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><FrameIcon className="w-3.5 h-3.5" /></button>
+        {p.onDuplicate && <button onClick={p.onDuplicate} title="Duplicate (D)" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><Copy className="w-3.5 h-3.5" /></button>}
+        {p.onDelete && <button onClick={p.onDelete} title={p.deleteIsHide ? 'Hide (restore via the tree eye)' : 'Delete'} className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-rose-500/15 text-rose-500' : 'hover:bg-rose-500/10 text-rose-600'}`}>{p.deleteIsHide ? <EyeOff className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}</button>}
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
 
@@ -600,25 +610,30 @@ function RailSizers({ station, subtle, onStation }: {
  *  so the value is easy to read and the input/steppers are a comfortable hit target. */
 /** X/Y/Z position rows: a slider fills the space (coarse drag) next to a compact typeable box
  *  (exact value). `min`/`max` are metres; default ±1.5 m covers the workcell. */
-function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void; min?: number; max?: number }[]; unit: LengthUnit; subtle: string }) {
+function Row3({ fields, unit, subtle }: { fields: { k: string; v: number; on: (v: number) => void; min?: number; max?: number; def?: number }[]; unit: LengthUnit; subtle: string }) {
   const mm = unit === 'mm';
   const toDisp = (v: number) => (mm ? v * 1000 : v);
   const fromDisp = (d: number) => (mm ? d / 1000 : d);
   const digits = mm ? 0 : 3;
   return (
     <div className="space-y-1.5">
-      {fields.map(({ k, v, on, min = -1.5, max = 1.5 }) => {
+      {fields.map(({ k, v, on, min = -1.5, max = 1.5, def = 0 }) => {
         const dMin = toDisp(min), dMax = toDisp(max), dv = toDisp(v);
+        // OrcaSlicer-style reset: differs from default (origin = 0) → orange + reset arrow. 0.5 mm deadband.
+        const changed = Math.abs(v - def) > 0.0005;
         return (
           <label key={k} className="flex items-center gap-2">
-            <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${AXIS_HUE[k] ?? subtle}`}>{k}</span>
+            <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${changed ? 'text-orange-500' : (AXIS_HUE[k] ?? subtle)}`}>{k}</span>
             <input type="range" min={dMin} max={dMax} step={(dMax - dMin) / 240} value={Math.min(dMax, Math.max(dMin, dv))}
               onChange={(e) => on(fromDisp(parseFloat(e.target.value)))}
               className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
             <input type="number" step={mm ? 1 : 0.005} value={Number(dv.toFixed(digits))}
               onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(fromDisp(d)); }}
-              className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
-            <span className={`text-[10px] w-6 shrink-0 ${subtle}`}>{mm ? 'mm' : 'm'}</span>
+              className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${changed ? 'border-orange-300 text-orange-500' : 'border-black/10'}`} />
+            <span className={`text-[10px] w-6 shrink-0 ${changed ? 'text-orange-500' : subtle}`}>{mm ? 'mm' : 'm'}</span>
+            <span className="w-3 shrink-0 flex justify-center">
+              {changed && <button type="button" onClick={() => on(def!)} title={`Reset to ${def === 0 ? 'origin' : Number(toDisp(def!).toFixed(digits))}`} className="text-orange-500 hover:text-orange-600"><RotateCcw className="w-3 h-3" /></button>}
+            </span>
           </label>
         );
       })}
@@ -665,20 +680,25 @@ function WMSlider({ label, min, max, step, value, on, subtle, unit, def }: { lab
 
 /** Angle row. `detentDeg` (optional) gives a CAD-style soft detent — values within 4° snap to it
  *  and a "⊥" flag shows when locked on (used for "perpendicular to the rail"). */
-function Angle({ label, deg, on, subtle, detentDeg }: { label: string; deg: number; on: (d: number) => void; subtle: string; detentDeg?: number | null }) {
+function Angle({ label, deg, on, subtle, detentDeg, def = 0 }: { label: string; deg: number; on: (d: number) => void; subtle: string; detentDeg?: number | null; def?: number }) {
   const circDiff = (a: number, b: number) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return Math.min(d, 360 - d); };
   const atDetent = detentDeg != null && circDiff(deg, detentDeg) < 1.5;
   const snap = (d: number) => (detentDeg != null && circDiff(d, detentDeg) < 4 ? detentDeg : d);
+  // Reset to default (0° unless told otherwise) — orange when off, but the ⊥ detent state takes visual priority.
+  const changed = !atDetent && circDiff(deg, def) > 0.5;
   return (
     <label className="flex items-center gap-2">
-      <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${atDetent ? 'text-emerald-600' : (AXIS_HUE[label] ?? subtle)}`}>{label}</span>
+      <span className={`text-[11px] font-bold uppercase w-8 shrink-0 ${atDetent ? 'text-emerald-600' : (changed ? 'text-orange-500' : (AXIS_HUE[label] ?? subtle))}`}>{label}</span>
       <input type="range" min={-180} max={180} step={1} value={Math.min(180, Math.max(-180, deg))}
         onChange={(e) => on(snap(parseFloat(e.target.value)))}
         className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer" />
       <input type="number" step={1} value={Number(deg.toFixed(0))}
         onChange={(e) => { const d = parseFloat(e.target.value); if (!Number.isNaN(d)) on(snap(d)); }}
-        className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${atDetent ? 'border-emerald-400 text-emerald-600' : 'border-black/10'}`} />
-      <span className={`text-[10px] w-6 shrink-0 ${atDetent ? 'text-emerald-600 font-bold' : subtle}`}>{atDetent ? '⊥' : '°'}</span>
+        className={`w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] outline-none focus:border-indigo-400 focus:bg-white/40 ${atDetent ? 'border-emerald-400 text-emerald-600' : (changed ? 'border-orange-300 text-orange-500' : 'border-black/10')}`} />
+      <span className={`text-[10px] w-6 shrink-0 ${atDetent ? 'text-emerald-600 font-bold' : (changed ? 'text-orange-500' : subtle)}`}>{atDetent ? '⊥' : '°'}</span>
+      <span className="w-3 shrink-0 flex justify-center">
+        {changed && <button type="button" onClick={() => on(def)} title={`Reset to ${def}°`} className="text-orange-500 hover:text-orange-600"><RotateCcw className="w-3 h-3" /></button>}
+      </span>
     </label>
   );
 }
