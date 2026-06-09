@@ -23,7 +23,7 @@ import { SelectionInspector, MetricsCard } from './components/SelectionInspector
 import { AnalysisPanel } from './components/AnalysisPanel';
 import type { ReachData, LayoutData, ManipData, EffortData, HandoffData, CycleData, ThroughputData } from './analysis/figures';
 import { scoreConfig } from './autoresearch/scoreConfig';
-import { DEFAULT_PARAMS, type ScoreParams, type MetricsBag, type SamplePoint, type Result } from './autoresearch/types';
+import { DEFAULT_PARAMS, type ScoreParams, type MetricsBag, type SamplePoint, type Result, type Cfg as AutoCfg } from './autoresearch/types';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -662,10 +662,39 @@ export function App() {
     const bag: MetricsBag = { arms, cameraZ: camZ, collisionFree, zonePoints };
     return scoreConfig(bag, params);
   };
+  // ── /autoresearch slice 2: apply an arbitrary cfg headlessly, then await the rebuild + reachability
+  // re-sweep so scoreCurrentScene reads a settled scene. Bypasses React state (writes the refs the
+  // scorer reads directly) to avoid re-render storms — headless-only, the UI isn't updated.
+  const applyConfig = async (cfg: AutoCfg, opts?: { reachResolution?: number }): Promise<boolean> => {
+    const sim = simRef.current; const p = planner(); if (!sim || !p) return false;
+    // 1. table: rebuild the worktop as the cfg's polygon (length=width=2·circumradius keeps it regular).
+    const wc: WorkcellConfig = { ...workcellConfigRef.current, shapeSides: cfg.shapeSides, length: 2 * cfg.size, width: 2 * cfg.size };
+    sim.setWorkcell(wc);
+    // 2. arms: first = primary physics arm, rest = ghosts. setArmInstances also re-tells the planner.
+    const arms: ArmInstance[] = cfg.armBases.map((b, i) => ({ id: i === 0 ? 'primary' : `auto-arm-${i + 1}`, label: `SO101 ${i + 1}`, x: b.x, y: b.y, yaw: b.yaw, primary: i === 0 }));
+    sim.setArmInstances(arms);
+    const primary = arms[0];
+    if (primary) await sim.relocateBase(primary.x, primary.y, primary.yaw);   // async: moves the physics base
+    // 3. camera: place at (x,y,z) aimed at the worktop, tilted `tilt`° forward off nadir (0° = straight down).
+    const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
+    const aim = cfg.camera.z * Math.tan((cfg.camera.tilt ?? 0) * Math.PI / 180);
+    sim.renderSys.cameraRig?.setPose(new THREE.Vector3(cfg.camera.x, cfg.camera.y, cfg.camera.z), new THREE.Vector3(cx + aim, cy, 0), 0);
+    // 4. recompute reach (synchronous FK sweep) at the cfg's base + obstacles.
+    p.setObstacles(collectObstacles());
+    p.computeReachability(opts?.reachResolution ?? reachResolutionRef.current);
+    // 5. sync the refs the scorer reads, then yield two frames so camera matrices settle.
+    workcellConfigRef.current = wc;
+    armInstancesRef.current = arms;
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    return true;
+  };
+
   const scoreRef = useRef(scoreCurrentScene); scoreRef.current = scoreCurrentScene;
+  const applyRef = useRef(applyConfig); applyRef.current = applyConfig;
   useEffect(() => {
     (window as unknown as { __autoresearch?: unknown }).__autoresearch = {
       scoreCurrentScene: (o?: Partial<ScoreParams>) => scoreRef.current(o),
+      applyConfig: (c: AutoCfg, opts?: { reachResolution?: number }) => applyRef.current(c, opts),
       DEFAULT_PARAMS,
     };
   }, []);
