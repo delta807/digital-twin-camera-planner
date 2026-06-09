@@ -9,6 +9,34 @@ A camera/arm/workcell planner whose sim decisions transfer 1:1 to the physical
 SO-101 + D435i + Jetson rig — so layout, reach, camera placement, and grasps
 chosen in sim hold up in the real world.
 
+## AUTORESEARCH — ACTIVE FOCUS (Jun 2026)
+North star: **empirically find the OPTIMAL physical setup** — where to clamp arms on the polygon, which
+polygon shape, 1-vs-2-arm arrangement, and camera pose — by sweeping configs in the twin and ranking a
+Pareto front per object region. Spec: tasks/autoresearch_scoreconfig.md. CLI: `npm run gen-campaign` →
+`npm run autoresearch -- --manifest …`.
+
+Everything is CODE-SWEPT — no hand inputs: object-pos = regions (centre + N corners), build-area =
+`sizes` axis, GSD = the D435i's own RGB (~0.5 mm/px) + depth (~1.1) values. The optimizer searches the
+physical knobs (arm bases, polygon shape, camera pose); the outer sweep iterates regions (+ later GSD/λ).
+
+DONE: scorer (3 objectives + constraints + torque), applyConfig, fast triage→full verdict, region-blob
+zones, depth-GSD channel, manifest generator (interleaved), parallel CLI, min-dex collaboration,
+on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins every feasible region,
+5-gon edges out, but 4/6 corners came up infeasible (see #A1).
+
+- [x] **#A1 Corner feasibility** — DONE (1c5f5be + QA 605fc98). Investigation: corners weren't a placement
+      bug but a near-FIELD reach limit (a 0.6·size corner blob maxes ~38% graspable; centre 72%). Fixes:
+      finer along-edge placements (edgeFracs [0.2,0.5,0.8]) + corner blobs inset to 0.45·size (serviceable
+      mid-field). QA caught a 90° polygon-orientation mismatch vs the builder (only showed on n≠4) — fixed
+      with a shared VERTEX_PHASE=−π/2. Verified on pentagon: all 6 regions feasible. Finding: optimal arm
+      count varies by region (centre wants 2 arms; some corners want 1).
+- [ ] **#A2 Build-area + GSD as explicit code sweeps** — confirm `sizes` (build area) sweeps in the
+      generator; add an OUTER sweep over GSD targets across the D435i RGB (0.3–0.9) + depth (0.6–1.9)
+      bands (and λ), re-ranking per setting → robustness. No user inputs.
+- [ ] **#A3 Full campaign + the answer** — run the real campaign (finer placements, sizes, all shapes,
+      regions) and write the optimal: best polygon, arm clamp positions, 1-vs-2, camera pose, per region.
+- [ ] **#A4 (nice-to-have) UI import** of `winner-<region>.json` so a winning layout loads in the twin.
+
 ## ACTIVE — new issues (reported Jun 2026, this batch)
 - [x] **#1 Joint jog doesn't respond to real clicks** — FIXED (29520b5): rewired the vendored
       controls to POINTER events (OrbitControls' preventDefault on pointerdown was suppressing the

@@ -87,3 +87,16 @@ RULES:
 - Live verification gotcha: scope switches trigger a reach recompute that CLEARS `armCells` mid-flight, so
   reach-derived figures (reach/manip/effort/conflict/handoff) read null transiently. Wait for the
   "Updating reach" overlay to clear AND ~2s more before asserting a figure is missing.
+
+## autoresearch — region geometry must match the rendered twin (Jun 2026, /goal #A1)
+- Two distinct lessons from the corner-feasibility item:
+  1. "Infeasible" can be PHYSICS, not a bug. Corner blobs at 0.6·size were ~38% graspable because they sit
+     in the arm's NEAR-field (the only arm close enough is too close for a top-down grasp; farther arms are
+     out of reach). The fix was to model a realistic corner *zone* (inset 0.45·size) + finer placements —
+     not to force the constraint. Investigate the data (graspableFrac) before assuming a code fault.
+  2. Any code that generates positions for the twin MUST use the twin's coordinate convention. regionsFor/
+     edgeMount used vertex angle 2π·k/n (vertex at 0°) but BaseBuilder builds the N-gon at −π/2+2π·i/n
+     (vertex at −90°) → a 90° rotation that's INVISIBLE on a square (90° is a square symmetry) but wrong for
+     n=3/5/6. Verifying only on the convenient symmetric case (n=4) hid it. Lesson: when generating geometry
+     for a renderer, grep the renderer's actual angle/origin convention and reuse it (shared constant), and
+     verify on an ASYMMETRIC case (a non-square polygon), not just the easy one.
