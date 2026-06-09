@@ -24,8 +24,12 @@ export interface CampaignSpec {
 
 /** Mount on edge `edge` of a regular N-gon at fraction `t` between its two vertices (both at circumradius
  *  r), yaw facing the centre. t=0.5 is the edge midpoint; t≈0.2/0.8 sit near a vertex (to reach a corner). */
+// VERTEX_PHASE matches the worktop builder (BaseBuilder.ts:55 → first vertex at −90°). Without it the
+// campaign's polygon is rotated 90° off the rendered table, so corner blobs + arm mounts land wrong for
+// every n where 90° isn't a symmetry (n=3,5,6). MUST stay in sync with the builder.
+const VERTEX_PHASE = -Math.PI / 2;
 function edgeMount(o: [number, number], r: number, n: number, edge: number, t = 0.5) {
-  const a0 = (2 * Math.PI * edge) / n, a1 = (2 * Math.PI * (edge + 1)) / n;
+  const a0 = VERTEX_PHASE + (2 * Math.PI * edge) / n, a1 = VERTEX_PHASE + (2 * Math.PI * (edge + 1)) / n;
   const x = o[0] + r * ((1 - t) * Math.cos(a0) + t * Math.cos(a1));
   const y = o[1] + r * ((1 - t) * Math.sin(a0) + t * Math.sin(a1));
   return { x, y, yaw: Math.atan2(o[1] - y, o[0] - x) };
@@ -39,7 +43,7 @@ export function regionsFor(cfg: Cfg, blobRadius = 0.07, origin: [number, number]
   const zones: Zone[] = [{ center: [origin[0], origin[1]], radius: blobRadius, label: 'center' }];
   const r = cornerInset * cfg.size;
   for (let k = 0; k < cfg.shapeSides; k++) {
-    const ang = (2 * Math.PI * k) / cfg.shapeSides;       // vertex direction
+    const ang = VERTEX_PHASE + (2 * Math.PI * k) / cfg.shapeSides; // vertex direction (matches the builder)
     zones.push({ center: [origin[0] + r * Math.cos(ang), origin[1] + r * Math.sin(ang)], radius: blobRadius, label: `corner-${k + 1}` });
   }
   return zones;
