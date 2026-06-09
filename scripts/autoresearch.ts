@@ -19,7 +19,7 @@ import { chromium, type Page } from 'playwright';
 import { generateCampaign, regionsFor } from '../autoresearch/campaign';
 import { paretoFront, knee, type Trial } from '../autoresearch/pareto';
 import { paretoCsv } from '../autoresearch/report';
-import type { Cfg, Result, Zone } from '../autoresearch/types';
+import type { Cfg, Result, Zone, ScoreParams } from '../autoresearch/types';
 
 const arg = (n: string, d?: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
 const nums = (s?: string) => (s ? s.split(',').map(Number) : []);
@@ -83,7 +83,18 @@ async function main() {
   const byRegion = new Map<string, Trial[]>();
   for (const t of all) { const a = byRegion.get(t.region.label) ?? []; a.push({ cfg: t.cfg, result: t.result }); byRegion.set(t.region.label, a); }
 
-  console.log('[autoresearch] re-scoring per-region Pareto finalists at full fidelity…');
+  // GSD/λ OUTER sweep settings — re-score each region's WINNER across the D435i RGB/depth bands + a
+  // no-torque variant, to check the recommendation is robust to the objective-parameters (#A2). Cheap:
+  // params only change scoring, not the applied scene.
+  const PARAM_SETTINGS: Array<{ label: string } & Partial<ScoreParams>> = [
+    { label: 'rgb-tight', RGB_GSD_TARGET: 0.3, DEPTH_GSD_TARGET: 0.6 },
+    { label: 'mid', RGB_GSD_TARGET: 0.5, DEPTH_GSD_TARGET: 1.1 },
+    { label: 'loose', RGB_GSD_TARGET: 0.9, DEPTH_GSD_TARGET: 1.9 },
+    { label: 'no-torque', RGB_GSD_TARGET: 0.5, DEPTH_GSD_TARGET: 1.1, lambda: 0 },
+  ];
+  const sensitivity = new Map<string, Array<{ label: string; feasible: boolean; taskGrasp: number; perception: number }>>();
+
+  console.log('[autoresearch] re-scoring per-region Pareto finalists at full fidelity + GSD/λ sensitivity…');
   const page0 = pages[0];
   for (const [label, trialsForRegion] of byRegion) {
     const front = paretoFront(trialsForRegion);
@@ -94,6 +105,21 @@ async function main() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = await page0.evaluate(({ region }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast: false, zone: region }), { region }) as Result | null;
       if (r) t.result = r;
+    }
+    // sensitivity sweep on this region's winner (knee): score it under every GSD/λ setting.
+    const best = knee(paretoFront(trialsForRegion));
+    if (best) {
+      const region = regionsFor(best.cfg, blobRadius).find((z) => z.label === label)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await page0.evaluate(async (c) => { await (window as any).__autoresearch.applyConfig(c, { fast: false }); }, best.cfg);
+      const rows: Array<{ label: string; feasible: boolean; taskGrasp: number; perception: number }> = [];
+      for (const s of PARAM_SETTINGS) {
+        const { label: sl, ...params } = s;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = await page0.evaluate(({ region, params }) => (window as any).__autoresearch.scoreCurrentScene(params, { fast: false, zone: region }), { region, params }) as Result | null;
+        if (r) rows.push({ label: sl, feasible: r.feasible, taskGrasp: r.objectives.taskGrasp, perception: r.objectives.perception });
+      }
+      sensitivity.set(label, rows);
     }
   }
   await browser.close();
@@ -110,7 +136,14 @@ async function main() {
     // Save the winning layout as a twin-loadable Cfg: re-apply with
     //   window.__autoresearch.applyConfig(require('./winner-<region>.json')) in the twin console.
     if (best) writeFileSync(`${out}/winner-${label}.json`, JSON.stringify(best.cfg, null, 2));
-    summary.push(`## objects @ ${label}`, best ? `- **best:** ${cfgLabel(best.cfg)} — taskGrasp ${best.result.objectives.taskGrasp.toFixed(3)}, perception ${best.result.objectives.perception.toFixed(3)}${best.result.objectives.collaboration != null ? `, collab ${best.result.objectives.collaboration.toFixed(3)}` : ''} → winner-${label}.json` : '- _no feasible config_', `- ${front.length} on Pareto front of ${trialsForRegion.length} feasible-or-not`, '');
+    summary.push(`## objects @ ${label}`, best ? `- **best:** ${cfgLabel(best.cfg)} — taskGrasp ${best.result.objectives.taskGrasp.toFixed(3)}, perception ${best.result.objectives.perception.toFixed(3)}${best.result.objectives.collaboration != null ? `, collab ${best.result.objectives.collaboration.toFixed(3)}` : ''} → winner-${label}.json` : '- _no feasible config_', `- ${front.length} on Pareto front of ${trialsForRegion.length} feasible-or-not`);
+    const sens = sensitivity.get(label);
+    if (sens && sens.length) {
+      const feasN = sens.filter((s) => s.feasible).length;
+      summary.push(`- GSD/λ sensitivity (winner stays feasible in ${feasN}/${sens.length} settings): ` +
+        sens.map((s) => `${s.label} ${s.feasible ? `tg${s.taskGrasp.toFixed(2)}/pc${s.perception.toFixed(2)}` : '✗'}`).join('  ·  '));
+    }
+    summary.push('');
   }
   writeFileSync(`${out}/summary.md`, summary.join('\n'));
   console.log(`[autoresearch] ${all.length} region-trials · ${byRegion.size} regions · wrote results.json, region-*.csv, summary.md to ${out}`);
