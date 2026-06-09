@@ -7,6 +7,7 @@ import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { So101Icon } from './ui/toolbar';
+import { AnalysisIcon } from './ModeRail';
 import type { LayoutProfile } from '../profiles';
 import { ArmInstance, LengthUnit, WorkcellConfig } from '../types';
 
@@ -72,6 +73,8 @@ interface WorkspaceDockProps {
   onSaveWorkspace?: () => void;
   /** Collapse the dock (the matching open affordance is the top-left drawer button). */
   onClose?: () => void;
+  /** Swap to the analysis panel (they share the left dock slot). */
+  onOpenAnalysis?: () => void;
 }
 
 // Bodies grouping: every scene entity bucketed by kind, in a stable, readable order.
@@ -103,7 +106,7 @@ function PostIcon({ className }: { className?: string }) {
  *    templates to load, and the reachability compute controls.
  * Per-item editing lives in each object's Selection card (right panel), not here.
  */
-export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, templates, onSaveWorkspace, onClose }: WorkspaceDockProps) {
+export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, templates, onSaveWorkspace, onClose, onOpenAnalysis }: WorkspaceDockProps) {
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const arm = arms.list.find((a) => a.id === arms.selectedId) ?? arms.list[0];
   const wc = workcell.config;
@@ -128,11 +131,18 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
               ))}
             </div>
           </div>
-          {onClose && (
-            <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenAnalysis && (
+              <button onClick={onOpenAnalysis} title="Switch to workspace analysis" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
+                <AnalysisIcon className="w-4 h-4" />
+              </button>
+            )}
+            {onClose && (
+              <button onClick={onClose} title="Collapse dock" className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-black/10 text-slate-500'}`}>
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
         <span className={`block text-[9px] ${subtle} mt-1`}>origin = table center · X→ Y↑ Z out</span>
       </div>

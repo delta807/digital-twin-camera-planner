@@ -2084,7 +2084,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null}
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         sig={`${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
 
       {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
@@ -2169,9 +2169,10 @@ export function App() {
             <>
               <ModeRail
                 mode={mode} onMode={(m) => (m === 'compare' ? enterCompare() : setMode(m))}
-                dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => !v)}
+                dockOpen={dockOpen} onToggleDock={() => setDockOpen((v) => { const next = !v; if (next) setAnalysisOpen(false); return next; })}
                 perceiveOpen={showSidebar} onTogglePerceive={() => setShowSidebar((v) => !v)}
                 layoutsOpen={layoutsOpen} onToggleLayouts={() => setLayoutsOpen((v) => !v)}
+                analysisOpen={analysisOpen} onToggleAnalysis={() => setAnalysisOpen((v) => { const next = !v; if (next) setDockOpen(false); return next; })}
                 isDarkMode={isDarkMode}
               />
               {/* Transient hint pill — top centre, fades up + out over 5s (matches the clear timer). */}
@@ -2236,7 +2237,7 @@ export function App() {
             return (
               <>
                 {!sceneIsFranka && !dockOpen && (
-                  <button onClick={() => setDockOpen(true)} title="Show workspace dock" aria-label="Show workspace dock"
+                  <button onClick={() => { setDockOpen(true); setAnalysisOpen(false); }} title="Show workspace dock" aria-label="Show workspace dock"
                     className={`absolute top-3 left-[4.25rem] z-40 w-9 h-9 rounded-xl glass-panel border shadow-lg grid place-items-center transition-colors ${drawerBtn}`}>
                     <PanelLeft className="w-[18px] h-[18px]" />
                   </button>
@@ -2507,6 +2508,7 @@ export function App() {
               isDarkMode={isDarkMode}
               onSaveWorkspace={() => setLayoutsOpen(true)}
               onClose={() => setDockOpen(false)}
+              onOpenAnalysis={() => { setAnalysisOpen(true); setDockOpen(false); }}
               templates={{ profiles, onLoad: handleLoadProfile, onSave: handleSaveProfile }}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{

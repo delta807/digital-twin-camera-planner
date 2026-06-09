@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useEffect, useState, useRef } from 'react';
-import { X, Download, Sparkles, Radio } from 'lucide-react';
+import { X, Download, Sparkles, Radio, PanelLeft } from 'lucide-react';
 import { drawReachability, drawDepth, drawCoverage, type ReachData, type DepthData, type CoverageData } from '../analysis/figures';
 
 interface Props {
@@ -24,6 +24,8 @@ interface Props {
    *  figures recompute (debounced) only when this CHANGES — orbiting the VIEW doesn't change it, so it
    *  no longer triggers the heavy depth readback + coverage raycasts on every frame. */
   sig: string;
+  /** Swap to the workspace dock (they share the left dock slot, so only one shows at a time). */
+  onOpenDock: () => void;
 }
 
 /** Render one figure to a hi-DPI canvas via `draw`, redrawing ONLY when `rev` changes (not on every
@@ -59,7 +61,7 @@ function Figure({ title, width, height, draw, rev }: { title: string; width: num
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage, onHighDetail, highDetail, sig }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, getCoverage, onHighDetail, highDetail, sig, onOpenDock }: Props) {
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
@@ -76,11 +78,12 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getDepth, g
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
-    <div className={`absolute bottom-3 left-3 z-30 w-[660px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-7rem)] flex flex-col rounded-2xl glass-panel shadow-2xl border overflow-hidden ${panel}`}>
+    <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-[680px] max-w-[calc(100vw-5rem)] flex flex-col rounded-2xl glass-panel shadow-2xl border overflow-hidden ${panel}`}>
       <div className="flex items-center gap-2 px-3 py-2 border-b border-black/10 shrink-0">
+        <button onClick={onOpenDock} title="Switch to workspace dock" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><PanelLeft className="w-4 h-4" /></button>
         <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse-soft" />
         <h2 className={`text-[11px] font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>Workspace analysis · live</h2>
-        <span className={`text-[9px] ${subtle}`}>updates as you move arms &amp; cameras</span>
+        <span className={`text-[9px] ${subtle} hidden min-[560px]:inline`}>updates as you move arms &amp; cameras</span>
         <div className="flex-1" />
         <button onClick={onHighDetail} title="Re-sweep the reach at high detail for a crisp figure/PNG"
           className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold ${highDetail ? 'bg-indigo-600 text-white' : (isDarkMode ? 'bg-white/10 text-slate-200 hover:bg-white/15' : 'bg-black/5 text-slate-600 hover:bg-black/10')}`}>
