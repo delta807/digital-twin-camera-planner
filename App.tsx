@@ -195,9 +195,36 @@ export function App() {
   // #7 — high-detail reach grid for the analysis figure (finer cell + denser sampling than the live
   // 0.03 m overlay), computed once when the panel opens so the heatmap matches the matplotlib reference.
   const [fineReach, setFineReach] = useState<{ cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number } | null>(null);
+  // Analysis scope: 'all' (combined + every station) or a single station id — so the figures show
+  // only the relevant workstation's reach + its camera footage/coverage.
+  const [analysisStation, setAnalysisStation] = useState<string>('all');
+  // The workstations available to analyse (primary + satellites), for the scope toggle + per-station reach.
+  const analysisStationList = () => {
+    const wc = workcellConfigRef.current;
+    return [
+      { id: 'primary', label: 'Workstation 1', x: wc.originX ?? 0, y: wc.originY ?? 0, len: wc.length, wid: wc.width },
+      ...(wc.stations ?? []).map((s, i) => ({ id: s.id, label: `Workstation ${i + 2}`, x: s.x, y: s.y, len: s.length, wid: s.width })),
+    ];
+  };
+  const armIdsAt = (stationId: string) => armInstancesRef.current.filter((a) => (a.stationId ?? 'primary') === stationId).map((a) => a.id);
+  // One station's reach figure (its arms, centred on its worktop). Shared by the per-station list + the scope filter.
+  const buildStationReach = (st: { id: string; label: string; x: number; y: number; len: number; wid: number }): ReachData | null => {
+    const p = planner(); if (!p) return null;
+    const armIds = armIdsAt(st.id);
+    if (armIds.length === 0) return null;
+    const w = p.getReachWorld(undefined, armIds);
+    if (!w || w.cellsMax.size === 0) return null;
+    const hx = st.len / 2, hy = st.wid / 2;
+    let total = 0, grasp = 0;
+    for (let x = st.x - hx; x <= st.x + hx + 1e-6; x += w.cell)
+      for (let y = st.y - hy; y <= st.y + hy + 1e-6; y += w.cell) { total++; if ((w.cells.get(Math.round(x / w.cell) + ',' + Math.round(y / w.cell)) ?? 0) > 0) grasp++; }
+    return { ...w, half: Math.max(0.4, hx, hy) + 0.08, reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label };
+  };
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {
     const p = planner(); if (!p) return null;
+    // Scoped to one workstation → just that station's reach figure.
+    if (analysisStation !== 'all') { const st = analysisStationList().find((s) => s.id === analysisStation); return st ? buildStationReach(st) : null; }
     // With ≥2 arms, show the COMBINED world-frame reach (#4) so every arm + their overlap appear, not
     // just the primary. High-detail (a single-arm fine sweep) and the 1-arm case stay base-relative.
     const multiArm = !fineReach && armInstancesRef.current.length > 1;
@@ -229,29 +256,19 @@ export function App() {
   // workstation that has arms, each centred on that station's worktop with only its own arms. Only
   // meaningful when there are multiple workstations.
   const getReachStations = (): { label: string; data: ReachData }[] => {
-    const p = planner(); if (!p) return [];
-    const wc = workcellConfigRef.current;
-    const stations = [
-      { id: 'primary', label: 'Workstation 1', x: wc.originX ?? 0, y: wc.originY ?? 0, len: wc.length, wid: wc.width },
-      ...(wc.stations ?? []).map((s, i) => ({ id: s.id, label: `Workstation ${i + 2}`, x: s.x, y: s.y, len: s.length, wid: s.width })),
-    ];
-    if (stations.length < 2) return [];
-    const out: { label: string; data: ReachData }[] = [];
-    for (const st of stations) {
-      const armIds = armInstancesRef.current.filter((a) => (a.stationId ?? 'primary') === st.id).map((a) => a.id);
-      if (armIds.length === 0) continue;
-      const w = p.getReachWorld(undefined, armIds);
-      if (!w || w.cellsMax.size === 0) continue;
-      const hx = st.len / 2, hy = st.wid / 2;
-      let total = 0, grasp = 0;
-      for (let x = st.x - hx; x <= st.x + hx + 1e-6; x += w.cell)
-        for (let y = st.y - hy; y <= st.y + hy + 1e-6; y += w.cell) { total++; if ((w.cells.get(Math.round(x / w.cell) + ',' + Math.round(y / w.cell)) ?? 0) > 0) grasp++; }
-      out.push({ label: st.label, data: { ...w, half: Math.max(0.4, hx, hy) + 0.08, reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label } });
-    }
-    return out;
+    if (analysisStation !== 'all') return []; // a single station is shown via getReach when scoped
+    const list = analysisStationList();
+    if (list.length < 2) return [];
+    return list.map((st) => { const data = buildStationReach(st); return data ? { label: st.label, data } : null; }).filter((x): x is { label: string; data: ReachData } => x != null);
   };
-  const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
-  const getCoverage = () => simRef.current?.coverageGrids() ?? null;
+  // Depth + coverage scope to the selected station's own camera + its arms' wrist cams; 'all' = the
+  // primary overhead D435i + every wrist cam.
+  const getDepth = () => simRef.current?.overheadDepth(384, 216, analysisStation === 'all' ? undefined : analysisStation) ?? null;
+  const getCoverage = () => {
+    if (analysisStation === 'all') return simRef.current?.coverageGrids() ?? null;
+    const st = analysisStationList().find((s) => s.id === analysisStation);
+    return simRef.current?.coverageGrids(0.4, 0.025, analysisStation, armIdsAt(analysisStation), st ? [st.x, st.y] : [0, 0]) ?? null;
+  };
   // #7 high-detail snapshot is OPT-IN (a 1 s sweep can't run on every move). The live dock uses the
   // fast grid; this re-sweeps the primary finely for a crisp figure/PNG. Cleared whenever the layout
   // changes (or the panel closes) so the dock falls back to the live grid until asked again.
@@ -2110,7 +2127,8 @@ export function App() {
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
       <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
-        sig={`${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
+        scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
+        sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
 
       {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
           sim and show a spinner that KEEPS SPINNING through the freeze: the .busy-spin animation runs

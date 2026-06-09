@@ -559,27 +559,44 @@ export class MujocoSim {
         return this.planner?.suggestArmLayout(n) ?? null;
     }
 
-    /** Depth image from the overhead (first station) camera, for the analysis depth figure. Overlay
-     *  groups (ghost arms, planner tiles/outline/gizmo) are hidden so only real geometry shows. */
-    overheadDepth(w = 320, h = 180): { depth: Float32Array; w: number; h: number } | null {
-        this.renderSys.cameraRig?.syncSensorToGizmo(); // pose the camera from its gizmo first
-        const cam = this.renderSys.cameraRig?.sensorCamera; // the overhead D435i
+    /** The overhead camera to analyse: a satellite station's own camera when `stationId` is given
+     *  (and not the primary), else the primary D435i. */
+    private analysisOverheadCam(stationId?: string): THREE.PerspectiveCamera | undefined {
+        const rs = this.renderSys;
+        if (stationId && stationId !== 'primary') {
+            // Ensure the station's overhead camera exists + is posed (normally only posed when its feed
+            // renders), so analysis works even with the station feed off.
+            const stations = this.workcellConfig?.stations;
+            if (stations?.length) rs.syncStationCameras(stations);
+            const sc = rs.getStationCamera(stationId);
+            if (sc) { sc.camera.updateMatrixWorld(); return sc.camera; }
+        }
+        rs.cameraRig?.syncSensorToGizmo();
+        return rs.cameraRig?.sensorCamera;
+    }
+
+    /** Depth image from the overhead camera (a station's own camera when `stationId` is given), for the
+     *  analysis depth figure. Overlay groups (ghost arms, planner tiles/outline/gizmo) are hidden. */
+    overheadDepth(w = 320, h = 180, stationId?: string): { depth: Float32Array; w: number; h: number } | null {
+        const cam = this.analysisOverheadCam(stationId);
         if (!cam) return null;
-        const hide: THREE.Object3D[] = [this.renderSys.planningArmsGroup, ...this.renderSys.cameraRig.overlays];
+        const hide: THREE.Object3D[] = [this.renderSys.planningArmsGroup, ...(this.renderSys.cameraRig?.overlays ?? [])];
         if (this.planner) hide.push(this.planner.group, this.planner.gizmoHelper);
         return this.renderSys.renderDepth(cam, w, h, hide);
     }
 
-    /** Per-table-cell visibility for the overhead D435i + the wrist cam (+ their union), for the
-     *  camera-coverage figure. Grid spans [-half, half]² (centred on the workcell origin) at `step`. */
-    coverageGrids(half = 0.4, step = 0.025): { overhead: boolean[]; wrist: boolean[]; combined: boolean[]; n: number; half: number } | null {
+    /** Per-table-cell visibility for the overhead D435i + wrist cams (+ their union), for the camera-
+     *  coverage figure. When `stationId`/`wristArmIds` are given, scopes to that station's camera + its
+     *  arms' wrist cams. Grid spans [-half, half]² (centred on the workcell origin) at `step`. */
+    coverageGrids(half = 0.4, step = 0.025, stationId?: string, wristArmIds?: string[], center: [number, number] = [0, 0]): { overhead: boolean[]; wrist: boolean[]; combined: boolean[]; n: number; half: number } | null {
         const rs = this.renderSys;
-        rs.cameraRig?.syncSensorToGizmo(); // pose the overhead camera from its gizmo first
-        const overheadCam = rs.cameraRig?.sensorCamera; if (!overheadCam) return null;
-        const wristCams = [...rs.wristCameras.values()].map((w) => w.camera).filter(Boolean);
+        const overheadCam = this.analysisOverheadCam(stationId); if (!overheadCam) return null;
+        const wristCams = [...rs.wristCameras.entries()]
+            .filter(([armId]) => !wristArmIds || wristArmIds.includes(armId))
+            .map(([, w]) => w.camera).filter(Boolean);
         const n = Math.floor((2 * half) / step) + 1;
-        const pts: THREE.Vector3[] = [];
-        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(-half + i * step, -half + j * step, 0.005));
+        const pts: THREE.Vector3[] = []; // sample around the station's own centre when scoped, not the world origin
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(center[0] - half + i * step, center[1] - half + j * step, 0.005));
         const overhead = rs.computeCoverage(overheadCam, pts);
         // Union of EVERY arm's wrist cam (was only the first arm's — missed additional arms). #4
         const wrist = wristCams.reduce<boolean[]>((acc, cam) => { const c = rs.computeCoverage(cam, pts); return acc.map((v, i) => v || c[i]); }, pts.map(() => false));

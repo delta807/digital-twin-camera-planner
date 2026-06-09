@@ -546,6 +546,7 @@ export class RenderSystem {
      *  camera-coverage figure. Occluders = real scene geometry (simGroup + worktop/posts). */
     computeCoverage(camera: THREE.PerspectiveCamera, points: THREE.Vector3[]): boolean[] {
         camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); // refresh — a non-rendered (station) camera has a stale inverse → empty frustum → 0% coverage
         const camPos = camera.getWorldPosition(new THREE.Vector3());
         const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group];

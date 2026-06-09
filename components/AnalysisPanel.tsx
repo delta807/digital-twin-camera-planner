@@ -29,11 +29,16 @@ interface Props {
   sig: string;
   /** Swap to the workspace dock (they share the left dock slot, so only one shows at a time). */
   onOpenDock: () => void;
+  /** Analysis scope toggle: 'all' or a station id, + the available workstations. */
+  scope: string;
+  onScope: (id: string) => void;
+  stations: { id: string; label: string }[];
 }
 
 /** Render one figure to a hi-DPI canvas via `draw`, redrawing ONLY when `rev` changes (not on every
- *  parent render — `draw` is captured in a ref so a new closure each render doesn't force a redraw). */
-function Figure({ title, width, height, draw, rev }: { title: string; width: number; height: number; draw: (c: HTMLCanvasElement) => void; rev: number }) {
+ *  parent render — `draw` is captured in a ref so a new closure each render doesn't force a redraw).
+ *  `flash` briefly rings the figure when a catalog card jumps to it (so it's clear WHICH graph). */
+function Figure({ title, width, height, draw, rev, flash }: { title: string; width: number; height: number; draw: (c: HTMLCanvasElement) => void; rev: number; flash?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef(draw); drawRef.current = draw;
   useEffect(() => {
@@ -48,7 +53,7 @@ function Figure({ title, width, height, draw, rev }: { title: string; width: num
     c.toBlob((b) => { if (!b) return; const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `${title.replace(/\s+/g, '_').toLowerCase()}.png`; a.click(); URL.revokeObjectURL(u); });
   };
   return (
-    <div className="relative inline-block rounded-lg overflow-hidden border border-black/10 bg-white shadow-sm">
+    <div className={`relative inline-block rounded-lg overflow-hidden border bg-white shadow-sm transition-all ${flash ? 'border-indigo-500 ring-2 ring-indigo-500/60' : 'border-black/10'}`}>
       <canvas ref={ref} />
       <button onClick={download} title="Download PNG"
         className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-semibold hover:bg-black/80">
@@ -64,21 +69,28 @@ function Figure({ title, width, height, draw, rev }: { title: string; width: num
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, onHighDetail, highDetail, sig, onOpenDock }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations }: Props) {
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
   const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, rev: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [flash, setFlash] = useState<string | null>(null); // #2 — briefly ring the figure a card jumps to
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), rev: s.rev + 1 })), 160);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sig, highDetail]);
+  // Jump a catalog card to its figure AND flash it, so it's obvious which of the graphs is meant.
+  const jumpTo = (fig: 'reach' | 'coverage' | 'depth') => {
+    scrollRef.current?.querySelector(`[data-figure="${fig}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setFlash(fig);
+    window.setTimeout(() => setFlash((f) => (f === fig ? null : f)), 1500);
+  };
   if (!open) return null;
 
-  const { reach, stations, depth, coverage, rev } = snap;
+  const { reach, stations: stationFigs, depth, coverage, rev } = snap;
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
@@ -95,21 +107,33 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
         </button>
         <button onClick={onClose} title="Close" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><X className="w-4 h-4" /></button>
       </div>
+      {/* Scope toggle — show All workstations or just one (its reach + its camera footage/coverage). */}
+      {stations.length > 1 && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-black/5 shrink-0 overflow-x-auto custom-scrollbar">
+          <span className={`text-[9px] font-bold uppercase tracking-wide shrink-0 ${subtle}`}>Scope</span>
+          {[{ id: 'all', label: 'All' }, ...stations].map((s) => (
+            <button key={s.id} onClick={() => onScope(s.id)}
+              className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${scope === s.id ? 'bg-indigo-600 text-white' : (isDarkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-black/5 text-slate-600 hover:bg-black/10')}`}>
+              {s.label === 'All' ? 'All' : s.label.replace('Workstation', 'WS')}
+            </button>
+          ))}
+        </div>
+      )}
       <div ref={scrollRef} className="p-3 overflow-auto custom-scrollbar space-y-3">
-        {/* Catalog grid of every layout analysis; live/basic cards jump to their figure below. */}
-        <AnalysisCatalog isDarkMode={isDarkMode} onSelect={(fig) => scrollRef.current?.querySelector(`[data-figure="${fig}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        {/* Catalog grid of every layout analysis; live/basic cards jump to (and flash) their figure below. */}
+        <AnalysisCatalog isDarkMode={isDarkMode} onSelect={jumpTo} />
         <div className="flex flex-wrap gap-3 items-start pt-1 border-t border-black/5">
           {/* Full-width zero-height anchors so the catalog cards can scrollIntoView to each figure. */}
           <div data-figure="reach" className="w-full h-0 -mt-1" />
           {reach
-            ? <Figure title="SO-101 reachability" width={420} height={380} draw={(c) => drawReachability(c, reach)} rev={rev} />
+            ? <Figure title="SO-101 reachability" width={420} height={380} draw={(c) => drawReachability(c, reach)} rev={rev} flash={flash === 'reach'} />
             : <p className={`text-xs ${subtle}`}>Reach grid not ready — compute reachability first.</p>}
           {/* B3 — per-workstation reach (only when there are multiple workstations). */}
-          {stations.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} />)}
+          {stationFigs.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} flash={flash === 'reach'} />)}
           <div data-figure="coverage" className="w-full h-0" />
-          {coverage && <Figure title="Camera coverage" width={630} height={235} draw={(c) => drawCoverage(c, coverage)} rev={rev} />}
+          {coverage && <Figure title="Camera coverage" width={630} height={235} draw={(c) => drawCoverage(c, coverage)} rev={rev} flash={flash === 'coverage'} />}
           <div data-figure="depth" className="w-full h-0" />
-          {depth && <Figure title="Camera depth (overhead)" width={420} height={270} draw={(c) => drawDepth(c, depth)} rev={rev} />}
+          {depth && <Figure title="Camera depth (overhead)" width={420} height={270} draw={(c) => drawDepth(c, depth)} rev={rev} flash={flash === 'depth'} />}
         </div>
       </div>
     </div>
