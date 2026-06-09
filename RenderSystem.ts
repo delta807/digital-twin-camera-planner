@@ -510,21 +510,32 @@ export class RenderSystem {
         const buf = new Uint8Array(w * h * 4);
         this.renderer.readRenderTargetPixels(this.depthRT, 0, 0, w, h, buf);
         const depth = new Float32Array(w * h);
-        let lo = Infinity, hi = -Infinity;
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
             const d = buf[((h - 1 - y) * w + x) * 4] / 255; // R channel = normalized linear depth (readPixels is bottom-up)
-            if (d >= 0.999) { depth[y * w + x] = NaN; continue; }   // background / far → skip
-            depth[y * w + x] = d; if (d < lo) lo = d; if (d > hi) hi = d;
+            depth[y * w + x] = d >= 0.999 ? NaN : d;        // background / far → skip
         }
-        const span = hi - lo || 1;
-        // Linear min-max stretch crushes table-level detail: the tall arm (closest to the overhead
-        // cam) owns most of the range, so cubes/posts sitting on the table compress into a thin band
-        // and blend together. An exponential (convex) curve expands the FAR end — where the table and
-        // the objects ON it live — so those objects separate out instead of dying into one colour.
-        const K = 2.6, eK = Math.exp(K) - 1;
-        for (let i = 0; i < depth.length; i++) if (!Number.isNaN(depth[i])) {
-            const t = (depth[i] - lo) / span;
-            depth[i] = (Math.exp(K * t) - 1) / eK;
+        // HEIGHT-ABOVE-TABLE instead of raw depth: a global stretch/curve can't fix a TILTED camera —
+        // the near→far planar ramp owns the whole range, so objects on the table blend in. The table
+        // is z=0 in world and we know the camera pose+intrinsics, so we can compute the EXPECTED table
+        // depth per pixel analytically (ray → z=0 plane) and show the residual (metres above the table).
+        // That residual is ~0 everywhere on the table regardless of tilt, so objects pop out. (B4)
+        const viewMat = camera.matrixWorldInverse;
+        const pN = new THREE.Vector3(), pF = new THREE.Vector3(), dir = new THREE.Vector3(), hit = new THREE.Vector3();
+        const BAND = 0.12;   // metres above the table mapped to full colour (a ~5 cm cube lands mid-scale)
+        const DEAD = 0.004;  // ignore < 4 mm so depth noise/quantization keeps the table a flat colour
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const i = y * w + x; const dn = depth[i];
+            if (Number.isNaN(dn)) continue;
+            const measured = near + dn * (far - near);              // metres: actual depth at this pixel
+            const ndcX = (x + 0.5) / w * 2 - 1, ndcY = 1 - (y + 0.5) / h * 2;
+            pN.set(ndcX, ndcY, -1).unproject(camera);               // near-plane point on this pixel's ray
+            pF.set(ndcX, ndcY, 1).unproject(camera);                // far-plane point on the same ray
+            dir.copy(pF).sub(pN);
+            const t = dir.z !== 0 ? -pN.z / dir.z : -1;             // intersect the table plane z=0
+            if (t <= 0) { depth[i] = 0; continue; }
+            hit.copy(pN).addScaledVector(dir, t).applyMatrix4(viewMat); // world hit → view space
+            const height = -hit.z - measured;                       // expected table depth − measured (objects > 0)
+            depth[i] = height < DEAD ? 0 : Math.min(1, height / BAND);
         }
         return { depth, w, h };
     }

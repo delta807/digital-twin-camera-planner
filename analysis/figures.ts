@@ -155,14 +155,14 @@ export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {
   ctx.drawImage(off, x0, y0, x1 - x0, y1 - y0);
   ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   ctx.fillStyle = '#222'; ctx.font = '15px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Camera depth (overhead)', (x0 + x1) / 2, 14);
+  ctx.fillText('Camera depth · height above table (overhead)', (x0 + x1) / 2, 14);
   // colorbar (turbo, 0..1 normalized)
   const bx = x1 + 18, bw = 18, bh = y1 - y0;
   for (let i = 0; i < bh; i++) { ctx.fillStyle = css(TURBO(1 - i / bh)); ctx.fillRect(bx, y0 + i, bw, 1); }
   ctx.strokeStyle = '#222'; ctx.strokeRect(bx, y0, bw, bh);
   ctx.fillStyle = '#222'; ctx.textAlign = 'left'; const n = 5;
-  for (let k = 0; k <= n; k++) ctx.fillText((k / n).toFixed(2), bx + bw + 6, y1 - bh * k / n);
-  ctx.save(); ctx.translate(bx + bw + 56, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('depth (norm.)', 0, 0); ctx.restore();
+  for (let k = 0; k <= n; k++) ctx.fillText((k / n * 12).toFixed(0), bx + bw + 6, y1 - bh * k / n); // 0..1 → 0..12 cm band
+  ctx.save(); ctx.translate(bx + bw + 56, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('height above table (cm)', 0, 0); ctx.restore();
 }
 
 // ── Figure 3: camera coverage — overhead / wrist / combined binary maps ──
