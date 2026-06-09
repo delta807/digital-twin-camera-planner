@@ -53,3 +53,28 @@ RULES:
 - The literal gripper CENTRE (posY≈0.05) is INSIDE the servo/jaws → a dark feed. Default posY≈0.14
   (clear of the mechanism) and expose pos+tilt so it's tunable, not hardcoded-perfect.
 - If a mount "works," verify it in MULTIPLE poses (home + a Wrist_Roll-jogged pose), not just home.
+
+## Analysis figures — frame discipline (layout optimizer "looks weird", 2026-06)
+- The per-arm reach grids (`armCells`/`reachCells`) are stored in the arm's LOCAL frame: `sweepArm`
+  un-rotates each TCP hit by the arm's yaw (`cos(-yaw)/sin(-yaw)`). ANY consumer that sweeps/queries
+  in the WORLD/worktop frame MUST rotate the world offset by −yaw before indexing the grid.
+- `suggestArmLayout` did this (`angle = primaryYaw − yaw`, rotate task into cell frame); `getLayoutScores`
+  (which feeds the #11 figure) did NOT → the recommended mount was spun away from the arm's facing
+  whenever yaw≠0. Fix: rotate `(target − candidate)` by −yaw in getLayoutScores too.
+- Lesson: when two code paths consume the same stored grid, check they agree on the frame. A figure that
+  "looks weird" but doesn't crash is often a silent frame/orientation mismatch, not a value bug.
+- UX: an optimizer figure must be ACTIONABLE — show the CURRENT state, the recommended state, the delta,
+  and concrete coordinates (cm from a marked reference), not just an abstract optimum blob.
+
+## Catalog BASIC→LIVE upgrades — reuse passes, avoid the embind output-buffer trap (2026-06)
+- mujoco-wasm exposes `mj_jacSite`/`mj_rne` but they need caller-allocated output buffers through embind
+  `any` params (fragile). For manipulability #1 we instead built the translational Jacobian by central
+  finite-difference of the TCP site vs each joint — uses only the positions-only `mj_kinematics` the reach
+  sweep already runs. Prefer reusing a proven pass over new marshalling.
+- `qfrc_bias` IS a readable data field: after a static `mj_forward` at qvel=0 it's the pure gravity torque
+  (effort #2). Needs the joint's dofAdr (`jnt_dofadr`), which differs from qposAdr — plumb it on SweptJoint.
+- GSD #5 is pure optics (range × ifov / cos-incidence) — no depth-render extraction needed; reuse the
+  coverage frustum+occlusion test and return NaN for unseen cells.
+- Live verification gotcha: scope switches trigger a reach recompute that CLEARS `armCells` mid-flight, so
+  reach-derived figures (reach/manip/effort/conflict/handoff) read null transiently. Wait for the
+  "Updating reach" overlay to clear AND ~2s more before asserting a figure is missing.
