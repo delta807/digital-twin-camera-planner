@@ -132,6 +132,56 @@ export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
 }
 
+// ── #8 Inter-arm conflict map: cells reachable by ≥2 arms are where the arms share space and can
+//    collide; single-arm cells are faint context. Reuses the multi-arm world reach grid (cells = #arms). ──
+export function drawConflict(canvas: HTMLCanvasElement, d: ReachData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const reached = d.cells.size;
+  let shared = 0; for (const v of d.cells.values()) if (v >= 2) shared++;
+  const pct = reached ? Math.round((100 * shared) / reached) : 0;
+  const vmax = Math.max(2, d.arms ?? 2);
+  const a = frame(ctx, W, H, {
+    title: `Inter-arm conflict zone\n${pct}% of reach is shared (collision-prone)`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'arms sharing the cell', vr: [2, vmax], cmap: TURBO },
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
+      const n = d.cells.get(Math.round(x / d.cell) + ',' + Math.round(y / d.cell)) ?? 0;
+      if (n === 0) continue;
+      ctx.fillStyle = n >= 2 ? css(TURBO(vmax > 2 ? (n - 2) / (vmax - 2) : 1)) : '#ececec'; // ≥2 = hot conflict, 1 = faint reach context
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+}
+
+// ── #11 Layout-optimizer map: score every candidate arm-base position by how much of the worktop it
+//    could reach, so the brightest cell = the best mount. star marks the optimum. ──
+export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; }
+export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const bestPct = d.total ? Math.round((100 * d.best.cov) / d.total) : 0;
+  const a = frame(ctx, W, H, {
+    title: `Best base placement\nbest mount reaches ${bestPct}% of the worktop`,
+    xlabel: 'base X (m)', ylabel: 'base Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'worktop reached (%)', vr: [0, 100], cmap: VIRIDIS },
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (const s of d.scored) {
+    ctx.fillStyle = css(VIRIDIS(d.total ? s.cov / d.total : 0));
+    ctx.fillRect(sx(a, s.x) - cpx / 2, sy(a, s.y) - cpx / 2, cpx, cpx);
+  }
+  // mark the best mount with a magenta star
+  const bx = sx(a, d.best.x), by = sy(a, d.best.y);
+  ctx.strokeStyle = '#ec4899'; ctx.fillStyle = '#ec4899'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let k = 0; k < 10; k++) { const r = k % 2 ? 4 : 9, ang = -Math.PI / 2 + (k * Math.PI) / 5; const px = bx + r * Math.cos(ang), py = by + r * Math.sin(ang); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+  ctx.closePath(); ctx.fill();
+}
+
 // ── Figure 1: overhead depth map (normalized, with sensor-noise speckle) ──
 export interface DepthData { depth: Float32Array; w: number; h: number; }
 export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {

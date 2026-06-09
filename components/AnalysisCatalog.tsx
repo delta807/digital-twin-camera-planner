@@ -10,8 +10,9 @@ type Status = 'live' | 'basic' | 'planned';
 interface Analysis {
   n: number; title: string; purpose: string; metric: string; status: Status;
   icon: ComponentType<{ className?: string }>;
-  figure?: 'reach' | 'coverage' | 'depth'; // which live figure this maps to (status === 'live'/'basic')
+  figure?: FigureKey; // which live figure this maps to (status === 'live'/'basic')
 }
+export type FigureKey = 'reach' | 'coverage' | 'depth' | 'conflict' | 'layout';
 
 export const ANALYSES: Analysis[] = [
   { n: 1, title: 'Manipulability / dexterity', purpose: 'How well-conditioned the arm is per cell — agile vs near-singular.', metric: 'Yoshikawa w + inverse condition number', status: 'planned', icon: Gauge },
@@ -21,10 +22,10 @@ export const ANALYSES: Analysis[] = [
   { n: 5, title: 'Resolution (GSD) map', purpose: 'How fine (mm/px) the camera resolves across the table.', metric: '2·z·tan(HFOV/2) / h_px', status: 'planned', icon: Scan },
   { n: 6, title: 'Camera coverage / occlusion', purpose: 'Which cells each camera sees, and the blind spots.', metric: 'covered / occluded fraction', status: 'live', icon: Eye, figure: 'coverage' },
   { n: 7, title: 'Shared workspace', purpose: 'Where arms overlap (handover) vs have exclusive lanes.', metric: 'union / intersection / exclusive', status: 'live', icon: Layers, figure: 'reach' },
-  { n: 8, title: 'Inter-arm collision', purpose: 'How close the two bases can sit before the arms conflict.', metric: 'inter-arm collision probability', status: 'basic', icon: ShieldAlert, figure: 'reach' },
+  { n: 8, title: 'Inter-arm collision', purpose: 'Where arms share space (≥2 reach) and can collide.', metric: 'shared / collision-prone fraction', status: 'live', icon: ShieldAlert, figure: 'conflict' },
   { n: 9, title: 'Handoff feasibility', purpose: 'Where the two arms can actually exchange an object.', metric: 'bimanual reachable ∩ collision-free', status: 'planned', icon: Hand },
   { n: 10, title: '1-vs-2 arm throughput', purpose: 'Whether a second arm is worth the added cost.', metric: 'throughput gain vs collision cost', status: 'planned', icon: TrendingUp },
-  { n: 11, title: 'Layout optimizer', purpose: 'Search base + camera placement for the best layout.', metric: 'LHS · Bayesian · NSGA-II Pareto', status: 'basic', icon: Wand2 },
+  { n: 11, title: 'Layout optimizer', purpose: 'Score every base position by worktop coverage — best mount wins.', metric: 'argmax worktop reached over base X/Y', status: 'live', icon: Wand2, figure: 'layout' },
 ];
 
 const STATUS_META: Record<Status, { label: string; chip: string }> = {
@@ -37,7 +38,7 @@ const STATUS_META: Record<Status, { label: string; chip: string }> = {
  * AnalysisCatalog — a grid of the layout analyses available for this setup. Live/basic cards jump to
  * their figure below; planned cards describe what's coming. Sits at the top of the analysis dock.
  */
-export function AnalysisCatalog({ isDarkMode, onSelect }: { isDarkMode: boolean; onSelect: (figure: 'reach' | 'coverage' | 'depth') => void }) {
+export function AnalysisCatalog({ isDarkMode, onSelect }: { isDarkMode: boolean; onSelect: (figure: FigureKey) => void }) {
   const liveCount = ANALYSES.filter((a) => a.status !== 'planned').length;
   const cardBase = isDarkMode ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/[0.02]';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
