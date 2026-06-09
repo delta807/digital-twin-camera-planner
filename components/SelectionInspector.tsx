@@ -70,6 +70,8 @@ export interface InspectorProps {
   armYawDetentDeg?: number | null;
   station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] } | null;
   onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] }) => void;
+  /** #6 Metrics card: worktop area (m²) + ROM coverage (0..1) + inter-arm overlap (0..1). */
+  metrics?: { area: number; coveragePct: number; overlapPct: number } | null;
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number; fovDeg?: number }) => void;
@@ -411,6 +413,27 @@ export function SelectionInspector(p: InspectorProps) {
       {(sel.kind === 'camera' || sel.kind === 'post' || sel.kind === 'object') && (
         <div className="mt-2 pt-2 border-t border-black/5"><RodSnap p={p} subtle={subtle} /></div>
       )}
+
+      {/* #6 — Metrics card: worktop area + ROM coverage + inter-arm overlap, for the active station. */}
+      {p.metrics && (
+        <div className={`mt-3 rounded-xl border px-3 py-2 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`}>
+          <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Metrics</span>
+          <div className="mt-1.5 space-y-1">
+            <Metric label="Workstation area" value={`${p.metrics.area.toFixed(2)} m²`} subtle={subtle} />
+            <Metric label="ROM coverage" value={`${Math.round(p.metrics.coveragePct * 100)}%`} hint="of the worktop the arm(s) can grasp" subtle={subtle} accent />
+            <Metric label="Arm ROM overlap" value={`${Math.round(p.metrics.overlapPct * 100)}%`} hint="of reached area shared by ≥2 arms" subtle={subtle} accent />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, hint, subtle, accent }: { label: string; value: string; hint?: string; subtle: string; accent?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-[11px] font-medium" title={hint}>{label}{hint && <span className={`ml-1 text-[9px] ${subtle}`}>· {hint}</span>}</span>
+      <span className={`text-[12px] font-bold tabular-nums shrink-0 ${accent ? 'text-indigo-500' : ''}`}>{value}</span>
     </div>
   );
 }

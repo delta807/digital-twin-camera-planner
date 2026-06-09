@@ -211,6 +211,17 @@ export function App() {
   };
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
+  // #6 Metrics card: area of the selected station's worktop + ROM coverage % + inter-arm overlap %.
+  const getMetrics = (): { area: number; coveragePct: number; overlapPct: number } | null => {
+    const p = planner(); if (!p) return null;
+    const wc = workcellConfigRef.current;
+    const sid = selection?.stationId ?? armInstancesRef.current.find((a) => a.id === selectedArmId)?.stationId ?? 'primary';
+    let cx: number, cy: number, len: number, wid: number;
+    if (!sid || sid === 'primary') { cx = wc.originX ?? 0; cy = wc.originY ?? 0; len = wc.length; wid = wc.width; }
+    else { const s = wc.stations?.find((x) => x.id === sid); if (!s) return null; cx = s.x; cy = s.y; len = s.length; wid = s.width; }
+    const m = p.workspaceMetrics(cx, cy, len / 2, wid / 2);
+    return { area: len * wid, coveragePct: m.coveragePct, overlapPct: m.overlapPct };
+  };
   const togglePoseMode = () => {
     const next = !poseMode;
     setPoseMode(next);
@@ -2177,6 +2188,7 @@ export function App() {
                   const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width, sideExtents: s.sideExtents, cornerRadii: s.cornerRadii, railLengths: s.railLengths, railLinks: s.railLinks } : null;
                 })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
+                metrics={(selection?.kind === 'station' || selection?.kind === 'arm') ? getMetrics() : null}
                 onCloneStation={() => { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }}
                 wristMount={wristMount}
                 onWristMount={setWristMount}

@@ -104,6 +104,7 @@ export class WorkspacePlanner {
   private armRadials = new Map<string, { radMax: Radial; radPrec: Radial }>();
   // Per-arm blocked cells (graspable but no collision-free config reaches them) → the red overlay.
   private armBlocked = new Map<string, Map<string, number>>();
+  private armCells = new Map<string, Map<string, number>>(); // per-arm graspable cells (base-relative) for metrics
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -221,6 +222,30 @@ export class WorkspacePlanner {
   /** Does the LIVE arm (in the given mjData pose) collide with a post? Used by the interactive jog
    *  clamp (Mode A) to stop a joint at the post like a joint limit. Tests the current obstacle set. */
   armCollidesLive(d: MujocoData): boolean { return this.armCollides(d, this.obstacles); }
+
+  /** Metrics-card stats over a worktop rectangle (centre cx,cy + half-extents hx,hy, metres):
+   *   • coveragePct — fraction of the worktop's cells graspably reachable by ANY arm;
+   *   • overlapPct  — of the reached cells, the fraction reachable by ≥2 arms (shared workspace).
+   *  Built from each arm's graspable cells projected to a shared world grid. */
+  workspaceMetrics(cx: number, cy: number, hx: number, hy: number): { coveragePct: number; overlapPct: number } {
+    const wk = (x: number, y: number) => Math.round(x / CELL) + ',' + Math.round(y / CELL);
+    const count = new Map<string, number>(); // world cell → how many arms reach it
+    for (const [id, cells] of this.armCells) {
+      const arm = this.arms.find((a) => a.id === id); if (!arm) continue;
+      for (const key of cells.keys()) {
+        const [di, dj] = key.split(',').map(Number);
+        const k = wk(arm.x + di * CELL, arm.y + dj * CELL);
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+    }
+    let total = 0, covered = 0, shared = 0;
+    for (let x = cx - hx; x <= cx + hx + 1e-6; x += CELL)
+      for (let y = cy - hy; y <= cy + hy + 1e-6; y += CELL) {
+        total++; const c = count.get(wk(x, y)) ?? 0;
+        if (c >= 1) covered++; if (c >= 2) shared++;
+      }
+    return { coveragePct: total ? covered / total : 0, overlapPct: covered ? shared / covered : 0 };
+  }
 
   /** Snapshot of the primary arm's reach grid for the analysis figures (base-relative cells, world
    *  base, cell size). `cells` = tool-down graspable (count/cell); `cellsMax` = any-orientation
@@ -358,6 +383,7 @@ export class WorkspacePlanner {
       if (this.modelForward == null) this.computeModelForward(scratch); // once: the model's forward axis
       this.armRadials.clear();
       this.armBlocked.clear();
+      this.armCells.clear();
       this.lastBlocked = null;
       // Sweep each arm at its OWN base + obstacle set (DRY: the same sweepArm per arm). A single
       // fallback sweep at the current base when no arm list is set yet.
@@ -367,6 +393,7 @@ export class WorkspacePlanner {
         const r = this.sweepArm(scratch, resolution, arm.yaw, this.obstaclesFor(arm.id));
         this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
         this.armBlocked.set(arm.id, r.blocked);
+        this.armCells.set(arm.id, r.cells);
         if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
           this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
           this.radMax = r.radMax; this.radPrec = r.radPrec; this.baseX = r.baseX; this.baseY = r.baseY;
