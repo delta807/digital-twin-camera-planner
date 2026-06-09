@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { ReactNode, useState } from 'react';
+import { CSSProperties, ReactNode, useState } from 'react';
 import { ChevronDown, Copy, EyeOff, Link2, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -543,6 +543,25 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
   );
 }
 
+/**
+ * A rail length/link field that keeps a LOCAL draft while you type, committing on Enter/blur. The
+ * old field was controlled to the live numeric value, so typing "R3" snapped back to the number on
+ * the first keystroke — you could never enter a rail name (so every link defaulted to the chain
+ * button, which only links to R1). With a draft buffer you can type any "R{n}" → arbitrary links.
+ */
+function RailTextInput({ display, onCommit, style }: { display: string; onCommit: (s: string) => void; style?: CSSProperties }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => { if (draft != null) { onCommit(draft); setDraft(null); } };
+  return (
+    <input type="text" value={draft ?? display} title="Type a number (mm), or a rail name like R3 to link this rail to it"
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') { commit(); e.currentTarget.blur(); } else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur(); } }}
+      style={style}
+      className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+  );
+}
+
 /** Per-rail worktop sizing. 4-sided → 4 independent edge distances from centre (Right/Left/Front/
  *  Back); N>4 → one radius per corner. Falls back to the uniform length/width until edited. */
 function RailSizers({ station, subtle, onStation }: {
@@ -633,9 +652,7 @@ function RailSizers({ station, subtle, onStation }: {
                 {linked
                   ? <button type="button" title={`Linked to R${L + 1} — click to unlink`} onClick={() => setLink(i, -1)} style={{ color: col }} className="shrink-0 w-4 h-4 grid place-items-center"><Unlink className="w-3 h-3" /></button>
                   : <button type="button" title={i > 0 ? `Link R${i + 1} to R${i}` : 'No previous rail to link'} disabled={i === 0} onClick={() => setLink(i, leaderOf(i - 1))} className={`shrink-0 w-4 h-4 grid place-items-center ${subtle} hover:text-indigo-500 disabled:opacity-20`}><Link2 className="w-3 h-3" /></button>}
-                <input type="text" value={linked ? `=R${L + 1}` : String(Math.round(v))} title="Type a number (mm) or a rail name like R1 to link"
-                  onChange={(e) => onRailText(i, e.target.value)} style={col ? { color: col, borderColor: col } : undefined}
-                  className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+                <RailTextInput display={linked ? `=R${L + 1}` : String(Math.round(v))} onCommit={(s) => onRailText(i, s)} style={col ? { color: col, borderColor: col } : undefined} />
                 <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>mm</span>
               </div>
             );
