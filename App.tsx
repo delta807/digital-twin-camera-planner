@@ -22,6 +22,8 @@ import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector, MetricsCard } from './components/SelectionInspector';
 import { AnalysisPanel } from './components/AnalysisPanel';
 import type { ReachData, LayoutData, ManipData, EffortData, HandoffData, CycleData, ThroughputData } from './analysis/figures';
+import { scoreConfig } from './autoresearch/scoreConfig';
+import { DEFAULT_PARAMS, type ScoreParams, type MetricsBag, type SamplePoint, type Result } from './autoresearch/types';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -601,6 +603,73 @@ export function App() {
   const reachResolutionRef = useRef(reachResolution);
   reachResolutionRef.current = reachResolution;
   const planner = () => simRef.current?.planner ?? null;
+
+  // ── /autoresearch slice 1: score the CURRENT scene (lean, headless). Gathers the raw planner/camera
+  // metrics directly (NOT the analysis-panel snapshot), builds a MetricsBag over the object zone, and
+  // runs the pure scorer. Exposed on window for the Playwright CLI. See tasks/autoresearch_scoreconfig.md.
+  const scoreCurrentScene = (override?: Partial<ScoreParams>): Result | null => {
+    const p = planner(); const sim = simRef.current; if (!p || !sim) return null;
+    const params: ScoreParams = { ...DEFAULT_PARAMS, ...override };
+    const wc = workcellConfigRef.current;
+    const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
+    const inscribed = 0.5 * Math.min(wc.length ?? 0.6, wc.width ?? 0.4);  // ≈ apothem (work-zone radius basis)
+    const R = params.ZONE_FRAC * inscribed;
+    const arms = armInstancesRef.current.length;
+
+    const reach = p.getReachWorld();                       // cells: # arms reaching (graspable)
+    const manip = p.getManipulability();                   // cells: best inverse-condition dexterity 0..1
+    const effort = p.getEffort();                          // cells: best torque headroom 0..1
+    const handoff = arms >= 2 ? p.getHandoff() : null;     // cells: dexterity-weighted handoff quality
+    const cov = sim.coverageGrids();                       // overhead boolean[] over n×n grid (centred 0,0)
+    const gsd = sim.gsdGrid();                             // RGB GSD mm/px over n×n grid
+    if (!reach || !cov || !gsd) return null;
+
+    const CELL = reach.cell;
+    const keyOf = (x: number, y: number) => `${Math.round(x / CELL)},${Math.round(y / CELL)}`;
+    const gridIdx = (x: number, y: number, half: number, n: number) => {
+      const step = (2 * half) / (n - 1);
+      const i = Math.round((x + half) / step), j = Math.round((y + half) / step);
+      return (i < 0 || j < 0 || i >= n || j >= n) ? -1 : j * n + i;
+    };
+
+    const zonePoints: SamplePoint[] = [];
+    const STEP = 0.04;
+    for (let x = cx - R; x <= cx + R + 1e-6; x += STEP) for (let y = cy - R; y <= cy + R + 1e-6; y += STEP) {
+      if (Math.hypot(x - cx, y - cy) > R) continue;        // disc, not square
+      const k = keyOf(x, y);
+      const nArms = reach.cells.get(k) ?? 0;
+      const graspable = nArms >= 1, bothReach = nArms >= 2;
+      const ci = gridIdx(x, y, cov.half, cov.n), gi = gridIdx(x, y, gsd.half, gsd.n);
+      zonePoints.push({
+        graspable,
+        dex: graspable ? (manip?.cells.get(k) ?? 0) : 0,
+        headroom: graspable ? (effort?.cells.get(k) ?? 1) : 1,
+        bothReach,
+        collabQuality: bothReach ? (handoff?.cells.get(k) ?? 0) : 0,
+        visible: ci >= 0 ? !!cov.overhead[ci] : false,
+        gsdRGB: (gi >= 0 && Number.isFinite(gsd.gsd[gi])) ? gsd.gsd[gi] : Infinity,
+        gsdDepth: NaN,                                      // depth channel: slice-2 (needs depth intrinsics in gsdGrid)
+      });
+    }
+
+    // config-level collision proxy: arm bases must not be jammed together (full geom check = a later slice).
+    const bases = armInstancesRef.current;
+    let collisionFree = true;
+    for (let a = 0; a < bases.length; a++) for (let b = a + 1; b < bases.length; b++)
+      if (Math.hypot(bases[a].x - bases[b].x, bases[a].y - bases[b].y) < 0.18) collisionFree = false;
+
+    const camZ = sim.renderSys.cameraRig?.sensorCamera?.getWorldPosition(new THREE.Vector3()).z ?? (cameraPos?.z ?? 0.85);
+    const bag: MetricsBag = { arms, cameraZ: camZ, collisionFree, zonePoints };
+    return scoreConfig(bag, params);
+  };
+  const scoreRef = useRef(scoreCurrentScene); scoreRef.current = scoreCurrentScene;
+  useEffect(() => {
+    (window as unknown as { __autoresearch?: unknown }).__autoresearch = {
+      scoreCurrentScene: (o?: Partial<ScoreParams>) => scoreRef.current(o),
+      DEFAULT_PARAMS,
+    };
+  }, []);
+
   // Show `msg`, let the browser paint it (two rAFs), THEN run the blocking work and clear. Without
   // the paint-yield the synchronous FK sweep would freeze before the overlay ever shows.
   const runHeavy = (msg: string, fn: () => void) => {
