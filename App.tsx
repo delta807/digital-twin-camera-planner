@@ -556,6 +556,25 @@ export function App() {
     // Overhead camera pose (position + aim/roll + FOV).
     if (p.camera) simRef.current?.renderSys.cameraRig.applyPose(p.camera);
   };
+  // Import an /autoresearch winner Cfg (winner-<region>.json) and load it as the live layout. Reuses
+  // applyConfig (the same headless path the optimizer scored) for the scene + reach, then syncs the
+  // React panel state from the refs it populated so the UI reflects the imported worktop/arms. Returns
+  // false on a malformed file so the panel can flag it. (#A4)
+  const handleImportWinner = async (raw: unknown): Promise<boolean> => {
+    const cfg = raw as Partial<AutoCfg>;
+    if (!cfg || typeof cfg.shapeSides !== 'number' || typeof cfg.size !== 'number'
+      || !Array.isArray(cfg.armBases) || cfg.armBases.length === 0 || !cfg.camera) return false;
+    setBusyMsg('Loading winner layout…');
+    // Let the overlay paint before the synchronous FK reach sweep inside applyConfig freezes the thread.
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    try {
+      await applyConfig(cfg as AutoCfg, { fast: false });
+      setWorkcellConfig({ ...workcellConfigRef.current });
+      setArmInstances(armInstancesRef.current.map((a) => ({ ...a })));
+      setSelectedArmId(armInstancesRef.current.find((a) => a.primary)?.id ?? armInstancesRef.current[0]?.id ?? 'so101-1');
+      return true;
+    } catch { return false; } finally { setBusyMsg(null); }
+  };
   // Auto-load the "IRL-layout" profile once on startup (the team's default arrangement) — but ONLY
   // for a fresh session. A persisted working layout (restored from localStorage) takes precedence so
   // a refresh keeps the user's actual progress instead of snapping back to the team default.
@@ -2444,6 +2463,7 @@ export function App() {
               onSave={handleSaveProfile}
               onLoad={handleLoadProfile}
               onDelete={handleDeleteProfile}
+              onImportWinner={handleImportWinner}
               onPublish={handlePublishProfiles}
               onClose={() => setLayoutsOpen(false)}
               isDarkMode={isDarkMode}

@@ -72,6 +72,31 @@ Shape varies by region but the score deltas between shapes are <0.02 (within noi
 single-rig reading is the recommendation above. Winning layouts are saved as twin-loadable Cfg at
 `full_a3/winner-<region>.json` (→ #A4 will load these into the UI).
 
+## Extension: n=3–10 shape sweep (shapes_3_10/)
+
+A follow-up campaign widened **shape to n=3…10** (208 candidates, 1728 region-trials) while
+freezing the other axes at the established optima (r0.40, cam z0.70 nadir, 2-arm/1-arm) to isolate
+shape. **The core recommendation is unchanged** — every region winner is r0.40, cam z0.70, tilt 0°,
+2-arm (corners 4 & 6 nominally 1-arm, collab N/A → partition, consistent with the main run). No
+polygon beyond the original 4/5/6 unlocks a materially better rig.
+
+Two honest negatives this sweep surfaced, both reinforcing the methodology limits below:
+- **The per-vertex "best polygon" is a selection artifact, not shape superiority.** Regions are
+  polygon-*relative* vertices, so corner-k only exists for n≥k (front sizes fall 208→40 as k rises).
+  The apparent "9/10-gon wins at corner-7…10" is just *"only high-n polygons have a corner-7"* — those
+  high-index slots can't compare against triangles/squares at all. A clean shape comparison needs the
+  object regions tied to a **fixed physical layout**, decoupled from polygon geometry (this is exactly
+  improvement #1's aim-at-the-blob fix).
+- **The one cross-n-comparable region (centre, which every polygon has) is knee-unstable.** Its winner
+  moved 4-gon (main run, tg 0.307) → 3-gon (this run, tg 0.261) — a *lower*-scoring "winner" — because
+  the knee's max-min normalization shifts with the Pareto front's composition (only 2 points on the
+  centre front). This cannot be adjudicated without a measured noise floor (improvement #1, next).
+
+**Takeaway:** shape remains a near-tie within (still-unmeasured) noise; pick for fabrication ease.
+The wider sweep's value was negative-result confirmation + exposing the vertex-region confound and
+knee instability that motivate the next two improvements. Artifacts: `shapes_3_10/`,
+`campaign_shapes.json`.
+
 ## Robustness
 All region winners stay **feasible in 4/4 GSD/λ settings** (D435i rgb-tight/mid/loose bands + a
 no-torque variant). taskGrasp is GSD-invariant (as expected); perception scales with the GSD

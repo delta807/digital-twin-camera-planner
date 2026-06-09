@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
-import { Bookmark, ClipboardCopy, CloudUpload, Save, Trash2, X } from 'lucide-react';
+import { useRef, useState, type ChangeEvent } from 'react';
+import { Bookmark, ClipboardCopy, CloudUpload, FileUp, Save, Trash2, X } from 'lucide-react';
 import type { LayoutProfile } from '../profiles';
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   onSave: (name: string) => void;
   onLoad: (p: LayoutProfile) => void;
   onDelete: (name: string) => void;
+  /** Import an /autoresearch winner-<region>.json (a Cfg) and load it as the live layout. Returns success. */
+  onImportWinner?: (cfg: unknown) => Promise<boolean>;
   /** Publish this device's layouts to the team's shared store (Netlify Blobs). Returns success. */
   onPublish?: () => Promise<boolean>;
   /** Dismiss the floating panel entirely. */
@@ -23,7 +25,7 @@ interface Props {
  * LayoutProfiles — save/restore the workspace's positional config (worktop + arm bases + overhead
  * camera) as named profiles, so a layout mapped to the real rig can be stored and switched between.
  */
-export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, onClose, isDarkMode }: Props) {
+export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onImportWinner, onPublish, onClose, isDarkMode }: Props) {
   const [name, setName] = useState('');
   const [open, setOpen] = useState(true); // open expanded when summoned (the old collapsed default hid the save UI)
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
@@ -56,6 +58,19 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
       setExported('downloaded');
     }
     setTimeout(() => setExported('idle'), 2000);
+  };
+  // Import an /autoresearch winner-<region>.json and load it live. Reports transient status on the button.
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [imp, setImp] = useState<'idle' | 'busy' | 'ok' | 'bad'>('idle');
+  const onPickWinner = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file || !onImportWinner) return;
+    setImp('busy');
+    let ok = false;
+    try { ok = await onImportWinner(JSON.parse(await file.text())); } catch { ok = false; }
+    setImp(ok ? 'ok' : 'bad');
+    setTimeout(() => setImp('idle'), 2500);
   };
   // Publish to the team's shared store (Netlify Blobs). Reports status (it's a no-op locally).
   const [pub, setPub] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
@@ -101,6 +116,17 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onPublish, 
               <Save className="w-3 h-3" /> Save
             </button>
           </div>
+
+          {onImportWinner && (
+            <>
+              <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onPickWinner} />
+              <button onClick={() => fileRef.current?.click()} disabled={imp === 'busy'}
+                title="Load an /autoresearch winner-<region>.json as the live layout (worktop + arm bases + camera)"
+                className={`w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wide ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} disabled:opacity-50`}>
+                <FileUp className="w-3 h-3" /> {imp === 'busy' ? 'Loading…' : imp === 'ok' ? 'Winner loaded ✓' : imp === 'bad' ? 'Invalid winner JSON' : 'Import autoresearch winner'}
+              </button>
+            </>
+          )}
 
           {profiles.length === 0 ? (
             <p className={`text-[10px] leading-tight ${subtle}`}>Map your arm/camera positions, then save them here. Profiles persist across reloads.</p>

@@ -43,7 +43,50 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       **smaller table wins** (r0.40); **camera nadir, as low as FOV allows** (perception rises
       monotonically to GSD ceiling by ~0.45 m; height doesn't affect grasp feasibility — z0.70 was a
       sweep-floor artifact). Winners robust in 4/4 GSD/λ settings.
-- [ ] **#A4 (nice-to-have) UI import** of `winner-<region>.json` so a winning layout loads in the twin.
+- [x] **#A4 (nice-to-have) UI import** of `winner-<region>.json` so a winning layout loads in the twin.
+      DONE: `handleImportWinner` (App.tsx) reuses `applyConfig` (the headless scorer path) for the
+      scene+reach, then syncs React panel state from the refs it writes; "Import autoresearch winner"
+      file-picker added to LayoutProfiles.tsx with status feedback. tsc clean.
+
+### AUTORESEARCH v2 (Jun 2026) — robustness + unfrozen axes. PROTOCOL: a QA-director session reviews
+### every cycle. READ `tasks/direction.md` (DIRECTION section) at the START of each cycle; APPEND one
+### line to its CYCLE LOG when a cycle completes (timestamp · what shipped · what's running).
+- [ ] **#A5 Fidelity fixes (P0 — do FIRST, they bias every later number)**
+      (a) Camera tilt aims world +X only: `applyConfig` aim point is `(cx + z·tan(tilt), cy)` (App.tsx
+      ~line 720), so tilt-20° candidates look toward +X regardless of which region they're scored
+      under — "tilt 0 wins" was only ever tested against one arbitrary direction. Make tilt aim at an
+      explicit `aimAt` (default: the active region's blob centre).
+      (b) Depth-GSD off-grid inconsistency: App.tsx passes `Infinity` for off-depth-grid points but
+      scoreConfig treats non-finite gsdDepth as "channel unavailable → no penalty" (types.ts says NaN).
+      Decide one semantic, make both ends honor it, unit-test it.
+      Metric: a tilt-20° candidate's perception under a corner region CHANGES once aim follows the
+      region; off-grid depth points are penalized (or explicitly exempted by design, documented).
+      Verify: unit tests + a ≤6-candidate spot campaign before/after.
+- [ ] **#A6 Measure noise + boundary discipline (P1 — gates all "within noise" claims)**
+      (a) Calibration pass at run start: apply+score the SAME cfg K=5× (and across workers); report
+      per-objective spread (σ) in summary.md. (b) Flag any per-region winner sitting at the min/max of
+      a swept axis (boundary-hugging — the z0.70 artifact, automated). (c) Report the winner SET
+      (everything within the measured noise band of the knee), not a single knee.
+      Metric: summary.md shows σ per objective + boundary flags; re-run on full_a3 manifest must flag
+      camera z (winner at sweep floor 0.70). Verify: unit tests on the flag logic + one real run.
+- [ ] **#A7 Unfreeze dead axes + auto-refine (P2)** — camera x/y (or aimAt = blob), arm `yawOffset`,
+      INDEPENDENT 2nd-arm edge+t (current: locked opposite-edge same-t). Avoid factorial blowup: new
+      axes sweep only in follow-up campaigns SEEDED from each region's grid winner (the cam_bracket
+      pattern, generated automatically). Then auto-refinement: coordinate-descent per region over the
+      continuous knobs (size, edgeFrac, camZ, tilt) from the seeded winner; stop when Δ < measured σ
+      (#A6). Metric: refined winner ≥ grid winner on every objective, with no axis at a sweep boundary.
+- [ ] **#A8 n-sides 3–10 + computed single-rig answer (P2)** — extend shapes to 3..10. Known traps:
+      · VERTEX_PHASE −π/2 must hold for ALL n (the #A1 lesson; only n=4 hides the bug);
+      · odd n has no true opposite edge — `floor(n/2)` makes n=3's "opposite" arms ADJACENT (edges
+        0,1): decide + document the odd-n 2-arm convention;
+      · adjacent corner blobs OVERLAP for n≥8 at r0.40 (chord 2·0.45·r·sin(π/n) < 2·blobRadius)
+        → dedupe or shrink blobs, else corner regions are double-counted near-duplicates;
+      · region count scales score time ~(n+1); full 3..10 grid ≈ 2.5k candidates ≈ 19k region-trials
+        — budget runtime, lean on interleaving + `--trials` + seeded follow-ups.
+      Single-rig aggregate: per candidate take the MIN across regions of each objective + require
+      all-region feasibility → Pareto+knee on that = THE buildable-rig answer, computed (today it's
+      eyeballed from 7 per-region tables in ANSWER.md). Metric: `summary.md` gains a "single-rig"
+      section whose winner is reproducible from results.json.
 
 ## ACTIVE — new issues (reported Jun 2026, this batch)
 - [x] **#1 Joint jog doesn't respond to real clicks** — FIXED (29520b5): rewired the vendored
