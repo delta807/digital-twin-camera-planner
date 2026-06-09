@@ -30,9 +30,10 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       mid-field). QA caught a 90° polygon-orientation mismatch vs the builder (only showed on n≠4) — fixed
       with a shared VERTEX_PHASE=−π/2. Verified on pentagon: all 6 regions feasible. Finding: optimal arm
       count varies by region (centre wants 2 arms; some corners want 1).
-- [ ] **#A2 Build-area + GSD as explicit code sweeps** — confirm `sizes` (build area) sweeps in the
-      generator; add an OUTER sweep over GSD targets across the D435i RGB (0.3–0.9) + depth (0.6–1.9)
-      bands (and λ), re-ranking per setting → robustness. No user inputs.
+- [x] **#A2 Build-area + GSD as explicit code sweeps** — DONE (1f53f95). `sizes` already sweeps via
+      gen-campaign --sizes. Added a GSD/λ OUTER-sweep sensitivity pass: each region's winner is re-scored
+      across the D435i bands (rgb-tight/mid/loose) + a no-torque variant; summary.md reports feasibility +
+      scores per setting. Verified (pentagon): all winners feasible in 4/4 settings → robust to GSD/λ.
 - [ ] **#A3 Full campaign + the answer** — run the real campaign (finer placements, sizes, all shapes,
       regions) and write the optimal: best polygon, arm clamp positions, 1-vs-2, camera pose, per region.
 - [ ] **#A4 (nice-to-have) UI import** of `winner-<region>.json` so a winning layout loads in the twin.
