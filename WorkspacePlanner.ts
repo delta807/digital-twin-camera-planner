@@ -132,6 +132,9 @@ export class WorkspacePlanner {
   // Base-relative reachable cells: "di,dj" -> hit count. Reusable for inverse placement.
   // reachCells = PRECISION (gripper can point down → graspable); reachCellsMax = full reachable
   // footprint (the arm folds & swings ~340° even with a ±110° base, so this is nearly a ring).
+  // FRAME: keys are WORLD-AXIS base-relative offsets (round((tx−baseX)/cell)) with yaw baked into the
+  // world TCP — NOT the arm's local frame. Consumers project to world by adding the base pos, no
+  // rotation. (Only the radial profiles below are un-rotated to local.)
   private reachCells = new Map<string, number>();
   private reachCellsMax = new Map<string, number>();
   // Radial reach profiles in the arm's LOCAL frame (base at origin, yaw 0): per angular bin, the
@@ -144,8 +147,8 @@ export class WorkspacePlanner {
   private armRadials = new Map<string, { radMax: Radial; radPrec: Radial }>();
   // Per-arm blocked cells (graspable but no collision-free config reaches them) → the red overlay.
   private armBlocked = new Map<string, Map<string, number>>();
-  private armCells = new Map<string, Map<string, number>>(); // per-arm graspable cells (base-relative) for metrics
-  private armCellsMax = new Map<string, Map<string, number>>(); // per-arm kinematic envelope (base-relative) for the multi-arm figure
+  private armCells = new Map<string, Map<string, number>>(); // per-arm graspable cells (WORLD-axis base-relative, yaw baked in) for metrics
+  private armCellsMax = new Map<string, Map<string, number>>(); // per-arm kinematic envelope (WORLD-axis base-relative) for the multi-arm figure
   private armPose = new Map<string, { x: number; y: number; yaw: number }>(); // per-arm world pose to project its cells
   private baseX = 0;
   private baseY = 0;
@@ -754,7 +757,11 @@ export class WorkspacePlanner {
   }
 
   /** One forward-kinematics sweep with the base WHERE IT CURRENTLY IS in the model + the given
-   *  obstacles. Returns base-relative cells + radial profiles in the arm's local frame (yaw 0). */
+   *  obstacles. Returns TWO differently-framed outputs (don't conflate them — this distinction caused a
+   *  real layout-optimizer bug): `cells`/`cellsMax`/`blocked` are keyed by the RAW world offset
+   *  (tx−baseX, ty−baseY) with the arm's yaw BAKED IN (the base is physically rotated before the sweep),
+   *  so consumers project them to world with no rotation; the radial profiles (`radMax`/`radPrec`) ARE
+   *  un-rotated into the arm's local frame (yaw 0) for the orientation-independent reach outline. */
   private sweepArm(scratch: MujocoData, resolution: number, yaw: number, obstacles: Array<{ x: number; y: number; r: number; zTop: number }>, cell = CELL, baseSteps = BASE_STEPS) {
     const { mujoco, model, sweptJoints, tcpSiteId } = this.cfg;
     mujoco.mj_kinematics(model, scratch); // positions only — the sweep never needs collision/dynamics

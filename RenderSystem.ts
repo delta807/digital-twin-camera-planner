@@ -576,7 +576,10 @@ export class RenderSystem {
         const camPos = camera.getWorldPosition(new THREE.Vector3());
         const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group, this.planningArmsGroup];
-        const ifov = (camera.fov * Math.PI / 180) / hPx; // radians per pixel (vertical)
+        // Exact pinhole per-pixel angular size: the sensor half-height in px is f·tan(VFOV/2), so one
+        // central pixel subtends 2·tan(VFOV/2)/h_px rad (matches the catalog's 2·z·tan/h_px). Using the
+        // small-angle VFOV/h_px instead under-reports GSD by ~5% at this FOV's edge.
+        const ifov = 2 * Math.tan((camera.fov * Math.PI / 180) / 2) / hPx; // radians per pixel (vertical)
         const dir = new THREE.Vector3();
         this.covRay.near = 0.08;
         return points.map((P) => {
