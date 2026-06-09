@@ -21,7 +21,7 @@ import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector, MetricsCard } from './components/SelectionInspector';
 import { AnalysisPanel } from './components/AnalysisPanel';
-import type { ReachData, LayoutData, ManipData, EffortData } from './analysis/figures';
+import type { ReachData, LayoutData, ManipData, EffortData, HandoffData } from './analysis/figures';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -290,6 +290,21 @@ export function App() {
     if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
     else for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell), Math.abs(dj * w.cell)); }
     return { ...w, half: Math.min(1.3, half + (st ? 0 : 0.05)), reachPct: 0, center: st ? [st.x, st.y] : [0, 0], arms: w.arms };
+  };
+  // #9 handoff feasibility — the bimanual exchange zone (cells ≥2 arms can grasp) + the best handoff cell.
+  // Same scope rules as #8 (needs ≥2 arms in scope), framed as an opportunity (quality) rather than risk.
+  const getHandoff = (): HandoffData | null => {
+    const p = planner(); if (!p) return null;
+    const armIds = analysisStation === 'all' ? undefined : armIdsAt(analysisStation);
+    const count = armIds ? armIds.length : armInstancesRef.current.length;
+    if (count < 2) return null;
+    const h = p.getHandoff(undefined, armIds);
+    if (!h) return null;
+    const st = analysisStation === 'all' ? null : analysisStationList().find((s) => s.id === analysisStation);
+    let half = 0.4;
+    if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
+    else for (const k of h.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * h.cell), Math.abs(dj * h.cell)); }
+    return { ...h, half: Math.min(1.3, half + (st ? 0 : 0.05)), center: st ? [st.x, st.y] : [0, 0] };
   };
   // #11 layout optimizer — score candidate base positions by worktop coverage (best mount = brightest).
   // Scope-aware: All = the primary worktop + primary reach; a station = that station's worktop + its arm.
@@ -2196,7 +2211,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} getGsd={getGsd} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} getGsd={getGsd} getHandoff={getHandoff} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
         armsInScope={analysisStation === 'all' ? armInstances.length : armIdsAt(analysisStation).length}
         sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />

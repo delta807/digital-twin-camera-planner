@@ -161,6 +161,34 @@ export function drawConflict(canvas: HTMLCanvasElement, d: ReachData) {
   }
 }
 
+// ── #9 Handoff feasibility: where two arms can EXCHANGE an object. Cells ≥2 arms can grasp top-down,
+//    coloured by handoff QUALITY (how well the best two arms each grasp it); star = best exchange cell. ──
+export interface HandoffData { cells: Map<string, number>; best: { x: number; y: number; q: number }; count: number; cell: number; half: number; center: [number, number]; arms: number; }
+export function drawHandoff(canvas: HTMLCanvasElement, d: HandoffData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const a = frame(ctx, W, H, {
+    title: `Handoff feasibility\n${d.count} exchangeable cell${d.count === 1 ? '' : 's'} · best at ${Math.round((d.best.x - d.center[0]) * 100)}, ${Math.round((d.best.y - d.center[1]) * 100)} cm`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'handoff quality (both arms grasp)', vr: [0, 1], cmap: VIRIDIS },
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
+      const q = d.cells.get(Math.round(x / d.cell) + ',' + Math.round(y / d.cell));
+      if (q === undefined) continue;
+      ctx.fillStyle = css(VIRIDIS(Math.max(0.05, Math.min(1, q))));
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+  // best exchange cell — magenta star
+  const bx = sx(a, d.best.x), by = sy(a, d.best.y);
+  ctx.strokeStyle = '#ec4899'; ctx.fillStyle = '#ec4899'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let k = 0; k < 10; k++) { const r = k % 2 ? 4 : 9, ang = -Math.PI / 2 + (k * Math.PI) / 5; const px = bx + r * Math.cos(ang), py = by + r * Math.sin(ang); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+  ctx.closePath(); ctx.fill();
+}
+
 // ── #11 Layout-optimizer map: score every candidate arm-base position by how much of the worktop it
 //    could reach, so the brightest cell = the best mount. star marks the optimum. ──
 export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; curCov: number; cur: { x: number; y: number }; }

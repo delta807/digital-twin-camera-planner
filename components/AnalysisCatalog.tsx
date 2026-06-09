@@ -12,7 +12,7 @@ interface Analysis {
   icon: ComponentType<{ className?: string }>;
   figure?: FigureKey; // which live figure this maps to (status === 'live'/'basic')
 }
-export type FigureKey = 'reach' | 'coverage' | 'depth' | 'conflict' | 'layout' | 'manip' | 'effort' | 'gsd';
+export type FigureKey = 'reach' | 'coverage' | 'depth' | 'conflict' | 'layout' | 'manip' | 'effort' | 'gsd' | 'handoff';
 
 export const ANALYSES: Analysis[] = [
   { n: 1, title: 'Manipulability / dexterity', purpose: 'How well-conditioned the arm is per cell — agile vs near-singular.', metric: 'Yoshikawa w + inverse condition number', status: 'live', icon: Gauge, figure: 'manip' },
@@ -23,7 +23,7 @@ export const ANALYSES: Analysis[] = [
   { n: 6, title: 'Camera coverage / occlusion', purpose: 'Which cells each camera sees, and the blind spots.', metric: 'covered / occluded fraction', status: 'live', icon: Eye, figure: 'coverage' },
   { n: 7, title: 'Shared workspace', purpose: 'Where arms overlap (handover) vs have exclusive lanes.', metric: 'union / intersection / exclusive', status: 'live', icon: Layers, figure: 'reach' },
   { n: 8, title: 'Inter-arm collision', purpose: 'Where arms share space (≥2 reach) and can collide.', metric: 'shared / collision-prone fraction', status: 'live', icon: ShieldAlert, figure: 'conflict' },
-  { n: 9, title: 'Handoff feasibility', purpose: 'Where the two arms can actually exchange an object.', metric: 'bimanual reachable ∩ collision-free', status: 'planned', icon: Hand },
+  { n: 9, title: 'Handoff feasibility', purpose: 'Where the two arms can actually exchange an object.', metric: 'bimanual reachable ∩ collision-free', status: 'live', icon: Hand, figure: 'handoff' },
   { n: 10, title: '1-vs-2 arm throughput', purpose: 'Whether a second arm is worth the added cost.', metric: 'throughput gain vs collision cost', status: 'planned', icon: TrendingUp },
   { n: 11, title: 'Layout optimizer', purpose: 'Score every base position by worktop coverage — best mount wins.', metric: 'argmax worktop reached over base X/Y', status: 'live', icon: Wand2, figure: 'layout' },
 ];
@@ -43,7 +43,7 @@ export function AnalysisCatalog({ isDarkMode, onSelect, scopeLabel, armsInScope 
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   // Per-scope catalog: shared workspace (#7) + inter-arm collision (#8) need ≥2 arms IN THIS SCOPE,
   // so for a 1-arm workstation they fall back to "needs ≥2 arms" instead of LIVE.
-  const needsTwo = (n: number) => (n === 7 || n === 8) && armsInScope < 2;
+  const needsTwo = (n: number) => (n === 7 || n === 8 || n === 9) && armsInScope < 2;
   const effStatus = (a: Analysis): Status => (needsTwo(a.n) ? 'planned' : a.status);
   const liveCount = ANALYSES.filter((a) => effStatus(a) !== 'planned').length;
   return (

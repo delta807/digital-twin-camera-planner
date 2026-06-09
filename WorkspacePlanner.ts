@@ -331,6 +331,43 @@ export class WorkspacePlanner {
     return { cells, cellsMax, baseX: 0, baseY: 0, cell, arms: only ? n : this.armCells.size };
   }
 
+  /** #9 Handoff feasibility — where two arms can EXCHANGE an object. Unlike #8 (which flags shared space
+   *  as collision RISK), this scores the overlap as an OPPORTUNITY: a cell is handoff-capable when ≥2 arms
+   *  can grasp it top-down, and its quality = how WELL the best two arms each grasp it (min of their two
+   *  normalized tool-down sample densities) — so a cell both arms reach comfortably beats one at the edge
+   *  of both envelopes. Marks the single best exchange cell. Reuses the per-arm graspable grids (no new
+   *  sweep). Collision-free bimanual posing is not yet modelled — this is the reachable-∩ layer of it. */
+  getHandoff(cell = CELL, armIds?: string[]): { cells: Map<string, number>; best: { x: number; y: number; q: number }; count: number; cell: number; arms: number } | null {
+    if (this.armCells.size === 0) return null;
+    const only = armIds ? new Set(armIds) : null;
+    // Global max sample density (for normalising grasp quality to 0..1, comparably across arms).
+    let maxD = 1;
+    for (const [id, cells] of this.armCells) { if (only && !only.has(id)) continue; for (const v of cells.values()) if (v > maxD) maxD = v; }
+    const perCell = new Map<string, number[]>(); // world cell → each reaching arm's density
+    let arms = 0;
+    for (const [id, cells] of this.armCells) {
+      if (only && !only.has(id)) continue;
+      arms++;
+      const pose = this.armPose.get(id); if (!pose) continue;
+      for (const [key, v] of cells) {
+        const [di, dj] = key.split(',').map(Number);
+        const wk = Math.round((pose.x + di * CELL) / cell) + ',' + Math.round((pose.y + dj * CELL) / cell);
+        let a = perCell.get(wk); if (!a) perCell.set(wk, a = []); a.push(v);
+      }
+    }
+    const out = new Map<string, number>();
+    let best = { x: 0, y: 0, q: -1 }, count = 0;
+    for (const [wk, ds] of perCell) {
+      if (ds.length < 2) continue;                    // needs ≥2 arms to hand off
+      ds.sort((p, q) => q - p);
+      const q = Math.min(ds[0], ds[1]) / maxD;         // both of the best pair must grasp it well
+      out.set(wk, q); count++;
+      if (q > best.q) { const [i, j] = wk.split(',').map(Number); best = { x: i * cell, y: j * cell, q }; }
+    }
+    if (count === 0) return null;
+    return { cells: out, best, count, cell, arms };
+  }
+
   /** Dexterity of ONE joint config: the translational manipulability of the TCP, taken from a central
    *  finite-difference Jacobian J (3×k) of the site position vs each driving joint — so it needs only
    *  the positions-only mj_kinematics the rest of the sweep uses (no mj_jacSite buffer marshalling).
