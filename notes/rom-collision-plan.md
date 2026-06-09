@@ -85,9 +85,19 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
 - [x] #5 non-primary arms now show in overhead D435i footage (b3ef340) — dropped planningArmsGroup from pipHide.
 - [x] #4 undo instant (no resweep, was a >20s crash) + layout persists across refresh, history cap 20,
       IRL auto-load gated to fresh sessions, dedup no-op pushes (369268f). VERIFIED.
-- [ ] #2 delete primary arm / workstation / mount post.
-- [ ] #3 new arms spawn at the ACTIVE/latest workstation, not the primary.
-- [ ] #7 keep additional workstations within bounds.
+- [x] #3 new arms spawn at the ACTIVE workstation (selected arm's station), not the primary (fa67ef8).
+- [x] #7 additional workstations pack within ±2.3 m grid slots, nearest-origin-first (fa67ef8).
+- [x] PERF: reach sweep mj_forward→mj_kinematics, 14.2s→0.3s / 46× (127d3f3). Was ">10s reach" complaint.
+- [ ] #2 = HIDE primaries (not remove; user chose "hide, don't remove"). Plan:
+      • types: WorkcellConfig.postHidden? + worktopHidden?; ArmInstance.hidden?.
+      • BaseBuilder.rebuild: if worktopHidden skip primary slab+rods; if postHidden(or worktopHidden)
+        skip the post mesh + set postAxis.height=0 (collectObstacles already skips height≤0).
+      • Arm hide: ArmInstance.hidden → MujocoSim hides primary arm meshes (simGroup) + ghost clone;
+        WorkspacePlanner.setArms filters out hidden arms (no reach sweep/outline for them).
+      • Delete dispatch (App ~874/1066): primary arm → set hidden; primary station(stationId 'primary')
+        → worktopHidden; primary post (postIndex undefined) → postHidden.
+      • Restore: hidden items STAY in the BODIES list (driven by state, not meshes) shown dimmed with an
+        eye/▷ to un-hide; undo also restores (it's a layout change → pushHistory).
 - [ ] #8 workstation AREA as an adjustable param.
 - [ ] #9 rail linking R1=R2 / R3=R4 — BOTH: type-a-name in field + chain button + visual link badge + unlink.
 - [ ] #6 NEW third "Metrics" card: workstation area, % ROM coverage of worktop, inter-arm ROM overlap %.
