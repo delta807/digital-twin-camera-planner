@@ -544,7 +544,7 @@ export class RenderSystem {
     /** For each world point (a table cell centre), is it VISIBLE to `camera` — inside the FOV frustum
      *  AND not occluded by geometry (arm / posts / cubes) before reaching the table? Used by the
      *  camera-coverage figure. Occluders = real scene geometry (simGroup + worktop/posts). */
-    computeCoverage(camera: THREE.PerspectiveCamera, points: THREE.Vector3[]): boolean[] {
+    computeCoverage(camera: THREE.PerspectiveCamera, points: THREE.Vector3[], nearSkip = 0.08): boolean[] {
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); // refresh — a non-rendered (station) camera has a stale inverse → empty frustum → 0% coverage
         const camPos = camera.getWorldPosition(new THREE.Vector3());
@@ -553,9 +553,11 @@ export class RenderSystem {
         // real shadows for a camera, so they must count in coverage too (was only the primary). #2
         const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group, this.planningArmsGroup];
         const dir = new THREE.Vector3();
-        // Skip the first ~8 cm of each ray: a station camera sits ON its mount post, so without this
-        // every ray self-hits the post and the whole table reads as occluded (0%). [self-intersection offset]
-        this.covRay.near = 0.08;
+        // Skip the first `nearSkip` m of each ray to avoid self-occlusion: a station camera sits ON its
+        // mount post (8 cm clears it); a WRIST camera's lens sits ~0.14 m above its own gripper fingers,
+        // so it needs a larger skip (~0.16 m) or every ray self-hits the gripper and the cam reads as
+        // mostly blocked. [self-intersection offset, per-camera]
+        this.covRay.near = nearSkip;
         return points.map((P) => {
             if (!frustum.containsPoint(P)) return false;             // outside the camera FOV
             dir.copy(P).sub(camPos); const dist = dir.length(); dir.normalize();

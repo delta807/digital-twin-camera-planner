@@ -218,7 +218,12 @@ export function App() {
     let total = 0, grasp = 0;
     for (let x = st.x - hx; x <= st.x + hx + 1e-6; x += w.cell)
       for (let y = st.y - hy; y <= st.y + hy + 1e-6; y += w.cell) { total++; if ((w.cells.get(Math.round(x / w.cell) + ',' + Math.round(y / w.cell)) ?? 0) > 0) grasp++; }
-    return { ...w, half: Math.max(0.4, hx, hy) + 0.08, reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label };
+    // Size the window to the arm's FULL reach envelope around the station centre, not just the worktop —
+    // the arm (mounted at the worktop edge) reaches well beyond the table, and cropping to the worktop
+    // made the fan look truncated. reachPct stays worktop-relative (the meaningful "% of worktop").
+    let half = Math.max(0.4, hx, hy);
+    for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell - st.x), Math.abs(dj * w.cell - st.y)); }
+    return { ...w, half: Math.min(1.3, half + 0.08), reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label };
   };
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {

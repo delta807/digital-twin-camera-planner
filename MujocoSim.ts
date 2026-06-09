@@ -608,7 +608,9 @@ export class MujocoSim {
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(center[0] - half + i * step, center[1] - half + j * step, 0.005));
         const overhead = rs.computeCoverage(overheadCam, pts);
         // Union of EVERY arm's wrist cam (was only the first arm's — missed additional arms). #4
-        const wrist = wristCams.reduce<boolean[]>((acc, cam) => { const c = rs.computeCoverage(cam, pts); return acc.map((v, i) => v || c[i]); }, pts.map(() => false));
+        // Wrist cams need a larger near-skip (~0.16 m) so rays clear the cam's OWN gripper (lens sits
+        // ~0.14 m above the fingertips) instead of self-occluding the whole bottom of the frame.
+        const wrist = wristCams.reduce<boolean[]>((acc, cam) => { const c = rs.computeCoverage(cam, pts, 0.16); return acc.map((v, i) => v || c[i]); }, pts.map(() => false));
         const combined = overhead.map((v, i) => v || wrist[i]);
         return { overhead, wrist, combined, n, half };
     }
