@@ -11,7 +11,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { ArmInstance, MujocoData, MujocoModel, MujocoModule } from './types';
 
-export interface SweptJoint { qposAdr: number; lo: number; hi: number; }
+export interface SweptJoint { qposAdr: number; dofAdr: number; lo: number; hi: number; }
 
 export interface PlannerToggles {
   outline: boolean;     // dashed max-range reach outline (per arm, color-coded) — default view
@@ -50,6 +50,10 @@ const ANG_BINS = 120;   // angular resolution of the fan (3° bins)
 const BASE_STEPS = 160; // base-rotation joint samples (dominates the angular sweep)
 const LINK_R = 0.035;   // arm link half-thickness (m) — capsule radius for collision tests
 const SEG_SAMPLES = 3;  // points sampled along each arm link segment for the collision test
+// STS3215 (1:345) stall torque at the SO-101's standard 7.4 V supply ≈ 19.5 kg·cm; derated to the ~6 V
+// actually seen under load (16.5 kg·cm) this is ≈ 1.6 N·m — the conservative per-joint saturation limit
+// the effort/headroom analysis compares the gravity torque against. (12 V "Pro" build → ~2.94 N·m.)
+const SERVO_TAU_MAX = 1.6;
 
 /** Eigenvalues (descending) of a symmetric 3×3 matrix [[a00,a01,a02],[a01,a11,a12],[a02,a12,a22]],
  *  via the closed-form trig method (Smith 1961) — no iteration, stable for the small JJᵀ matrices the
@@ -411,6 +415,64 @@ export class WorkspacePlanner {
     }
     if (best.size === 0) return null;
     return { cells: best, cell, wMax, meanDex: dexN ? dexSum / dexN : 0, arms };
+  }
+
+  /** #2 Effort / torque headroom map — for each top-down graspable WORLD cell, the BEST (highest)
+   *  headroom any reaching config leaves: headroom = min over driving joints of 1 − |τ_gravity| / τ_max,
+   *  where τ_gravity is the joint's gravity-only generalized force (qfrc_bias at qvel = 0, from a static
+   *  mj_forward) and τ_max is the STS3215 stall torque. 1 = idle/safe, 0 = a joint at saturation. Coarse
+   *  by design; the gravity torque is independent of base yaw, so the base joint is swept only to fill
+   *  cells. Combines every arm in scope. */
+  getEffort(armIds?: string[], cell = CELL, baseSteps = 48, resolution = 5, tauMax = SERVO_TAU_MAX): { cells: Map<string, number>; cell: number; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number } | null {
+    const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
+    if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
+    const only = armIds ? new Set(armIds) : null;
+    const scratch: MujocoData = new mujoco.MjData(model);
+    const b = this.cfg.baseBodyId;
+    const bp = model.body_pos as unknown as Float32Array, bq = model.body_quat as unknown as Float32Array;
+    const savedP = [bp[b * 3], bp[b * 3 + 1], bp[b * 3 + 2]];
+    const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
+    const best = new Map<string, number>();
+    let minH = 1, hSum = 0, hN = 0, arms = 0;
+    try {
+      for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
+      const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
+      const nArm = Math.max(2, resolution), nBase = Math.max(nArm, baseSteps);
+      const armTotal = Math.pow(nArm, armJoints.length);
+      const idx = new Array(armJoints.length).fill(0);
+      for (const arm of this.arms) {
+        if (only && !only.has(arm.id)) continue;
+        if (!this.armPose.has(arm.id)) continue;
+        arms++;
+        this.setSweepBase(arm.x, arm.y, arm.yaw);
+        for (let bi = 0; bi < nBase; bi++) {
+          scratch.qpos[base.qposAdr] = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
+          for (let c = 0; c < armTotal; c++) {
+            let rem = c;
+            for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
+            for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; scratch.qpos[sj.qposAdr] = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); }
+            mujoco.mj_forward(model, scratch); // qvel defaults to 0 → qfrc_bias is the pure gravity torque
+            const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
+            if (tz < 0 || tz > Z_BAND) continue;
+            if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
+            let head = 1; // min headroom over the driving joints (the most-stressed joint sets the limit)
+            for (const sj of sweptJoints) { const h = 1 - Math.abs(scratch.qfrc_bias[sj.dofAdr]) / tauMax; if (h < head) head = h; }
+            head = Math.max(0, Math.min(1, head));
+            const key = Math.round(tx / cell) + ',' + Math.round(ty / cell);
+            if (head > (best.get(key) ?? -1)) best.set(key, head);
+            if (head < minH) minH = head; hSum += head; hN++;
+          }
+        }
+      }
+    } finally {
+      bp[b * 3] = savedP[0]; bp[b * 3 + 1] = savedP[1]; bp[b * 3 + 2] = savedP[2];
+      bq[b * 4] = savedQ[0]; bq[b * 4 + 1] = savedQ[1]; bq[b * 4 + 2] = savedQ[2]; bq[b * 4 + 3] = savedQ[3];
+      mujoco.mj_forward(model, scratch);
+      scratch.delete();
+    }
+    if (best.size === 0) return null;
+    return { cells: best, cell, minHeadroom: hN ? minH : 1, meanHeadroom: hN ? hSum / hN : 1, tauMax, arms };
   }
 
   /** #11 layout optimizer — score every candidate base position (cx,cy) by how many worktop cells the

@@ -12,11 +12,11 @@ interface Analysis {
   icon: ComponentType<{ className?: string }>;
   figure?: FigureKey; // which live figure this maps to (status === 'live'/'basic')
 }
-export type FigureKey = 'reach' | 'coverage' | 'depth' | 'conflict' | 'layout' | 'manip';
+export type FigureKey = 'reach' | 'coverage' | 'depth' | 'conflict' | 'layout' | 'manip' | 'effort';
 
 export const ANALYSES: Analysis[] = [
   { n: 1, title: 'Manipulability / dexterity', purpose: 'How well-conditioned the arm is per cell — agile vs near-singular.', metric: 'Yoshikawa w + inverse condition number', status: 'live', icon: Gauge, figure: 'manip' },
-  { n: 2, title: 'Effort / torque headroom', purpose: 'Where gravity alone pushes the STS3215 servos toward saturation.', metric: '1 − |τ_gravity| / τ_max (min over joints)', status: 'planned', icon: Zap },
+  { n: 2, title: 'Effort / torque headroom', purpose: 'Where gravity alone pushes the STS3215 servos toward saturation.', metric: '1 − |τ_gravity| / τ_max (min over joints)', status: 'live', icon: Zap, figure: 'effort' },
   { n: 3, title: 'Reachability / capability', purpose: 'Which table cells the arm can actually grasp top-down.', metric: 'tool-down samples / cell', status: 'live', icon: Target, figure: 'reach' },
   { n: 4, title: 'Cycle time / throughput', purpose: 'Layout speed — pick → place → retreat time per cycle.', metric: 'trapezoidal joint time, slowest-joint synced', status: 'planned', icon: Timer },
   { n: 5, title: 'Resolution (GSD) map', purpose: 'How fine (mm/px) the camera resolves across the table.', metric: '2·z·tan(HFOV/2) / h_px', status: 'planned', icon: Scan },

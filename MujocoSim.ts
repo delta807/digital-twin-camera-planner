@@ -201,6 +201,12 @@ export class MujocoSim {
             const jid = m.actuator_trnid[2 * i];
             return (jid >= 0 && jid < m.njnt) ? m.jnt_qposadr[jid] : -1;
         };
+        // The joint's velocity/torque (qvel/qfrc) address — needed to read gravity torque (qfrc_bias)
+        // for the effort/headroom analysis. Differs from qposAdr when free/ball joints precede it.
+        const actuatorDadr = (i: number): number => {
+            const jid = m.actuator_trnid[2 * i];
+            return (jid >= 0 && jid < m.njnt) ? m.jnt_dofadr[jid] : -1;
+        };
         // Real SO-101 follower joint limits (rad) from so101_new_calib.urdf, for the 4
         // position-driving joints [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex].
         // NOTE: these are TIGHTER than the Menagerie model's "approximate" limits (esp.
@@ -208,7 +214,7 @@ export class MujocoSim {
         // ±1.92 rad (±110°) base rotation is why reach is a fan, not a full 360° ring.
         const ranges: Array<[number, number]> = [[-1.91986, 1.91986], [-1.74533, 1.74533], [-1.69, 1.69], [-1.65806, 1.65806]];
         const sweptJoints: SweptJoint[] = ranges
-            .map((r, i) => ({ qposAdr: actuatorQadr(i), lo: r[0], hi: r[1] }))
+            .map((r, i) => ({ qposAdr: actuatorQadr(i), dofAdr: actuatorDadr(i), lo: r[0], hi: r[1] }))
             .filter(j => j.qposAdr >= 0);
         const zeroQposAdr = [4, 5].map(actuatorQadr).filter(a => a >= 0); // Wrist_Roll, Jaw
 

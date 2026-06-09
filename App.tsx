@@ -21,7 +21,7 @@ import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector, MetricsCard } from './components/SelectionInspector';
 import { AnalysisPanel } from './components/AnalysisPanel';
-import type { ReachData, LayoutData, ManipData } from './analysis/figures';
+import type { ReachData, LayoutData, ManipData, EffortData } from './analysis/figures';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -317,6 +317,20 @@ export function App() {
     let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
     if (!st) for (const k of m.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * m.cell - cx), Math.abs(dj * m.cell - cy)); }
     return { ...m, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
+  };
+  // #2 effort/torque headroom — best gravity-torque headroom per top-down-graspable WORLD cell. Same
+  // scope rules + framing as manipulability (All = every arm; a station = its arms over that worktop).
+  const getEffort = (): EffortData | null => {
+    const p = planner(); if (!p) return null;
+    const armIds = analysisStation === 'all' ? undefined : armIdsAt(analysisStation);
+    const e = p.getEffort(armIds);
+    if (!e) return null;
+    const st = analysisStation === 'all' ? null : analysisStationList().find((s) => s.id === analysisStation);
+    const wc = workcellConfigRef.current;
+    const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0);
+    let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
+    if (!st) for (const k of e.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * e.cell - cx), Math.abs(dj * e.cell - cy)); }
+    return { ...e, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
   };
   // #7 high-detail snapshot is OPT-IN (a 1 s sweep can't run on every move). The live dock uses the
   // fast grid; this re-sweeps the primary finely for a crisp figure/PNG. Cleared whenever the layout
@@ -2175,7 +2189,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
         armsInScope={analysisStation === 'all' ? armInstances.length : armIdsAt(analysisStation).length}
         sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />

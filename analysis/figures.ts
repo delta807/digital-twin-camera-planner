@@ -29,6 +29,10 @@ export const TURBO = rampSampler([
 export const VIRIDIS = rampSampler([
   [68, 1, 84], [72, 40, 120], [62, 73, 137], [49, 104, 142], [38, 130, 142], [31, 158, 137], [53, 183, 121], [110, 206, 88], [181, 222, 43], [253, 231, 37],
 ]);
+// Stoplight ramp for "headroom" metrics: 0 = red (saturated/danger) → yellow → 1 = green (safe/idle).
+export const RDYLGN = rampSampler([
+  [165, 0, 38], [215, 48, 39], [244, 109, 67], [253, 174, 97], [254, 224, 139], [217, 239, 139], [166, 217, 106], [102, 189, 99], [26, 152, 80], [0, 104, 55],
+]);
 const css = (c: RGB) => `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`;
 
 // ── Shared frame: axes box + ticks + title + optional colorbar. Returns the data-area rect. ──
@@ -233,6 +237,34 @@ export function drawManipulability(canvas: HTMLCanvasElement, d: ManipData) {
   }
   // table-centre marker (cyan +)
   ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
+  const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
+  ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
+}
+
+// ── #2 Effort / torque headroom map: per top-down-graspable cell, the BEST headroom (1 − |gravity
+//    torque| / stall) any reaching config leaves at the most-stressed joint. Green = idle/safe,
+//    red = the servo is fighting gravity near saturation (it'll sag / overheat there). ──
+export interface EffortData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number; label?: string; }
+export function drawEffort(canvas: HTMLCanvasElement, d: EffortData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const minPct = Math.round(d.minHeadroom * 100), meanPct = Math.round(d.meanHeadroom * 100);
+  const a = frame(ctx, W, H, {
+    title: (d.label ? `${d.label} · ` : '') + `Effort · gravity-torque headroom\nmin ${minPct}%  ·  mean ${meanPct}%  ·  τ_max ${d.tauMax.toFixed(2)} N·m`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'torque headroom  (1 = idle, 0 = saturated)', vr: [0, 1], cmap: RDYLGN },
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
+      const v = d.cells.get(Math.round(x / d.cell) + ',' + Math.round(y / d.cell));
+      if (v === undefined) continue;                    // not graspable top-down → leave white
+      ctx.fillStyle = css(RDYLGN(Math.max(0, Math.min(1, v))));
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+  // table-centre marker (slate +, so it reads over the green/red map)
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
   ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
 }
