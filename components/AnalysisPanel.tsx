@@ -84,7 +84,11 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
     c.toBlob((b) => { if (!b) return; const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `${title.replace(/\s+/g, '_').toLowerCase()}.png`; a.click(); URL.revokeObjectURL(u); });
   };
   return (
-    <div className={`relative inline-block rounded-lg overflow-hidden border bg-white shadow-sm transition-all ${flash ? 'border-indigo-500 ring-2 ring-indigo-500/60' : 'border-black/10'}`}>
+    // content-visibility:auto lets the browser SKIP painting figures scrolled out of view — with ~11 big
+    // canvases inside a backdrop-blurred panel, compositing them all on every scroll frame was the jank.
+    // contain-intrinsic-size reserves their box so the scrollbar/layout stays stable while skipped.
+    <div className={`relative inline-block rounded-lg overflow-hidden border bg-white shadow-sm transition-all ${flash ? 'border-indigo-500 ring-2 ring-indigo-500/60' : 'border-black/10'}`}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: `${width}px ${height}px` }}>
       <canvas ref={ref} />
       <div className="absolute top-2 right-2 flex items-center gap-1">
         <button onClick={() => setZoom(true)} title="Expand to read labels"

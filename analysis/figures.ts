@@ -91,6 +91,18 @@ function frame(ctx: CanvasRenderingContext2D, W: number, H: number, o: FrameOpts
 const sx = (a: Axes, x: number) => a.x0 + (x - a.xr[0]) / (a.xr[1] - a.xr[0]) * (a.x1 - a.x0);
 const sy = (a: Axes, y: number) => a.y1 - (y - a.yr[0]) / (a.yr[1] - a.yr[0]) * (a.y1 - a.y0);
 
+/** Worktop/workcell footprint (half-extents hx,hy around the figure centre cx,cy), as a dashed
+ *  rectangle — so when a map's window is larger than the table you can see where the table actually is. */
+export type Worktop = { hx: number; hy: number };
+function drawWorktop(ctx: CanvasRenderingContext2D, a: Axes, cx: number, cy: number, wt?: Worktop) {
+  if (!wt) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(15,23,42,0.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+  const px0 = sx(a, cx - wt.hx), px1 = sx(a, cx + wt.hx), py0 = sy(a, cy - wt.hy), py1 = sy(a, cy + wt.hy);
+  ctx.strokeRect(Math.min(px0, px1), Math.min(py0, py1), Math.abs(px1 - px0), Math.abs(py1 - py0));
+  ctx.restore();
+}
+
 // ── Figure 2: reachability heatmap ──
 export interface ReachData {
   cells: Map<string, number>; cellsMax: Map<string, number>;
@@ -100,6 +112,7 @@ export interface ReachData {
   center: [number, number]; // table-centre marker (world)
   arms?: number;           // >1 → combined multi-arm figure (cell value = # arms reaching, not samples)
   label?: string;          // per-workstation figure title (e.g. "Workstation 2")
+  worktop?: Worktop;       // dashed table outline when the window exceeds the worktop
 }
 export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
@@ -130,6 +143,7 @@ export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // table-centre marker (cyan +)
   ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
@@ -159,11 +173,12 @@ export function drawConflict(canvas: HTMLCanvasElement, d: ReachData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
 }
 
 // ── #9 Handoff feasibility: where two arms can EXCHANGE an object. Cells ≥2 arms can grasp top-down,
 //    coloured by handoff QUALITY (how well the best two arms each grasp it); star = best exchange cell. ──
-export interface HandoffData { cells: Map<string, number>; best: { x: number; y: number; q: number }; count: number; cell: number; half: number; center: [number, number]; arms: number; }
+export interface HandoffData { cells: Map<string, number>; best: { x: number; y: number; q: number }; count: number; cell: number; half: number; center: [number, number]; arms: number; worktop?: Worktop; }
 export function drawHandoff(canvas: HTMLCanvasElement, d: HandoffData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const a = frame(ctx, W, H, {
@@ -181,6 +196,7 @@ export function drawHandoff(canvas: HTMLCanvasElement, d: HandoffData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // best exchange cell — magenta star
   const bx = sx(a, d.best.x), by = sy(a, d.best.y);
   ctx.strokeStyle = '#ec4899'; ctx.fillStyle = '#ec4899'; ctx.lineWidth = 2;
@@ -191,7 +207,7 @@ export function drawHandoff(canvas: HTMLCanvasElement, d: HandoffData) {
 
 // ── #4 Cycle-time map: per graspable cell, the fastest home→pick→retreat service time (trapezoidal,
 //    slowest-joint-synced). Green = quick to service, red = slow (far / awkward joint travel). ──
-export interface CycleData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minT: number; maxT: number; meanT: number; arms: number; label?: string; }
+export interface CycleData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minT: number; maxT: number; meanT: number; arms: number; label?: string; worktop?: Worktop; }
 export function drawCycleTime(canvas: HTMLCanvasElement, d: CycleData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const span = (d.maxT - d.minT) || 1;
@@ -210,6 +226,7 @@ export function drawCycleTime(canvas: HTMLCanvasElement, d: CycleData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
   ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
@@ -258,7 +275,7 @@ export function drawThroughput(canvas: HTMLCanvasElement, d: ThroughputData) {
 
 // ── #11 Layout-optimizer map: score every candidate arm-base position by how much of the worktop it
 //    could reach, so the brightest cell = the best mount. star marks the optimum. ──
-export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; curCov: number; cur: { x: number; y: number }; }
+export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; curCov: number; cur: { x: number; y: number }; worktop?: Worktop; }
 export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const bestPct = d.total ? Math.round((100 * d.best.cov) / d.total) : 0;
@@ -279,6 +296,7 @@ export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
     ctx.fillStyle = css(VIRIDIS(d.total ? s.cov / d.total : 0));
     ctx.fillRect(sx(a, s.x) - cpx / 2, sy(a, s.y) - cpx / 2, cpx, cpx);
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // worktop centre marker (cyan +) — the figure's origin / frame reference.
   ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 2;
   const ox = sx(a, d.center[0]), oy = sy(a, d.center[1]);
@@ -311,7 +329,7 @@ export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
 // ── #1 Manipulability / dexterity map: per top-down-graspable cell, the BEST inverse condition number
 //    (σ_min/σ_max) of the TCP translational Jacobian — 1 (bright) = isotropic/agile, →0 (dark) =
 //    near-singular (the arm is stretched out or folded, fine moves cost large joint motion). ──
-export interface ManipData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; wMax: number; meanDex: number; arms: number; label?: string; }
+export interface ManipData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; wMax: number; meanDex: number; arms: number; label?: string; worktop?: Worktop; }
 export function drawManipulability(canvas: HTMLCanvasElement, d: ManipData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const meanPct = Math.round(d.meanDex * 100);
@@ -330,6 +348,7 @@ export function drawManipulability(canvas: HTMLCanvasElement, d: ManipData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // table-centre marker (cyan +)
   ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
@@ -339,7 +358,7 @@ export function drawManipulability(canvas: HTMLCanvasElement, d: ManipData) {
 // ── #2 Effort / torque headroom map: per top-down-graspable cell, the BEST headroom (1 − |gravity
 //    torque| / stall) any reaching config leaves at the most-stressed joint. Green = idle/safe,
 //    red = the servo is fighting gravity near saturation (it'll sag / overheat there). ──
-export interface EffortData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number; label?: string; }
+export interface EffortData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number; label?: string; worktop?: Worktop; }
 export function drawEffort(canvas: HTMLCanvasElement, d: EffortData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const minPct = Math.round(d.minHeadroom * 100), meanPct = Math.round(d.meanHeadroom * 100);
@@ -358,6 +377,7 @@ export function drawEffort(canvas: HTMLCanvasElement, d: EffortData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // table-centre marker (slate +, so it reads over the green/red map)
   ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
@@ -366,7 +386,7 @@ export function drawEffort(canvas: HTMLCanvasElement, d: EffortData) {
 
 // ── #5 Resolution (GSD) map: mm/pixel the overhead D435i resolves across the table. Brighter (yellow)
 //    = coarser/blurrier; dark (purple) = finer/sharper. NaN cells (out of FOV / occluded) stay white. ──
-export interface GsdData { gsd: number[]; n: number; half: number; center: [number, number]; }
+export interface GsdData { gsd: number[]; n: number; half: number; center: [number, number]; worktop?: Worktop; }
 export function drawGsd(canvas: HTMLCanvasElement, d: GsdData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const vals = d.gsd.filter((v) => Number.isFinite(v));
@@ -390,6 +410,7 @@ export function drawGsd(canvas: HTMLCanvasElement, d: GsdData) {
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }
+  drawWorktop(ctx, a, d.center[0], d.center[1], d.worktop);
   // table-centre marker (cyan +)
   ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
   const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);

@@ -207,6 +207,12 @@ export function App() {
     ];
   };
   const armIdsAt = (stationId: string) => armInstancesRef.current.filter((a) => (a.stationId ?? 'primary') === stationId).map((a) => a.id);
+  // Worktop half-extents for the dashed table outline drawn on the figures (so a window wider than the
+  // table shows where the table is). A station → its own worktop; else the primary workcell.
+  const worktopHalf = (st?: { len: number; wid: number } | null) => {
+    const wc = workcellConfigRef.current;
+    return st ? { hx: st.len / 2, hy: st.wid / 2 } : { hx: (wc.length ?? 0.6) / 2, hy: (wc.width ?? 0.4) / 2 };
+  };
   // One station's reach figure (its arms, centred on its worktop). Shared by the per-station list + the scope filter.
   const buildStationReach = (st: { id: string; label: string; x: number; y: number; len: number; wid: number }): ReachData | null => {
     const p = planner(); if (!p) return null;
@@ -223,7 +229,7 @@ export function App() {
     // made the fan look truncated. reachPct stays worktop-relative (the meaningful "% of worktop").
     let half = Math.max(0.4, hx, hy);
     for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell - st.x), Math.abs(dj * w.cell - st.y)); }
-    return { ...w, half: Math.min(1.3, half + 0.08), reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label };
+    return { ...w, half: Math.min(1.3, half + 0.08), reachPct: total ? grasp / total : 0, center: [st.x, st.y], arms: armIds.length, label: st.label, worktop: worktopHalf(st) };
   };
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {
@@ -255,7 +261,7 @@ export function App() {
     let half = Math.max(0.4, halfL, halfW);
     if (world) for (const k of world.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * world.cell), Math.abs(dj * world.cell)); }
     half = Math.min(1.3, half + (world ? 0.05 : 0));
-    return { ...g, baseX, baseY, half, reachPct: total ? grasp / total : 0, center: [cx, cy], arms: world ? world.arms : 1 };
+    return { ...g, baseX, baseY, half, reachPct: total ? grasp / total : 0, center: [cx, cy], arms: world ? world.arms : 1, worktop: worktopHalf() };
   };
   // B3 — per-WORKSTATION reach: the combined figure shows the whole space; this returns one figure per
   // workstation that has arms, each centred on that station's worktop with only its own arms. Only
@@ -276,10 +282,10 @@ export function App() {
   };
   // #5 resolution/GSD — overhead camera mm/px across the (scoped) worktop, centred like coverage.
   const getGsd = () => {
-    if (analysisStation === 'all') { const g = simRef.current?.gsdGrid(); return g ? { ...g, center: [0, 0] as [number, number] } : null; }
+    if (analysisStation === 'all') { const g = simRef.current?.gsdGrid(); return g ? { ...g, center: [0, 0] as [number, number], worktop: worktopHalf() } : null; }
     const st = analysisStationList().find((s) => s.id === analysisStation);
     const g = simRef.current?.gsdGrid(0.4, 0.025, analysisStation, st ? [st.x, st.y] : [0, 0]);
-    return g ? { ...g, center: (st ? [st.x, st.y] : [0, 0]) as [number, number] } : null;
+    return g ? { ...g, center: (st ? [st.x, st.y] : [0, 0]) as [number, number], worktop: worktopHalf(st) } : null;
   };
   // #8 inter-arm conflict — the overlap zone (cells reachable by ≥2 arms) is where the arms share space
   // and can collide. Scope-aware: All = the whole layout; a station = just its arms (needs ≥2 there).
@@ -294,7 +300,7 @@ export function App() {
     let half = 0.4;
     if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
     else for (const k of w.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * w.cell), Math.abs(dj * w.cell)); }
-    return { ...w, half: Math.min(1.3, half + (st ? 0 : 0.05)), reachPct: 0, center: st ? [st.x, st.y] : [0, 0], arms: w.arms };
+    return { ...w, half: Math.min(1.3, half + (st ? 0 : 0.05)), reachPct: 0, center: st ? [st.x, st.y] : [0, 0], arms: w.arms, worktop: worktopHalf(st) };
   };
   // #9 handoff feasibility — the bimanual exchange zone (cells ≥2 arms can grasp) + the best handoff cell.
   // Same scope rules as #8 (needs ≥2 arms in scope), framed as an opportunity (quality) rather than risk.
@@ -309,7 +315,7 @@ export function App() {
     let half = 0.4;
     if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
     else for (const k of h.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * h.cell), Math.abs(dj * h.cell)); }
-    return { ...h, half: Math.min(1.3, half + (st ? 0 : 0.05)), center: st ? [st.x, st.y] : [0, 0] };
+    return { ...h, half: Math.min(1.3, half + (st ? 0 : 0.05)), center: st ? [st.x, st.y] : [0, 0], worktop: worktopHalf(st) };
   };
   // #4 cycle time — per-cell round-trip pick service time. Same scope/framing as manipulability/effort.
   const getCycleTime = (): CycleData | null => {
@@ -322,7 +328,7 @@ export function App() {
     const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0);
     let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
     if (!st) for (const k of c.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * c.cell - cx), Math.abs(dj * c.cell - cy)); }
-    return { ...c, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
+    return { ...c, half: Math.min(1.3, half + 0.05), center: [cx, cy], worktop: worktopHalf(st) };
   };
   // #10 1-vs-2 arm throughput — needs ≥2 arms in scope (like #8/#9). No spatial frame (it's a bar figure).
   const getThroughput = (): ThroughputData | null => {
@@ -342,14 +348,14 @@ export function App() {
       const primary = armInstancesRef.current.find((a) => a.primary);
       const cur = primary ? { x: primary.x - cx, y: primary.y - cy } : { x: 0, y: 0 }; // current mount, worktop-relative
       const s = p.getLayoutScores(0.45, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2, undefined, undefined, cur);
-      return s ? { ...s, center: [0, 0] } : null;
+      return s ? { ...s, center: [0, 0], worktop: worktopHalf() } : null;
     }
     const st = analysisStationList().find((s) => s.id === analysisStation); if (!st) return null;
     const armId = armIdsAt(st.id)[0];
     const arm = armInstancesRef.current.find((a) => a.id === armId);
     const cur = arm ? { x: arm.x - st.x, y: arm.y - st.y } : { x: 0, y: 0 };
     const s = p.getLayoutScores(0.45, st.len / 2, st.wid / 2, undefined, armId, cur);
-    return s ? { ...s, center: [0, 0] } : null; // station-relative (origin = this worktop's centre)
+    return s ? { ...s, center: [0, 0], worktop: worktopHalf(st) } : null; // station-relative (origin = this worktop's centre)
   };
   // #1 manipulability/dexterity — best inverse condition number per top-down-graspable WORLD cell.
   // Scope-aware: All = every arm over the primary worktop; a station = its arms over that worktop.
@@ -364,7 +370,7 @@ export function App() {
     // Fit the figure to the reached cells (arms can sit off the primary worktop in All-scope).
     let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
     if (!st) for (const k of m.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * m.cell - cx), Math.abs(dj * m.cell - cy)); }
-    return { ...m, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
+    return { ...m, half: Math.min(1.3, half + 0.05), center: [cx, cy], worktop: worktopHalf(st) };
   };
   // #2 effort/torque headroom — best gravity-torque headroom per top-down-graspable WORLD cell. Same
   // scope rules + framing as manipulability (All = every arm; a station = its arms over that worktop).
@@ -378,7 +384,7 @@ export function App() {
     const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0);
     let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
     if (!st) for (const k of e.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * e.cell - cx), Math.abs(dj * e.cell - cy)); }
-    return { ...e, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
+    return { ...e, half: Math.min(1.3, half + 0.05), center: [cx, cy], worktop: worktopHalf(st) };
   };
   // #7 high-detail snapshot is OPT-IN (a 1 s sweep can't run on every move). The live dock uses the
   // fast grid; this re-sweeps the primary finely for a crisp figure/PNG. Cleared whenever the layout
@@ -2391,7 +2397,9 @@ export function App() {
             const drawerBtn = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-200 hover:bg-slate-800' : 'bg-white/90 border-white/80 text-slate-700 hover:bg-white';
             return (
               <>
-                {!sceneIsFranka && !dockOpen && (
+                {/* Hidden while the analysis panel is open — the panel's own header swap already covers
+                    "go to dock", so this floating toggle would be redundant (and overlap the panel). */}
+                {!sceneIsFranka && !dockOpen && !analysisOpen && (
                   <button onClick={() => { setDockOpen(true); setAnalysisOpen(false); }} title="Show workspace dock" aria-label="Show workspace dock"
                     className={`absolute top-3 left-[4.25rem] z-40 w-9 h-9 rounded-xl glass-panel border shadow-lg grid place-items-center transition-colors ${drawerBtn}`}>
                     <PanelLeft className="w-[18px] h-[18px]" />

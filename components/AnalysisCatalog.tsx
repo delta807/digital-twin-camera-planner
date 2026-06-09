@@ -39,7 +39,9 @@ const STATUS_META: Record<Status, { label: string; chip: string }> = {
  * their figure below; planned cards describe what's coming. Sits at the top of the analysis dock.
  */
 export function AnalysisCatalog({ isDarkMode, onSelect, scopeLabel, armsInScope }: { isDarkMode: boolean; onSelect: (figure: FigureKey) => void; scopeLabel: string; armsInScope: number }) {
-  const cardBase = isDarkMode ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/[0.02]';
+  // Opaque cards (the panel itself is translucent so the sim shows through the GAPS, but each card stays
+  // solid so its text/metric is fully legible against the moving scene behind).
+  const cardBase = isDarkMode ? 'border-white/10 bg-slate-800' : 'border-black/10 bg-white';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   // Per-scope catalog: shared workspace (#7) + inter-arm collision (#8) need ≥2 arms IN THIS SCOPE,
   // so for a 1-arm workstation they fall back to "needs ≥2 arms" instead of LIVE.
