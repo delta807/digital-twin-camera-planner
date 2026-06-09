@@ -5,6 +5,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { X, Download, Sparkles, Radio, PanelLeft } from 'lucide-react';
 import { drawReachability, drawDepth, drawCoverage, type ReachData, type DepthData, type CoverageData } from '../analysis/figures';
+import { AnalysisCatalog } from './AnalysisCatalog';
 
 interface Props {
   open: boolean;
@@ -68,6 +69,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
   const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, rev: 0 });
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), rev: s.rev + 1 })), 160);
@@ -93,14 +95,22 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
         </button>
         <button onClick={onClose} title="Close" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><X className="w-4 h-4" /></button>
       </div>
-      <div className="flex flex-wrap gap-3 items-start p-3 overflow-auto custom-scrollbar">
-        {reach
-          ? <Figure title="SO-101 reachability" width={420} height={380} draw={(c) => drawReachability(c, reach)} rev={rev} />
-          : <p className={`text-xs ${subtle}`}>Reach grid not ready — compute reachability first.</p>}
-        {/* B3 — per-workstation reach (only when there are multiple workstations). */}
-        {stations.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} />)}
-        {depth && <Figure title="Camera depth (overhead)" width={420} height={270} draw={(c) => drawDepth(c, depth)} rev={rev} />}
-        {coverage && <Figure title="Camera coverage" width={630} height={235} draw={(c) => drawCoverage(c, coverage)} rev={rev} />}
+      <div ref={scrollRef} className="p-3 overflow-auto custom-scrollbar space-y-3">
+        {/* Catalog grid of every layout analysis; live/basic cards jump to their figure below. */}
+        <AnalysisCatalog isDarkMode={isDarkMode} onSelect={(fig) => scrollRef.current?.querySelector(`[data-figure="${fig}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <div className="flex flex-wrap gap-3 items-start pt-1 border-t border-black/5">
+          {/* Full-width zero-height anchors so the catalog cards can scrollIntoView to each figure. */}
+          <div data-figure="reach" className="w-full h-0 -mt-1" />
+          {reach
+            ? <Figure title="SO-101 reachability" width={420} height={380} draw={(c) => drawReachability(c, reach)} rev={rev} />
+            : <p className={`text-xs ${subtle}`}>Reach grid not ready — compute reachability first.</p>}
+          {/* B3 — per-workstation reach (only when there are multiple workstations). */}
+          {stations.map((s) => <Figure key={s.label} title={`${s.label} reach`} width={420} height={380} draw={(c) => drawReachability(c, s.data)} rev={rev} />)}
+          <div data-figure="coverage" className="w-full h-0" />
+          {coverage && <Figure title="Camera coverage" width={630} height={235} draw={(c) => drawCoverage(c, coverage)} rev={rev} />}
+          <div data-figure="depth" className="w-full h-0" />
+          {depth && <Figure title="Camera depth (overhead)" width={420} height={270} draw={(c) => drawDepth(c, depth)} rev={rev} />}
+        </div>
       </div>
     </div>
   );
