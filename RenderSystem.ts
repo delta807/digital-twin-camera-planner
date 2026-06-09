@@ -517,7 +517,15 @@ export class RenderSystem {
             depth[y * w + x] = d; if (d < lo) lo = d; if (d > hi) hi = d;
         }
         const span = hi - lo || 1;
-        for (let i = 0; i < depth.length; i++) if (!Number.isNaN(depth[i])) depth[i] = (depth[i] - lo) / span; // stretch to 0..1
+        // Linear min-max stretch crushes table-level detail: the tall arm (closest to the overhead
+        // cam) owns most of the range, so cubes/posts sitting on the table compress into a thin band
+        // and blend together. An exponential (convex) curve expands the FAR end — where the table and
+        // the objects ON it live — so those objects separate out instead of dying into one colour.
+        const K = 2.6, eK = Math.exp(K) - 1;
+        for (let i = 0; i < depth.length; i++) if (!Number.isNaN(depth[i])) {
+            const t = (depth[i] - lo) / span;
+            depth[i] = (Math.exp(K * t) - 1) / eK;
+        }
         return { depth, w, h };
     }
 

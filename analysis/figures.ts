@@ -94,13 +94,20 @@ export interface ReachData {
   half: number;            // grid half-extent (m), axes = [-half, half]
   reachPct: number;        // graspable fraction of the table (0..1)
   center: [number, number]; // table-centre marker (world)
+  arms?: number;           // >1 → combined multi-arm figure (cell value = # arms reaching, not samples)
 }
 export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  // Single arm → cell value is tool-down sample density (1..4). Multi-arm → it's how many arms reach
+  // the cell (1..N), so the colour shows where workspaces OVERLAP.
+  const multi = (d.arms ?? 1) > 1;
+  const vmax = multi ? Math.max(2, d.arms!) : 4;
   const a = frame(ctx, W, H, {
-    title: `SO-101 reachability\nreach ${Math.round(d.reachPct * 100)}% of table`,
+    title: multi
+      ? `${d.arms} arms · combined reach\nreach ${Math.round(d.reachPct * 100)}% of table`
+      : `SO-101 reachability\nreach ${Math.round(d.reachPct * 100)}% of table`,
     xlabel: 'X (m)', ylabel: 'Y (m)', xr: [-d.half, d.half], yr: [-d.half, d.half],
-    colorbar: { label: 'tool-down samples / cell', vr: [1, 4], cmap: MAGMA },
+    colorbar: { label: multi ? 'arms reaching / cell' : 'tool-down samples / cell', vr: [1, vmax], cmap: MAGMA },
   });
   const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5; // one cell in px (+overlap to avoid seams)
   for (let x = -d.half; x <= d.half + 1e-6; x += d.cell) {
@@ -109,7 +116,7 @@ export function drawReachability(canvas: HTMLCanvasElement, d: ReachData) {
       const key = di + ',' + dj;
       const reach = d.cellsMax.has(key), grasp = d.cells.get(key);
       if (!reach) continue;                              // unreachable → leave white
-      ctx.fillStyle = grasp ? css(MAGMA((Math.min(4, grasp) - 1) / 3)) : '#c8c8c8'; // gray = reachable, not graspable
+      ctx.fillStyle = grasp ? css(MAGMA((Math.min(vmax, grasp) - 1) / (vmax - 1))) : '#c8c8c8'; // gray = reachable, not graspable
       ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
     }
   }

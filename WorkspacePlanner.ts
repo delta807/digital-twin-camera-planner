@@ -105,6 +105,8 @@ export class WorkspacePlanner {
   // Per-arm blocked cells (graspable but no collision-free config reaches them) → the red overlay.
   private armBlocked = new Map<string, Map<string, number>>();
   private armCells = new Map<string, Map<string, number>>(); // per-arm graspable cells (base-relative) for metrics
+  private armCellsMax = new Map<string, Map<string, number>>(); // per-arm kinematic envelope (base-relative) for the multi-arm figure
+  private armPose = new Map<string, { x: number; y: number; yaw: number }>(); // per-arm world pose to project its cells
   private baseX = 0;
   private baseY = 0;
   /** Result of the last base-placement pass, for the UI readout. */
@@ -281,6 +283,26 @@ export class WorkspacePlanner {
     }
   }
 
+  /** #4 — combined MULTI-ARM reach in WORLD coordinates: every arm's cells projected to the shared
+   *  table frame, each world cell counting HOW MANY arms can reach it (1..N). Lets the figure show all
+   *  arms at once + where their workspaces overlap, instead of only the primary arm's base-relative dome. */
+  getReachWorld(cell = CELL): { cells: Map<string, number>; cellsMax: Map<string, number>; baseX: number; baseY: number; cell: number; arms: number } | null {
+    if (this.armCells.size === 0) return null;
+    const reach = new Map<string, Set<string>>(), envelope = new Map<string, Set<string>>();
+    const add = (m: Map<string, Set<string>>, k: string, id: string) => { let s = m.get(k); if (!s) m.set(k, s = new Set()); s.add(id); };
+    const proj = (pose: { x: number; y: number }, key: string) => { const [di, dj] = key.split(',').map(Number); return Math.round((pose.x + di * CELL) / cell) + ',' + Math.round((pose.y + dj * CELL) / cell); };
+    for (const [id, cells] of this.armCells) {
+      const pose = this.armPose.get(id); if (!pose) continue;
+      for (const key of cells.keys()) add(reach, proj(pose, key), id);
+      const env = this.armCellsMax.get(id);
+      if (env) for (const key of env.keys()) add(envelope, proj(pose, key), id);
+    }
+    const cells = new Map<string, number>(), cellsMax = new Map<string, number>();
+    for (const [k, s] of reach) cells.set(k, s.size);          // # arms that can GRASP this world cell
+    for (const [k, s] of envelope) cellsMax.set(k, s.size);    // # arms whose envelope reaches it
+    return { cells, cellsMax, baseX: 0, baseY: 0, cell, arms: this.armCells.size };
+  }
+
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose
    *  swept geometry we collision-test. Memoised; falls back to [] if body_parentid isn't exposed. */
   private getArmBodies(): number[] {
@@ -441,6 +463,8 @@ export class WorkspacePlanner {
       this.armRadials.clear();
       this.armBlocked.clear();
       this.armCells.clear();
+      this.armCellsMax.clear();
+      this.armPose.clear();
       this.lastBlocked = null;
       // Sweep each arm at its OWN base + obstacle set (DRY: the same sweepArm per arm). A single
       // fallback sweep at the current base when no arm list is set yet.
@@ -453,6 +477,8 @@ export class WorkspacePlanner {
         this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
         this.armBlocked.set(arm.id, r.blocked);
         this.armCells.set(arm.id, r.cells);
+        this.armCellsMax.set(arm.id, r.cellsMax);
+        this.armPose.set(arm.id, { x: arm.x, y: arm.y, yaw: arm.yaw });
         if (arm.primary || arms.length === 1) { // mirror the primary for base-placement + localForwardAngle
           this.reachCells = r.cells; this.reachCellsMax = r.cellsMax;
           this.radMax = r.radMax; this.radPrec = r.radPrec; this.baseX = r.baseX; this.baseY = r.baseY;

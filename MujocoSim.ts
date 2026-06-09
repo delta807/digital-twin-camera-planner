@@ -576,12 +576,13 @@ export class MujocoSim {
         const rs = this.renderSys;
         rs.cameraRig?.syncSensorToGizmo(); // pose the overhead camera from its gizmo first
         const overheadCam = rs.cameraRig?.sensorCamera; if (!overheadCam) return null;
-        const wristCam = [...rs.wristCameras.values()][0]?.camera;
+        const wristCams = [...rs.wristCameras.values()].map((w) => w.camera).filter(Boolean);
         const n = Math.floor((2 * half) / step) + 1;
         const pts: THREE.Vector3[] = [];
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(-half + i * step, -half + j * step, 0.005));
         const overhead = rs.computeCoverage(overheadCam, pts);
-        const wrist = wristCam ? rs.computeCoverage(wristCam, pts) : pts.map(() => false);
+        // Union of EVERY arm's wrist cam (was only the first arm's — missed additional arms). #4
+        const wrist = wristCams.reduce<boolean[]>((acc, cam) => { const c = rs.computeCoverage(cam, pts); return acc.map((v, i) => v || c[i]); }, pts.map(() => false));
         const combined = overhead.map((v, i) => v || wrist[i]);
         return { overhead, wrist, combined, n, half };
     }

@@ -198,16 +198,20 @@ export function App() {
   // Build the live reachability figure data: the planner's reach grid + the table-relative reach %.
   const getReach = (): ReachData | null => {
     const p = planner(); if (!p) return null;
-    const g = fineReach ?? p.getReachGrid(); // high-detail snapshot if the user asked for it, else the live grid
+    // With ≥2 arms, show the COMBINED world-frame reach (#4) so every arm + their overlap appear, not
+    // just the primary. High-detail (a single-arm fine sweep) and the 1-arm case stay base-relative.
+    const multiArm = !fineReach && armInstancesRef.current.length > 1;
+    const world = multiArm ? p.getReachWorld() : null;
+    const g = fineReach ?? world ?? p.getReachGrid();
     if (g.cellsMax.size === 0) return null;
     const wc = workcellConfigRef.current;
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
     const halfL = (wc.length ?? 0.6) / 2, halfW = (wc.width ?? 0.4) / 2; // worktop rectangle (X=length, Y=width)
-    // Reach is base-relative → re-centre on the primary arm's CURRENT position so the live dock's
-    // figure (and reachPct) FOLLOW the arm between sweeps. (Yaw changes still need a Recompute to
-    // reshape; the high-detail snapshot uses its own sweep base.)
+    // World/combined cells are already in the table frame (baseX/Y = 0). For the single primary arm,
+    // re-centre on its CURRENT position so the live figure FOLLOWS the arm between sweeps.
     const primary = armInstancesRef.current.find((a) => a.primary);
-    const baseX = fineReach ? g.baseX : (primary?.x ?? g.baseX), baseY = fineReach ? g.baseY : (primary?.y ?? g.baseY);
+    const baseX = world ? 0 : (fineReach ? g.baseX : (primary?.x ?? g.baseX));
+    const baseY = world ? 0 : (fineReach ? g.baseY : (primary?.y ?? g.baseY));
     let total = 0, grasp = 0;
     for (let x = cx - halfL; x <= cx + halfL + 1e-6; x += g.cell)
       for (let y = cy - halfW; y <= cy + halfW + 1e-6; y += g.cell) {
@@ -215,7 +219,11 @@ export function App() {
         const di = Math.round((x - baseX) / g.cell), dj = Math.round((y - baseY) / g.cell);
         if ((g.cells.get(di + ',' + dj) ?? 0) > 0) grasp++;
       }
-    return { ...g, baseX, baseY, half: Math.max(0.4, halfL, halfW), reachPct: total ? grasp / total : 0, center: [cx, cy] };
+    // Widen the figure to fit every arm when combined (arms can sit on far workstations).
+    let half = Math.max(0.4, halfL, halfW);
+    if (world) for (const k of world.cellsMax.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * world.cell), Math.abs(dj * world.cell)); }
+    half = Math.min(1.3, half + (world ? 0.05 : 0));
+    return { ...g, baseX, baseY, half, reachPct: total ? grasp / total : 0, center: [cx, cy], arms: world ? world.arms : 1 };
   };
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
