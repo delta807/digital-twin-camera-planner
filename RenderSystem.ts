@@ -549,7 +549,9 @@ export class RenderSystem {
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert(); // refresh — a non-rendered (station) camera has a stale inverse → empty frustum → 0% coverage
         const camPos = camera.getWorldPosition(new THREE.Vector3());
         const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-        const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group];
+        // Include planningArmsGroup (the non-primary ghost arms) as occluders — additional arms cast
+        // real shadows for a camera, so they must count in coverage too (was only the primary). #2
+        const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group, this.planningArmsGroup];
         const dir = new THREE.Vector3();
         return points.map((P) => {
             if (!frustum.containsPoint(P)) return false;             // outside the camera FOV

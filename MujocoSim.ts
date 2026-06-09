@@ -580,7 +580,10 @@ export class MujocoSim {
     overheadDepth(w = 320, h = 180, stationId?: string): { depth: Float32Array; w: number; h: number } | null {
         const cam = this.analysisOverheadCam(stationId);
         if (!cam) return null;
-        const hide: THREE.Object3D[] = [this.renderSys.planningArmsGroup, ...(this.renderSys.cameraRig?.overlays ?? [])];
+        // Hide only OVERLAYS (FOV lines, reach tiles, gizmo) — NOT planningArmsGroup: those ghosts are
+        // the additional (non-primary) arms, and a real overhead D435i would see them, so they must
+        // appear in the depth. (The overhead D435i feed already keeps them visible; this matches it.)
+        const hide: THREE.Object3D[] = [...(this.renderSys.cameraRig?.overlays ?? [])];
         if (this.planner) hide.push(this.planner.group, this.planner.gizmoHelper);
         return this.renderSys.renderDepth(cam, w, h, hide);
     }
