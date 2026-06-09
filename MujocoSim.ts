@@ -287,8 +287,10 @@ export class MujocoSim {
         }
         else if (kind === 'station') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.stationId === id) m.visible = visible; });
         else if (kind === 'post') {
+            // Extra post → by index; the PRIMARY camera post → only the one tagged selectable='post'
+            // with no postIndex (was hiding ALL posts, incl. extras + satellite posts — #4).
             if (typeof id === 'number') rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.selectable === 'post' && m.userData?.postIndex === id) m.visible = visible; });
-            else rs.baseBuilder.postMeshes.forEach((m) => (m.visible = visible));
+            else rs.baseBuilder.group.children.forEach((m) => { if (m.userData?.selectable === 'post' && m.userData?.postIndex === undefined) m.visible = visible; });
         }
         else if (kind === 'camera') {
             if (typeof id === 'string') { const c = rs.getExtraCamera(id); if (c) { c.glyph.userData.hiddenByUser = !visible; c.glyph.visible = visible; } }

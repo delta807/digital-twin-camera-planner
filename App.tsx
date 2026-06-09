@@ -19,7 +19,7 @@ import { Toolbar } from './components/Toolbar';
 import { UnifiedSidebar } from './components/UnifiedSidebar';
 import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE_ID, D435I_PRESET, D435I_RGB_640X480_PRESET, D435I_STREAM_PROFILES, DEFAULT_CAMERA_TOGGLES, DEFAULT_WORKCELL_CONFIG, DetectedItem, DetectType, LengthUnit, LogEntry, MujocoModule, WorkcellConfig } from './types';
 import type { SelectionInfo } from './SelectionController';
-import { SelectionInspector } from './components/SelectionInspector';
+import { SelectionInspector, MetricsCard } from './components/SelectionInspector';
 import { AnalysisPanel } from './components/AnalysisPanel';
 import type { ReachData } from './analysis/figures';
 import { PlannerToggles } from './WorkspacePlanner';
@@ -2235,7 +2235,6 @@ export function App() {
                   const s = workcellConfig.stations?.find((x) => x.id === selection?.stationId); return s ? { x: s.x, y: s.y, yaw: s.yaw, shapeSides: s.shapeSides, length: s.length, width: s.width, sideExtents: s.sideExtents, cornerRadii: s.cornerRadii, railLengths: s.railLengths, railLinks: s.railLinks } : null;
                 })()}
                 onStation={(patch) => { if (selection?.stationId) handleStationChange(selection.stationId, patch); }}
-                metrics={(selection?.kind === 'station' || selection?.kind === 'arm') ? getMetrics() : null}
                 onCloneStation={() => { if (selection?.stationId === 'primary') handleAddStation(); else if (selection?.stationId) handleCloneStation(selection.stationId); }}
                 wristMount={wristMount}
                 onWristMount={setWristMount}
@@ -2405,6 +2404,8 @@ export function App() {
                     then start the column below it so the Selection card never covers the cube. When the
                     panel is open the cube sits to the LEFT of the column, so the column starts at the top. */}
                 <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${!showSidebar && selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
+                {/* #3 — Metrics is its own card ABOVE the selection card (station/arm contexts). */}
+                {selection && (selection.kind === 'station' || selection.kind === 'arm') && <MetricsCard metrics={getMetrics()} isDarkMode={isDarkMode} />}
                 {selection && inspectorEl(false)}
                 {/* Resize drawer: drag to rebalance the Selection card vs the panels below it. */}
                 {selection && showSidebar && (
