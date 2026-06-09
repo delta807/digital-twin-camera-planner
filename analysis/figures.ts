@@ -269,6 +269,38 @@ export function drawEffort(canvas: HTMLCanvasElement, d: EffortData) {
   ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
 }
 
+// ── #5 Resolution (GSD) map: mm/pixel the overhead D435i resolves across the table. Brighter (yellow)
+//    = coarser/blurrier; dark (purple) = finer/sharper. NaN cells (out of FOV / occluded) stay white. ──
+export interface GsdData { gsd: number[]; n: number; half: number; center: [number, number]; }
+export function drawGsd(canvas: HTMLCanvasElement, d: GsdData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const vals = d.gsd.filter((v) => Number.isFinite(v));
+  let lo = Infinity, hi = -Infinity, sum = 0; for (const v of vals) { if (v < lo) lo = v; if (v > hi) hi = v; sum += v; }
+  if (!vals.length) { lo = 0; hi = 1; }
+  const mean = vals.length ? sum / vals.length : 0;
+  const span = hi - lo || 1;
+  const a = frame(ctx, W, H, {
+    title: `Resolution (GSD) · overhead D435i\n${lo.toFixed(2)}–${hi.toFixed(2)} mm/px  ·  mean ${mean.toFixed(2)} mm/px`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'GSD (mm/px) — lower is sharper', vr: [lo, hi], cmap: VIRIDIS },
+  });
+  const step = (2 * d.half) / (d.n - 1);
+  const cpx = (a.x1 - a.x0) * (step / (2 * d.half)) + 0.5;
+  for (let j = 0; j < d.n; j++) {
+    for (let i = 0; i < d.n; i++) {
+      const v = d.gsd[j * d.n + i]; if (!Number.isFinite(v)) continue; // unseen → white
+      const x = d.center[0] - d.half + i * step, y = d.center[1] - d.half + j * step;
+      ctx.fillStyle = css(VIRIDIS((v - lo) / span));
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+  // table-centre marker (cyan +)
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 3;
+  const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
+  ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
+}
+
 // ── Figure 1: overhead depth map (normalized, with sensor-noise speckle) ──
 export interface DepthData { depth: Float32Array; w: number; h: number; }
 export function drawDepth(canvas: HTMLCanvasElement, d: DepthData) {

@@ -613,6 +613,18 @@ export class MujocoSim {
         return { overhead, wrist, combined, n, half };
     }
 
+    /** #5 GSD / resolution grid for the overhead (D435i) camera: mm/px the sensor resolves at each table
+     *  cell. Same sampling + scoping as coverageGrids, but the overhead cam only (GSD is about the
+     *  top-down sensor). NaN = cell the camera can't resolve (out of FOV / occluded). */
+    gsdGrid(half = 0.4, step = 0.025, stationId?: string, center: [number, number] = [0, 0]): { gsd: number[]; n: number; half: number } | null {
+        const rs = this.renderSys;
+        const overheadCam = this.analysisOverheadCam(stationId); if (!overheadCam) return null;
+        const n = Math.floor((2 * half) / step) + 1;
+        const pts: THREE.Vector3[] = [];
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(center[0] - half + i * step, center[1] - half + j * step, 0.005));
+        return { gsd: rs.computeGsd(overheadCam, pts), n, half };
+    }
+
     setArmInstances(instances: ArmInstance[]) {
         this.armInstances = instances.map((arm) => ({ ...arm }));
         this.renderSys.setPlanningArmInstances(this.armInstances, (j) => this.armPoseTransforms(j));

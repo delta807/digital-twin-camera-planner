@@ -269,6 +269,13 @@ export function App() {
     const st = analysisStationList().find((s) => s.id === analysisStation);
     return simRef.current?.coverageGrids(0.4, 0.025, analysisStation, armIdsAt(analysisStation), st ? [st.x, st.y] : [0, 0]) ?? null;
   };
+  // #5 resolution/GSD — overhead camera mm/px across the (scoped) worktop, centred like coverage.
+  const getGsd = () => {
+    if (analysisStation === 'all') { const g = simRef.current?.gsdGrid(); return g ? { ...g, center: [0, 0] as [number, number] } : null; }
+    const st = analysisStationList().find((s) => s.id === analysisStation);
+    const g = simRef.current?.gsdGrid(0.4, 0.025, analysisStation, st ? [st.x, st.y] : [0, 0]);
+    return g ? { ...g, center: (st ? [st.x, st.y] : [0, 0]) as [number, number] } : null;
+  };
   // #8 inter-arm conflict — the overlap zone (cells reachable by ≥2 arms) is where the arms share space
   // and can collide. Scope-aware: All = the whole layout; a station = just its arms (needs ≥2 there).
   const getConflict = (): ReachData | null => {
@@ -2189,7 +2196,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} getGsd={getGsd} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
         armsInScope={analysisStation === 'all' ? armInstances.length : armIdsAt(analysisStation).length}
         sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />

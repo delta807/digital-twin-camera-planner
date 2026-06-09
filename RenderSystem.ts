@@ -565,6 +565,31 @@ export class RenderSystem {
         });
     }
 
+    /** #5 Ground-sample-distance (mm/px) the overhead camera resolves at each table point. Pure optics:
+     *  a pixel subtends ifov = VFOV / h_px radians, so on a surface at range R it spans R·ifov; an oblique
+     *  view onto the (horizontal) table inflates that footprint by 1/cos(incidence). Returns NaN for cells
+     *  the camera can't see (outside the FOV or occluded) so the figure leaves them blank. `hPx` = the
+     *  sensor's VERTICAL pixel count (D435i RGB = 720), i.e. the REAL stream, not the PIP render size. */
+    computeGsd(camera: THREE.PerspectiveCamera, points: THREE.Vector3[], hPx = 720): number[] {
+        camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+        const camPos = camera.getWorldPosition(new THREE.Vector3());
+        const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group, this.planningArmsGroup];
+        const ifov = (camera.fov * Math.PI / 180) / hPx; // radians per pixel (vertical)
+        const dir = new THREE.Vector3();
+        this.covRay.near = 0.08;
+        return points.map((P) => {
+            if (!frustum.containsPoint(P)) return NaN;
+            dir.copy(P).sub(camPos); const dist = dir.length(); dir.normalize();
+            this.covRay.set(camPos, dir); this.covRay.far = dist + 0.05;
+            const hit = this.covRay.intersectObjects(occluders, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
+            if (hit && hit.distance < dist - 0.04) return NaN;        // blind spot (an arm/post in front)
+            const cosInc = Math.max(0.15, Math.abs(dir.z));          // incidence vs the table normal (clamp at grazing)
+            return 1000 * dist * ifov / cosInc;                      // mm per pixel
+        });
+    }
+
     private updateContacts(mjData: MujocoData, show: boolean) {
         if (!show || !mjData.ncon) { this.contactMarkers.count = 0; return; }
         const count = Math.min(mjData.ncon, this.contactMarkers.instanceMatrix.count);
