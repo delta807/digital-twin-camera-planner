@@ -553,6 +553,9 @@ export class RenderSystem {
         // real shadows for a camera, so they must count in coverage too (was only the primary). #2
         const occluders: THREE.Object3D[] = [this.simGroup, this.baseBuilder.group, this.planningArmsGroup];
         const dir = new THREE.Vector3();
+        // Skip the first ~8 cm of each ray: a station camera sits ON its mount post, so without this
+        // every ray self-hits the post and the whole table reads as occluded (0%). [self-intersection offset]
+        this.covRay.near = 0.08;
         return points.map((P) => {
             if (!frustum.containsPoint(P)) return false;             // outside the camera FOV
             dir.copy(P).sub(camPos); const dist = dir.length(); dir.normalize();
