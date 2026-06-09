@@ -103,7 +103,17 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
       shares length; verified propagation (Batch C).
 - [x] #6 Metrics card — area / ROM coverage % / inter-arm overlap %, from per-arm cell sets +
       workspaceMetrics(); verified 1-arm 0% overlap, 2-arm 100% (Batch C).
-  → Only #2 (hide primaries) remains from the 9-item batch.
+- [x] #2 hide primaries — delete/radial on a primary arm/worktop/post HIDES it (restore via BODIES
+      eye); reapplyHidden() persists the hide through worktop rebuilds + scene reloads. 9-item batch DONE.
+
+## Loading-freeze UX + dev-build robustness (this session)
+- [x] Blur overlay + COMPOSITOR spinner during the reach sweep: .busy-spin uses will-change:transform so
+      the rotate runs on the GPU and keeps spinning while the main thread is blocked; backdrop-blur frosts
+      the sim; un-blurs when done. runHeavy paints across 2 rAFs first. Research: loading-overlay-research.md.
+- [ ] (optional) chunk the sweep with scheduler.yield for true responsiveness + a Cancel button (research #2).
+- A (stale dev-build wedge): NOT user-facing — Netlify runs `npm run build`; a broken commit fails the
+      build and keeps the previous deploy, so users never see it. Was a transient vite sticky-error-overlay
+      (fixed by restart). Optional safeguard: a pre-commit hook running tsc --noEmit && build.
 - [ ] #8 workstation AREA as an adjustable param.
 - [ ] #9 rail linking R1=R2 / R3=R4 — BOTH: type-a-name in field + chain button + visual link badge + unlink.
 - [ ] #6 NEW third "Metrics" card: workstation area, % ROM coverage of worktop, inter-arm ROM overlap %.
