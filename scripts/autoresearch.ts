@@ -107,7 +107,10 @@ async function main() {
     const front = paretoFront(trialsForRegion);
     const best = knee(front);
     writeFileSync(`${out}/region-${label}.csv`, paretoCsv(front));
-    summary.push(`## objects @ ${label}`, best ? `- **best:** ${cfgLabel(best.cfg)} — taskGrasp ${best.result.objectives.taskGrasp.toFixed(3)}, perception ${best.result.objectives.perception.toFixed(3)}${best.result.objectives.collaboration != null ? `, collab ${best.result.objectives.collaboration.toFixed(3)}` : ''}` : '- _no feasible config_', `- ${front.length} on Pareto front of ${trialsForRegion.length} feasible-or-not`, '');
+    // Save the winning layout as a twin-loadable Cfg: re-apply with
+    //   window.__autoresearch.applyConfig(require('./winner-<region>.json')) in the twin console.
+    if (best) writeFileSync(`${out}/winner-${label}.json`, JSON.stringify(best.cfg, null, 2));
+    summary.push(`## objects @ ${label}`, best ? `- **best:** ${cfgLabel(best.cfg)} — taskGrasp ${best.result.objectives.taskGrasp.toFixed(3)}, perception ${best.result.objectives.perception.toFixed(3)}${best.result.objectives.collaboration != null ? `, collab ${best.result.objectives.collaboration.toFixed(3)}` : ''} → winner-${label}.json` : '- _no feasible config_', `- ${front.length} on Pareto front of ${trialsForRegion.length} feasible-or-not`, '');
   }
   writeFileSync(`${out}/summary.md`, summary.join('\n'));
   console.log(`[autoresearch] ${all.length} region-trials · ${byRegion.size} regions · wrote results.json, region-*.csv, summary.md to ${out}`);

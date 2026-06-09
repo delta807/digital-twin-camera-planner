@@ -625,7 +625,11 @@ export function App() {
     // fast mode → coarse manip/effort sweeps (triage for the optimizer); full fidelity is the default.
     const manip = fast ? p.getManipulability(undefined, undefined, 24, 4) : p.getManipulability();
     const effort = fast ? p.getEffort(undefined, undefined, 20, 4) : p.getEffort();
-    const handoff = arms >= 2 ? p.getHandoff() : null;     // cells: dexterity-weighted handoff quality
+    // Collaboration uses the spec's min-of-both-arms DEXTERITY (not handoff sample density): a shared cell
+    // is only a good handoff if BOTH arms grasp it dexterously. Per-arm manip maps for the first two arms.
+    const ids = armInstancesRef.current.map((a) => a.id);
+    const manipA = arms >= 2 ? (fast ? p.getManipulability([ids[0]], undefined, 24, 4) : p.getManipulability([ids[0]])) : null;
+    const manipB = arms >= 2 ? (fast ? p.getManipulability([ids[1]], undefined, 24, 4) : p.getManipulability([ids[1]])) : null;
     const cov = sim.coverageGrids();                       // overhead boolean[] over n×n grid (centred 0,0)
     const gsd = sim.gsdGrid();                             // RGB GSD mm/px over n×n grid
     const gsdD = sim.gsdGrid(0.4, 0.025, undefined, [0, 0], true); // DEPTH GSD (87°→58° FOV, 848×480) — coarser
@@ -654,7 +658,7 @@ export function App() {
         dex: graspable ? (manip?.cells.get(k) ?? 0) : 0,
         headroom: graspable ? (effort?.cells.get(k) ?? 1) : 1,
         bothReach,
-        collabQuality: bothReach ? (handoff?.cells.get(k) ?? 0) : 0,
+        collabQuality: bothReach ? Math.min(manipA?.cells.get(k) ?? 0, manipB?.cells.get(k) ?? 0) : 0,
         visible,
         gsdRGB: (gi >= 0 && Number.isFinite(gsd.gsd[gi])) ? gsd.gsd[gi] : Infinity,
         gsdDepth: (gsdD && gi >= 0 && Number.isFinite(gsdD.gsd[gi])) ? gsdD.gsd[gi] : Infinity,
@@ -663,11 +667,17 @@ export function App() {
       if (zoneByRegion) taskPoints.push({ graspable, visible });
     }
 
-    // config-level collision proxy: arm bases must not be jammed together (full geom check = a later slice).
+    // config-level collision/placement check: bases must NOT overlap each other (< 0.18 m apart) and must
+    // sit ON the worktop (within ~circumradius of the table centre). (Full swept-geometry check = later.)
     const bases = armInstancesRef.current;
+    const ocx = wc.originX ?? 0, ocy = wc.originY ?? 0;
+    const tableR = 0.5 * Math.max(wc.length ?? 0.6, wc.width ?? 0.4) + 0.03;
     let collisionFree = true;
-    for (let a = 0; a < bases.length; a++) for (let b = a + 1; b < bases.length; b++)
-      if (Math.hypot(bases[a].x - bases[b].x, bases[a].y - bases[b].y) < 0.18) collisionFree = false;
+    for (let a = 0; a < bases.length; a++) {
+      if (Math.hypot(bases[a].x - ocx, bases[a].y - ocy) > tableR) collisionFree = false;  // base off the table
+      for (let b = a + 1; b < bases.length; b++)
+        if (Math.hypot(bases[a].x - bases[b].x, bases[a].y - bases[b].y) < 0.18) collisionFree = false;
+    }
 
     const camZ = sim.renderSys.cameraRig?.sensorCamera?.getWorldPosition(new THREE.Vector3()).z ?? (cameraPos?.z ?? 0.85);
     const bag: MetricsBag = { arms, cameraZ: camZ, collisionFree, zonePoints, taskPoints: zoneByRegion ? taskPoints : undefined };
