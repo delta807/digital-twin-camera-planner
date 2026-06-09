@@ -47,6 +47,18 @@ body {
   50% { transform: scale(1.05); opacity: 0.8; }
 }
 .animate-pulse-soft { animation: pulse-soft 3s infinite ease-in-out; }
+
+/* Compositor-promoted spinner: `will-change: transform` forces its own GPU layer, so the rotate
+ * animation runs on the COMPOSITOR thread and keeps spinning even while a long synchronous JS task
+ * (the FK reach sweep) blocks the MAIN thread. A normal main-thread spinner freezes; this one doesn't. */
+@keyframes busy-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.busy-spin {
+  width: 36px; height: 36px; border-radius: 9999px;
+  border: 3px solid rgba(99, 102, 241, 0.22); border-top-color: #6366f1;
+  will-change: transform; animation: busy-spin 0.7s linear infinite;
+}
+/* Promote the blur backdrop to its own layer too, so the composited backdrop-filter holds during the freeze. */
+.busy-layer { will-change: transform; transform: translateZ(0); }
 @keyframes pop-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
 /* Transient top hint: fade in, hold, then drift up + fade out (5s total, matches the clear timer). */
 @keyframes toastHint {

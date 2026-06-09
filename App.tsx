@@ -2001,13 +2001,16 @@ export function App() {
 
       <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getDepth={getDepth} getCoverage={getCoverage} />
 
-      {/* Busy pill — shown while a main-thread-blocking job (the FK reach sweep) runs, so the brief
-          freeze reads as "working" with a reason, not as lag. Top-centre, non-interactive. */}
+      {/* Busy overlay — shown while a main-thread-blocking job (the FK reach sweep) runs. We blur the
+          sim and show a spinner that KEEPS SPINNING through the freeze: the .busy-spin animation runs
+          on the GPU/compositor (will-change: transform), independent of the blocked main thread, and
+          backdrop-filter blur is a static composited effect that persists. The sim un-blurs when done. */}
       {busyMsg && (
-        <div className="absolute inset-x-0 top-6 z-40 flex justify-center pointer-events-none">
-          <div className={`flex items-center gap-2.5 px-4 py-2 rounded-full shadow-lg glass-panel border text-xs font-semibold ${isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-700'}`}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-            {busyMsg}
+        <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className={`busy-layer absolute inset-0 backdrop-blur-md ${isDarkMode ? 'bg-slate-950/40' : 'bg-white/35'}`} />
+          <div className={`relative flex flex-col items-center gap-3 px-8 py-6 rounded-2xl glass-panel border shadow-2xl ${isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-700'}`}>
+            <div className="busy-spin" />
+            <span className="text-[13px] font-semibold tracking-wide">{busyMsg}</span>
           </div>
         </div>
       )}
@@ -2029,8 +2032,9 @@ export function App() {
                   </div>
 
                   <div className={`glass-panel p-10 rounded-[3rem] flex flex-col items-center justify-center shrink-0 min-[660px]:w-[260px] shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-900/70 border-white/10' : 'bg-white/70 border-white/80'}`}>
-                      <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100/20 animate-pulse-soft mb-6">
-                        <Loader2 className="w-8 h-8 text-white animate-spin" />
+                      <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100/20 mb-6">
+                        {/* Compositor spinner (GPU): keeps spinning even while WASM load / the FK sweep blocks the main thread. */}
+                        <div className="busy-spin" style={{ width: 32, height: 32, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
                       </div>
                       <h2 className={`text-base font-bold text-center px-2 ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>{loadingStatus}</h2>
                   </div>
