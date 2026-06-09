@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useState } from 'react';
-import { ChevronDown, RotateCcw, Trash2, X } from 'lucide-react';
+import { ChevronDown, Link2, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
 import { FrameIcon, JogIcon, So101Icon } from './ui/toolbar';
 
 /** Reach glyph (double-headed arrow = range of motion). */
@@ -68,8 +68,8 @@ export interface InspectorProps {
   arm: { x: number; y: number; yaw: number } | null;
   /** Perpendicular-to-the-snapped-rail yaw (deg) for the arm, so Yaw can detent + flag "⊥". null = none. */
   armYawDetentDeg?: number | null;
-  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] } | null;
-  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
+  station: { x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] } | null;
+  onStation: (p: { x?: number; y?: number; yaw?: number; shapeSides?: number; length?: number; width?: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] }) => void;
   onCloneStation: () => void;
   extraCamera: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number; fovDeg: number } | null;
   onExtraCamera: (p: { x?: number; y?: number; z?: number; rotX?: number; rotY?: number; rotZ?: number; fovDeg?: number }) => void;
@@ -450,9 +450,9 @@ function Sliders({ fields, subtle }: { fields: { k: string; v: number; min: numb
 /** Per-rail worktop sizing. 4-sided → 4 independent edge distances from centre (Right/Left/Front/
  *  Back); N>4 → one radius per corner. Falls back to the uniform length/width until edited. */
 function RailSizers({ station, subtle, onStation }: {
-  station: { shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] };
+  station: { shapeSides: number; length: number; width: number; sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] };
   subtle: string;
-  onStation: (p: { sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[] }) => void;
+  onStation: (p: { sideExtents?: [number, number, number, number]; cornerRadii?: number[]; railLengths?: number[]; railLinks?: number[] }) => void;
 }) {
   const sides = Math.round(station.shapeSides);
   const hx = station.length / 2, hy = station.width / 2;
@@ -491,8 +491,31 @@ function RailSizers({ station, subtle, onStation }: {
   })();
 
   // Independent rail-bar lengths (need not meet the corners). Default = the edge span.
-  const rl = Array.from({ length: corners.length }, (_, i) => (station.railLengths?.[i] && station.railLengths[i] > 0 ? station.railLengths[i] : edgeSpan(i)));
-  const setRail = (i: number, v: number) => { const n = [...rl]; n[i] = v / 1000; onStation({ railLengths: n }); };
+  const n = corners.length;
+  const rl = Array.from({ length: n }, (_, i) => (station.railLengths?.[i] && station.railLengths[i] > 0 ? station.railLengths[i] : edgeSpan(i)));
+  // ── Rail LINKS (#9): railLinks[i] = the rail R(i+1) follows (shares its length), or -1 = unlinked.
+  const links = station.railLinks ?? [];
+  const leaderOf = (i: number): number => { let j = i, g = 0; while (links[j] != null && links[j] >= 0 && links[j] !== j && g++ < n) j = links[j]!; return j; };
+  const linkHue = (lead: number) => `hsl(${(lead * 113 + 200) % 360} 65% 45%)`;
+  const baseLen = (i: number) => (station.railLengths?.[i] && station.railLengths[i] > 0 ? station.railLengths[i] : edgeSpan(i));
+  // Set rail i's length → applies to its whole linked group (so linked rails stay equal).
+  const setRailGroup = (i: number, vMm: number) => {
+    const L = leaderOf(i), v = vMm / 1000;
+    onStation({ railLengths: Array.from({ length: n }, (_, k) => (leaderOf(k) === L ? v : baseLen(k))) });
+  };
+  // Link rail i to leader `lead` (>=0), or unlink (-1). On link, snap i to the leader's current length.
+  const setLink = (i: number, lead: number) => {
+    const nextLinks = Array.from({ length: n }, (_, k) => (k === i ? lead : (links[k] ?? -1)));
+    const patch: { railLinks: number[]; railLengths?: number[] } = { railLinks: nextLinks };
+    if (lead >= 0) patch.railLengths = Array.from({ length: n }, (_, k) => (k === i ? baseLen(leaderOf(lead)) : baseLen(k)));
+    onStation(patch);
+  };
+  // Type a value (mm) → set + unlink; or type "R2"/"r2" → link this rail to R2 (1-based).
+  const onRailText = (i: number, str: string) => {
+    const m = str.trim().match(/^[rR]\s*(\d+)$/);
+    if (m) { const t = parseInt(m[1], 10) - 1; if (t >= 0 && t < n && t !== i) setLink(i, t); return; }
+    const num = parseFloat(str); if (!Number.isNaN(num)) { if (leaderOf(i) !== i) setLink(i, -1); setRailGroup(i, num); }
+  };
 
   // Bar length is the primary control (on top); per-side is secondary + collapsed by default.
   const [perSideOpen, setPerSideOpen] = useState(false);
@@ -500,7 +523,28 @@ function RailSizers({ station, subtle, onStation }: {
     <>
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
         <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Rails · bar length</span>
-        <Sliders subtle={subtle} fields={rl.map((rv, i) => ({ k: `R${i + 1}`, v: rv * 1000, min: 50, max: 1600, unit: 'mm', def: edgeSpan(i) * 1000, on: (v: number) => setRail(i, v) }))} />
+        <div className="space-y-1">
+          {rl.map((_, i) => {
+            const L = leaderOf(i), linked = L !== i, col = linked ? linkHue(L) : undefined;
+            const v = baseLen(L) * 1000;
+            return (
+              <div key={i} className="flex items-center gap-1.5">
+                <span style={{ color: col }} className={`text-[10px] font-bold uppercase w-7 shrink-0 ${col ? '' : subtle}`}>R{i + 1}</span>
+                <input type="range" min={50} max={1600} step={6.5} value={Math.min(1600, Math.max(50, v))} disabled={linked}
+                  onChange={(e) => setRailGroup(i, parseFloat(e.target.value))}
+                  className="flex-1 min-w-0 h-1 accent-indigo-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                {/* Chain button: link to the previous rail; or, if linked, an Unlink badge (group-coloured). */}
+                {linked
+                  ? <button type="button" title={`Linked to R${L + 1} — click to unlink`} onClick={() => setLink(i, -1)} style={{ color: col }} className="shrink-0 w-4 h-4 grid place-items-center"><Unlink className="w-3 h-3" /></button>
+                  : <button type="button" title={i > 0 ? `Link R${i + 1} to R${i}` : 'No previous rail to link'} disabled={i === 0} onClick={() => setLink(i, leaderOf(i - 1))} className={`shrink-0 w-4 h-4 grid place-items-center ${subtle} hover:text-indigo-500 disabled:opacity-20`}><Link2 className="w-3 h-3" /></button>}
+                <input type="text" value={linked ? `=R${L + 1}` : String(Math.round(v))} title="Type a number (mm) or a rail name like R1 to link"
+                  onChange={(e) => onRailText(i, e.target.value)} style={col ? { color: col, borderColor: col } : undefined}
+                  className="w-16 shrink-0 text-right tabular-nums text-[12px] px-2 py-1 rounded-md border bg-black/[0.03] border-black/10 outline-none focus:border-indigo-400 focus:bg-white/40" />
+                <span className={`text-[9px] w-5 shrink-0 ${subtle}`}>mm</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="pt-1 mt-1 border-t border-black/5 space-y-1">
         <button type="button" onClick={() => setPerSideOpen((v) => !v)}
