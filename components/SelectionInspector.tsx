@@ -2,9 +2,21 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { ChevronDown, Copy, EyeOff, Link2, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import { FrameIcon, JogIcon, So101Icon } from './ui/toolbar';
+
+/**
+ * Render a LaTeX string to KaTeX HTML. The `tex` argument is ALWAYS a hardcoded compile-time
+ * constant defined in this file (the metric formulas) — never user input — and KaTeX emits its own
+ * sanitized markup, so dangerouslySetInnerHTML carries no XSS surface here. throwOnError:false makes
+ * a malformed formula render as its source text instead of throwing.
+ */
+function Tex({ tex }: { tex: string }) {
+  return <span dangerouslySetInnerHTML={{ __html: katex.renderToString(tex, { throwOnError: false }) }} />;
+}
 
 /** Reach glyph (double-headed arrow = range of motion). */
 function ReachIcon({ className }: { className?: string }) {
@@ -434,6 +446,7 @@ export function SelectionInspector(p: InspectorProps) {
 
 /** #3/#6 — standalone Metrics card (its own pane, rendered ABOVE the selection card in App). */
 export function MetricsCard({ metrics, isDarkMode, inline }: { metrics: { area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null; isDarkMode: boolean; inline?: boolean }) {
+  const [showEq, setShowEq] = useState(false);
   if (!metrics) return null;
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
@@ -454,6 +467,32 @@ export function MetricsCard({ metrics, isDarkMode, inline }: { metrics: { area: 
             <Metric label="Arm ROM overlap" value={`${Math.round(metrics.overlapPct * 100)}%`} hint="of reached area shared by ≥2 arms" subtle={subtle} accent />
           </div>
         )}
+      {!metrics.hidden && (
+        <div className={`mt-2 pt-1.5 border-t ${isDarkMode ? 'border-white/10' : 'border-black/5'}`}>
+          <button onClick={() => setShowEq((v) => !v)} className={`w-full flex items-center justify-between text-[9px] font-bold uppercase tracking-widest ${subtle}`}>
+            <span>Equations</span>
+            <ChevronDown className={`w-3 h-3 transition-transform ${showEq ? '' : '-rotate-90'}`} />
+          </button>
+          {showEq && (
+            <div className={`mt-2 space-y-2 text-[12px] ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>
+              <EqRow label="Workstation area — shoelace over the rim polygon (vertices vᵢ)"><Tex tex="A=\tfrac12\left|\sum_{i} \left(x_i\,y_{i+1}-x_{i+1}\,y_i\right)\right|" /></EqRow>
+              <EqRow label="ROM coverage — reachable worktop cells ÷ all worktop cells"><Tex tex="C=\dfrac{\lvert R \cap T\rvert}{\lvert T\rvert}" /></EqRow>
+              <EqRow label="ROM area — covered cells × cell area (c = cell size)"><Tex tex="A_{\mathrm{ROM}} = N_{\mathrm{cov}}\cdot c^2" /></EqRow>
+              <EqRow label="Arm ROM overlap — cells reached by ≥2 arms ÷ by ≥1 arm (nₖ = arms reaching cell k)"><Tex tex="O=\dfrac{\lvert\{k : n_k \ge 2\}\rvert}{\lvert\{k : n_k \ge 1\}\rvert}" /></EqRow>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A metric equation: a tiny caption above its rendered KaTeX formula. */
+function EqRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <span className="block text-[9px] text-slate-500 leading-tight">{label}</span>
+      <div className="overflow-x-auto custom-scrollbar">{children}</div>
     </div>
   );
 }
