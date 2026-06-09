@@ -189,6 +189,73 @@ export function drawHandoff(canvas: HTMLCanvasElement, d: HandoffData) {
   ctx.closePath(); ctx.fill();
 }
 
+// ── #4 Cycle-time map: per graspable cell, the fastest home→pick→retreat service time (trapezoidal,
+//    slowest-joint-synced). Green = quick to service, red = slow (far / awkward joint travel). ──
+export interface CycleData { cells: Map<string, number>; cell: number; half: number; center: [number, number]; minT: number; maxT: number; meanT: number; arms: number; label?: string; }
+export function drawCycleTime(canvas: HTMLCanvasElement, d: CycleData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  const span = (d.maxT - d.minT) || 1;
+  const a = frame(ctx, W, H, {
+    title: (d.label ? `${d.label} · ` : '') + `Cycle time · pick + retreat per cell\nmean ${d.meanT.toFixed(2)} s  ·  ${d.minT.toFixed(2)}–${d.maxT.toFixed(2)} s`,
+    xlabel: 'X (m)', ylabel: 'Y (m)',
+    xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
+    colorbar: { label: 'cycle time (s) — lower is faster', vr: [d.minT, d.maxT], cmap: (t) => RDYLGN(1 - t) }, // green = fast
+  });
+  const cpx = (a.x1 - a.x0) * (d.cell / (2 * d.half)) + 0.5;
+  for (let x = d.center[0] - d.half; x <= d.center[0] + d.half + 1e-6; x += d.cell) {
+    for (let y = d.center[1] - d.half; y <= d.center[1] + d.half + 1e-6; y += d.cell) {
+      const v = d.cells.get(Math.round(x / d.cell) + ',' + Math.round(y / d.cell));
+      if (v === undefined) continue;
+      ctx.fillStyle = css(RDYLGN(1 - (v - d.minT) / span)); // fast → green, slow → red
+      ctx.fillRect(sx(a, x) - cpx / 2, sy(a, y) - cpx / 2, cpx, cpx);
+    }
+  }
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
+  const mx = sx(a, d.center[0]), my = sy(a, d.center[1]);
+  ctx.beginPath(); ctx.moveTo(mx - 12, my); ctx.lineTo(mx + 12, my); ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my + 12); ctx.stroke();
+}
+
+// ── #10 1-vs-2 arm throughput: bar comparison of picks/min for one arm vs the arms in scope working in
+//    parallel, with the collision (shared-zone serialisation) cost folded in. Not a spatial map. ──
+export interface ThroughputData { single: { rate: number; covCells: number }; multi: { rate: number; covCells: number; sharedPct: number; gain: number }; meanCycle: number; arms: number; worktopCells: number; }
+export function drawThroughput(canvas: HTMLCanvasElement, d: ThroughputData) {
+  const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  const s = W / 420; ctx.save(); ctx.scale(s, s); const w = 420, h = H / s;
+  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 15px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('1-vs-2 arm throughput', w / 2, 24);
+  ctx.font = '11px -apple-system, system-ui, sans-serif'; ctx.fillStyle = '#64748b';
+  ctx.fillText(`gain ×${d.multi.gain.toFixed(2)}  ·  shared ${Math.round(d.multi.sharedPct * 100)}% serialised  ·  mean cycle ${d.meanCycle.toFixed(2)} s`, w / 2, 42);
+  // bars
+  const bars = [
+    { label: '1 arm', rate: d.single.rate, cov: d.single.covCells, color: '#94a3b8' },
+    { label: `${d.arms} arms`, rate: d.multi.rate, cov: d.multi.covCells, color: '#6366f1' },
+  ];
+  const maxRate = Math.max(d.single.rate, d.multi.rate) || 1;
+  const x0 = 70, baseY = h - 56, bw = 110, gap = 60, maxBarH = baseY - 80;
+  ctx.textAlign = 'center';
+  bars.forEach((b, i) => {
+    const bx = x0 + i * (bw + gap), bh = (b.rate / maxRate) * maxBarH;
+    ctx.fillStyle = b.color; ctx.fillRect(bx, baseY - bh, bw, bh);
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
+    ctx.fillText(`${b.rate.toFixed(1)}`, bx + bw / 2, baseY - bh - 16);
+    ctx.font = '10px -apple-system, system-ui, sans-serif'; ctx.fillStyle = '#64748b';
+    ctx.fillText('picks/min', bx + bw / 2, baseY - bh - 4);
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 12px -apple-system, system-ui, sans-serif';
+    ctx.fillText(b.label, bx + bw / 2, baseY + 16);
+    ctx.font = '10px -apple-system, system-ui, sans-serif'; ctx.fillStyle = '#64748b';
+    ctx.fillText(`${b.cov} cells`, bx + bw / 2, baseY + 30);
+  });
+  // baseline axis
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 - 14, baseY); ctx.lineTo(x0 + 2 * bw + gap + 14, baseY); ctx.stroke();
+  // verdict
+  ctx.textAlign = 'center'; ctx.font = '11px -apple-system, system-ui, sans-serif';
+  const worth = d.multi.gain >= 1.4;
+  ctx.fillStyle = worth ? '#16a34a' : '#d97706';
+  ctx.fillText(worth ? `2nd arm worth it: ${d.multi.gain.toFixed(2)}× throughput, +${d.multi.covCells - d.single.covCells} cells` : `marginal: only ${d.multi.gain.toFixed(2)}× (shared zone serialises ${Math.round(d.multi.sharedPct * 100)}%)`, w / 2, h - 16);
+  ctx.restore();
+}
+
 // ── #11 Layout-optimizer map: score every candidate arm-base position by how much of the worktop it
 //    could reach, so the brightest cell = the best mount. star marks the optimum. ──
 export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; curCov: number; cur: { x: number; y: number }; }

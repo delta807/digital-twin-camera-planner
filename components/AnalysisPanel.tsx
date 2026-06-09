@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, useRef } from 'react';
 import { X, Download, Sparkles, Radio, PanelLeft } from 'lucide-react';
-import { drawReachability, drawDepth, drawCoverage, drawConflict, drawLayout, drawManipulability, drawEffort, drawGsd, drawHandoff, type ReachData, type DepthData, type CoverageData, type LayoutData, type ManipData, type EffortData, type GsdData, type HandoffData } from '../analysis/figures';
+import { drawReachability, drawDepth, drawCoverage, drawConflict, drawLayout, drawManipulability, drawEffort, drawGsd, drawHandoff, drawCycleTime, drawThroughput, type ReachData, type DepthData, type CoverageData, type LayoutData, type ManipData, type EffortData, type GsdData, type HandoffData, type CycleData, type ThroughputData } from '../analysis/figures';
 import { AnalysisCatalog, type FigureKey } from './AnalysisCatalog';
 
 interface Props {
@@ -27,6 +27,10 @@ interface Props {
   getGsd: () => GsdData | null;
   /** #9 handoff feasibility — bimanual exchange zone + best handoff cell (null unless ≥2 arms in scope). */
   getHandoff: () => HandoffData | null;
+  /** #4 cycle time — per-cell round-trip pick service time. */
+  getCycleTime: () => CycleData | null;
+  /** #10 1-vs-2 arm throughput comparison (null unless ≥2 arms in scope). */
+  getThroughput: () => ThroughputData | null;
   /** Live overhead depth image (null if no station camera). */
   getDepth: () => DepthData | null;
   /** Live per-camera table coverage (null if no camera). */
@@ -83,17 +87,17 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, getManip, getEffort, getGsd, getHandoff, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
+export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, getManip, getEffort, getGsd, getHandoff, getCycleTime, getThroughput, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
   const scopeLabel = scope === 'all' ? 'all workstations' : (stations.find((s) => s.id === scope)?.label ?? 'workstation');
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
   // stutter). Storing the snapshot in state means the canvases also only redraw on settle.
-  const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; conflict: ReachData | null; layout: LayoutData | null; manip: ManipData | null; effort: EffortData | null; gsd: GsdData | null; handoff: HandoffData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, conflict: null, layout: null, manip: null, effort: null, gsd: null, handoff: null, rev: 0 });
+  const [snap, setSnap] = useState<{ reach: ReachData | null; stations: { label: string; data: ReachData }[]; depth: DepthData | null; coverage: CoverageData | null; conflict: ReachData | null; layout: LayoutData | null; manip: ManipData | null; effort: EffortData | null; gsd: GsdData | null; handoff: HandoffData | null; cycle: CycleData | null; throughput: ThroughputData | null; rev: number }>({ reach: null, stations: [], depth: null, coverage: null, conflict: null, layout: null, manip: null, effort: null, gsd: null, handoff: null, cycle: null, throughput: null, rev: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [flash, setFlash] = useState<string | null>(null); // #2 — briefly ring the figure a card jumps to
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), conflict: getConflict(), layout: getLayout(), manip: getManip(), effort: getEffort(), gsd: getGsd(), handoff: getHandoff(), rev: s.rev + 1 })), 160);
+    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), conflict: getConflict(), layout: getLayout(), manip: getManip(), effort: getEffort(), gsd: getGsd(), handoff: getHandoff(), cycle: getCycleTime(), throughput: getThroughput(), rev: s.rev + 1 })), 160);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sig, highDetail]);
@@ -105,7 +109,7 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
   };
   if (!open) return null;
 
-  const { reach, stations: stationFigs, depth, coverage, conflict, layout, manip, effort, gsd, handoff, rev } = snap;
+  const { reach, stations: stationFigs, depth, coverage, conflict, layout, manip, effort, gsd, handoff, cycle, throughput, rev } = snap;
   const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
@@ -151,12 +155,18 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
           {/* #2 effort/torque headroom — gravity torque vs servo stall, per cell. */}
           <div data-figure="effort" className="w-full h-0" />
           {effort && <Figure title="Effort headroom" width={420} height={380} draw={(c) => drawEffort(c, effort)} rev={rev} flash={flash === 'effort'} />}
+          {/* #4 cycle time — per-cell pick+retreat service time. */}
+          <div data-figure="cycle" className="w-full h-0" />
+          {cycle && <Figure title="Cycle time" width={420} height={380} draw={(c) => drawCycleTime(c, cycle)} rev={rev} flash={flash === 'cycle'} />}
           {/* #8 inter-arm conflict + #11 layout optimizer (All-scope). */}
           <div data-figure="conflict" className="w-full h-0" />
           {conflict && <Figure title="Inter-arm conflict" width={420} height={380} draw={(c) => drawConflict(c, conflict)} rev={rev} flash={flash === 'conflict'} />}
           {/* #9 handoff feasibility — bimanual exchange zone + best handoff cell. */}
           <div data-figure="handoff" className="w-full h-0" />
           {handoff && <Figure title="Handoff feasibility" width={420} height={380} draw={(c) => drawHandoff(c, handoff)} rev={rev} flash={flash === 'handoff'} />}
+          {/* #10 1-vs-2 arm throughput comparison. */}
+          <div data-figure="throughput" className="w-full h-0" />
+          {throughput && <Figure title="1-vs-2 arm throughput" width={420} height={250} draw={(c) => drawThroughput(c, throughput)} rev={rev} flash={flash === 'throughput'} />}
           <div data-figure="layout" className="w-full h-0" />
           {layout && <Figure title="Layout optimizer" width={420} height={380} draw={(c) => drawLayout(c, layout)} rev={rev} flash={flash === 'layout'} />}
           <div data-figure="coverage" className="w-full h-0" />

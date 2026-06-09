@@ -54,6 +54,22 @@ const SEG_SAMPLES = 3;  // points sampled along each arm link segment for the co
 // actually seen under load (16.5 kg·cm) this is ≈ 1.6 N·m — the conservative per-joint saturation limit
 // the effort/headroom analysis compares the gravity torque against. (12 V "Pro" build → ~2.94 N·m.)
 const SERVO_TAU_MAX = 1.6;
+// STS3215 motion limits for the cycle-time model (datasheet ~0.222 s/60° no-load ≈ 4.7 rad/s; derated
+// ~35% under load) and a trapezoidal accel. Approximate — the MAP shape is robust; absolute seconds
+// scale with these. GRIP_DWELL = grip + release time folded into one round-trip pick.
+const SERVO_VEL_MAX = 3.0;   // rad/s
+const SERVO_ACC_MAX = 12.0;  // rad/s²
+const GRIP_DWELL = 0.4;      // s (grip + release)
+
+/** Time (s) to move one joint a distance `d` (rad) under a trapezoidal velocity profile with the given
+ *  max velocity/acceleration: triangular if the move is too short to reach cruise, trapezoidal otherwise. */
+function trapTime(d: number, vmax = SERVO_VEL_MAX, amax = SERVO_ACC_MAX): number {
+  d = Math.abs(d);
+  const dRamp = (vmax * vmax) / amax; // distance covered accelerating to vmax then back to 0
+  return d <= dRamp ? 2 * Math.sqrt(d / amax) : d / vmax + vmax / amax;
+}
+/** Slowest-joint-synced move time: all joints start/stop together, so the move takes the longest joint. */
+function moveTime(a: number[], b: number[]): number { let t = 0; for (let i = 0; i < a.length; i++) { const ti = trapTime(b[i] - a[i]); if (ti > t) t = ti; } return t; }
 
 /** Eigenvalues (descending) of a symmetric 3×3 matrix [[a00,a01,a02],[a01,a11,a12],[a02,a12,a22]],
  *  via the closed-form trig method (Smith 1961) — no iteration, stable for the small JJᵀ matrices the
@@ -510,6 +526,98 @@ export class WorkspacePlanner {
     }
     if (best.size === 0) return null;
     return { cells: best, cell, minHeadroom: hN ? minH : 1, meanHeadroom: hN ? hSum / hN : 1, tauMax, arms };
+  }
+
+  /** #4 Cycle time map — for each top-down graspable WORLD cell, the FASTEST round-trip service time:
+   *  home → pick(cell) → grip/release → retreat home, with each leg a slowest-joint-synced trapezoidal
+   *  joint move (STS3215 vel/accel limits). The "home" reference is the all-zero swept-joint pose. Coarse
+   *  sweep; keeps the min time per cell (the quickest config that grasps it). Combines arms in scope. */
+  getCycleTime(armIds?: string[], cell = CELL, baseSteps = 56, resolution = 6): { cells: Map<string, number>; cell: number; minT: number; maxT: number; meanT: number; arms: number } | null {
+    const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
+    if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
+    const only = armIds ? new Set(armIds) : null;
+    const scratch: MujocoData = new mujoco.MjData(model);
+    const b = this.cfg.baseBodyId;
+    const bp = model.body_pos as unknown as Float32Array, bq = model.body_quat as unknown as Float32Array;
+    const savedP = [bp[b * 3], bp[b * 3 + 1], bp[b * 3 + 2]];
+    const savedQ = [bq[b * 4], bq[b * 4 + 1], bq[b * 4 + 2], bq[b * 4 + 3]];
+    const best = new Map<string, number>();
+    const home = sweptJoints.map(() => 0); // all-zero reference rest pose
+    const q = sweptJoints.map(() => 0);
+    let minT = Infinity, maxT = 0, tSum = 0, tN = 0, arms = 0;
+    try {
+      for (const adr of zeroQposAdr) scratch.qpos[adr] = 0;
+      const base = sweptJoints[0], armJoints = sweptJoints.slice(1);
+      const nArm = Math.max(2, resolution), nBase = Math.max(nArm, baseSteps);
+      const armTotal = Math.pow(nArm, armJoints.length);
+      const idx = new Array(armJoints.length).fill(0);
+      for (const arm of this.arms) {
+        if (only && !only.has(arm.id)) continue;
+        if (!this.armPose.has(arm.id)) continue;
+        arms++;
+        this.setSweepBase(arm.x, arm.y, arm.yaw);
+        for (let bi = 0; bi < nBase; bi++) {
+          const baseVal = base.lo + (base.hi - base.lo) * (bi / (nBase - 1));
+          scratch.qpos[base.qposAdr] = baseVal; q[0] = baseVal;
+          for (let c = 0; c < armTotal; c++) {
+            let rem = c;
+            for (let j = 0; j < armJoints.length; j++) { idx[j] = rem % nArm; rem = (rem / nArm) | 0; }
+            for (let j = 0; j < armJoints.length; j++) { const sj = armJoints[j]; const v = sj.lo + (sj.hi - sj.lo) * (idx[j] / (nArm - 1)); scratch.qpos[sj.qposAdr] = v; q[j + 1] = v; }
+            mujoco.mj_kinematics(model, scratch);
+            const tz = scratch.site_xpos[tcpSiteId * 3 + 2];
+            if (tz < 0 || tz > Z_BAND) continue;
+            if (scratch.site_xmat[tcpSiteId * 9 + 7] < TOPDOWN_MIN) continue; // top-down graspable only
+            const tx = scratch.site_xpos[tcpSiteId * 3], ty = scratch.site_xpos[tcpSiteId * 3 + 1];
+            const cyc = 2 * moveTime(home, q) + GRIP_DWELL; // pick (home→cell) + retreat (cell→home) + dwell
+            const key = Math.round(tx / cell) + ',' + Math.round(ty / cell);
+            const prev = best.get(key);
+            if (prev === undefined || cyc < prev) best.set(key, cyc);
+          }
+        }
+      }
+    } finally {
+      bp[b * 3] = savedP[0]; bp[b * 3 + 1] = savedP[1]; bp[b * 3 + 2] = savedP[2];
+      bq[b * 4] = savedQ[0]; bq[b * 4 + 1] = savedQ[1]; bq[b * 4 + 2] = savedQ[2]; bq[b * 4 + 3] = savedQ[3];
+      mujoco.mj_forward(model, scratch);
+      scratch.delete();
+    }
+    if (best.size === 0) return null;
+    for (const v of best.values()) { if (v < minT) minT = v; if (v > maxT) maxT = v; tSum += v; tN++; }
+    return { cells: best, cell, minT, maxT, meanT: tN ? tSum / tN : 0, arms };
+  }
+
+  /** #10 1-vs-2 arm throughput — is a second arm worth it? Compares picks/min for one arm vs the arms in
+   *  scope working in parallel, charging a collision cost: the shared fraction s (cells ≥2 arms can reach,
+   *  from the world reach grid) must be SERIALISED, so the parallel speed-up is Amdahl-style n/(1+s(n−1)),
+   *  not the naive ×n. Coverage compares the best single arm vs the union. Built on #4 (cycle) + #8 (share). */
+  getThroughput(armIds?: string[]): { single: { rate: number; covCells: number }; multi: { rate: number; covCells: number; sharedPct: number; gain: number }; meanCycle: number; arms: number; worktopCells: number } | null {
+    const only = armIds ? new Set([...armIds]) : null;
+    const ids = [...this.armCells.keys()].filter((id) => !only || only.has(id));
+    if (ids.length < 2) return null;
+    // Per-arm mean cycle time (so the single-arm baseline uses a real arm, not the combined map).
+    let meanCycleSum = 0, meanCycleN = 0, bestSingleCov = 0;
+    for (const id of ids) {
+      const ct = this.getCycleTime([id], CELL, 28, 4); // coarse — only the MEAN is needed here, not a map
+      if (ct) { meanCycleSum += ct.meanT; meanCycleN++; }
+      const cov = this.armCells.get(id)?.size ?? 0;
+      if (cov > bestSingleCov) bestSingleCov = cov;
+    }
+    const meanCycle = meanCycleN ? meanCycleSum / meanCycleN : 0;
+    if (meanCycle <= 0) return null;
+    // Union coverage + shared fraction from the world reach grid (same projection as #8).
+    const world = this.getReachWorld(CELL, ids);
+    const unionCov = world ? world.cells.size : bestSingleCov;
+    let shared = 0; if (world) for (const v of world.cells.values()) if (v >= 2) shared++;
+    const sharedPct = unionCov ? shared / unionCov : 0;
+    const n = ids.length;
+    const rateSingle = 60 / meanCycle;                                  // picks/min, one arm
+    const speedup = n / (1 + sharedPct * (n - 1));                      // Amdahl: shared fraction serialised
+    const rateMulti = rateSingle * speedup;
+    return {
+      single: { rate: rateSingle, covCells: bestSingleCov },
+      multi: { rate: rateMulti, covCells: unionCov, sharedPct, gain: speedup },
+      meanCycle, arms: n, worktopCells: unionCov,
+    };
   }
 
   /** #11 layout optimizer — score every candidate base position (cx,cy) by how many worktop cells the

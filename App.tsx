@@ -21,7 +21,7 @@ import { ArmInstance, CameraIntrinsics, CameraViewToggles, D435I_DEFAULT_PROFILE
 import type { SelectionInfo } from './SelectionController';
 import { SelectionInspector, MetricsCard } from './components/SelectionInspector';
 import { AnalysisPanel } from './components/AnalysisPanel';
-import type { ReachData, LayoutData, ManipData, EffortData, HandoffData } from './analysis/figures';
+import type { ReachData, LayoutData, ManipData, EffortData, HandoffData, CycleData, ThroughputData } from './analysis/figures';
 import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
@@ -305,6 +305,27 @@ export function App() {
     if (st) half = Math.max(0.4, st.len / 2, st.wid / 2) + 0.08;
     else for (const k of h.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * h.cell), Math.abs(dj * h.cell)); }
     return { ...h, half: Math.min(1.3, half + (st ? 0 : 0.05)), center: st ? [st.x, st.y] : [0, 0] };
+  };
+  // #4 cycle time — per-cell round-trip pick service time. Same scope/framing as manipulability/effort.
+  const getCycleTime = (): CycleData | null => {
+    const p = planner(); if (!p) return null;
+    const armIds = analysisStation === 'all' ? undefined : armIdsAt(analysisStation);
+    const c = p.getCycleTime(armIds);
+    if (!c) return null;
+    const st = analysisStation === 'all' ? null : analysisStationList().find((s) => s.id === analysisStation);
+    const wc = workcellConfigRef.current;
+    const cx = st ? st.x : (wc.originX ?? 0), cy = st ? st.y : (wc.originY ?? 0);
+    let half = st ? Math.max(0.4, st.len / 2, st.wid / 2) + 0.08 : Math.max(0.4, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
+    if (!st) for (const k of c.cells.keys()) { const [di, dj] = k.split(',').map(Number); half = Math.max(half, Math.abs(di * c.cell - cx), Math.abs(dj * c.cell - cy)); }
+    return { ...c, half: Math.min(1.3, half + 0.05), center: [cx, cy] };
+  };
+  // #10 1-vs-2 arm throughput — needs ≥2 arms in scope (like #8/#9). No spatial frame (it's a bar figure).
+  const getThroughput = (): ThroughputData | null => {
+    const p = planner(); if (!p) return null;
+    const armIds = analysisStation === 'all' ? undefined : armIdsAt(analysisStation);
+    const count = armIds ? armIds.length : armInstancesRef.current.length;
+    if (count < 2) return null;
+    return p.getThroughput(armIds);
   };
   // #11 layout optimizer — score candidate base positions by worktop coverage (best mount = brightest).
   // Scope-aware: All = the primary worktop + primary reach; a station = that station's worktop + its arm.
@@ -2211,7 +2232,7 @@ export function App() {
           twin doesn't need the name pill (the dock header covers it), reclaiming screen space. */}
       {!loadError && sceneIsFranka && <RobotSelector gizmoStats={gizmoStats} isDarkMode={isDarkMode} robotName="Franka Panda" />}
 
-      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} getGsd={getGsd} getHandoff={getHandoff} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
+      <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} isDarkMode={isDarkMode} getReach={getReach} getReachStations={getReachStations} getDepth={getDepth} getCoverage={getCoverage} getConflict={getConflict} getLayout={getLayout} getManip={getManip} getEffort={getEffort} getGsd={getGsd} getHandoff={getHandoff} getCycleTime={getCycleTime} getThroughput={getThroughput} onHighDetail={handleHighDetailFigure} highDetail={fineReach != null} onOpenDock={() => { setDockOpen(true); setAnalysisOpen(false); }}
         scope={analysisStation} onScope={setAnalysisStation} stations={analysisStationList().map((s) => ({ id: s.id, label: s.label }))}
         armsInScope={analysisStation === 'all' ? armInstances.length : armIdsAt(analysisStation).length}
         sig={`${analysisStation}#${armInstances.map((a) => `${a.x.toFixed(2)},${a.y.toFixed(2)},${a.yaw.toFixed(2)}`).join('|')}#${cameraPos ? `${cameraPos.x.toFixed(2)},${cameraPos.y.toFixed(2)},${cameraPos.z.toFixed(2)}` : ''}#${cameraRot ? `${cameraRot.x.toFixed(2)},${cameraRot.y.toFixed(2)},${cameraRot.z.toFixed(2)}` : ''}#${reachResolution}`} />
