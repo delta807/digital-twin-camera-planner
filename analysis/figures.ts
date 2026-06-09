@@ -159,13 +159,19 @@ export function drawConflict(canvas: HTMLCanvasElement, d: ReachData) {
 
 // ── #11 Layout-optimizer map: score every candidate arm-base position by how much of the worktop it
 //    could reach, so the brightest cell = the best mount. star marks the optimum. ──
-export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; }
+export interface LayoutData { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; center: [number, number]; curCov: number; cur: { x: number; y: number }; }
 export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
   const ctx = canvas.getContext('2d')!; const W = canvas.width, H = canvas.height;
   const bestPct = d.total ? Math.round((100 * d.best.cov) / d.total) : 0;
+  const curPct = d.total && d.curCov >= 0 ? Math.round((100 * d.curCov) / d.total) : -1;
+  const gain = curPct >= 0 ? bestPct - curPct : 0;
+  // Axes are the candidate-mount position RELATIVE TO THE WORKTOP CENTRE (the cyan +), in cm — so the
+  // reader can act on it ("move the base 8 cm toward +X").
   const a = frame(ctx, W, H, {
-    title: `Best base placement\nbest mount reaches ${bestPct}% of the worktop`,
-    xlabel: 'base X (m)', ylabel: 'base Y (m)',
+    title: curPct >= 0
+      ? `Best base placement · reaches ${bestPct}% of worktop\nyou're at ${curPct}% — moving the mount gains ${gain >= 0 ? '+' : ''}${gain}%`
+      : `Best base placement\nbest mount reaches ${bestPct}% of the worktop`,
+    xlabel: 'base X from worktop centre (m)', ylabel: 'base Y from worktop centre (m)',
     xr: [d.center[0] - d.half, d.center[0] + d.half], yr: [d.center[1] - d.half, d.center[1] + d.half],
     colorbar: { label: 'worktop reached (%)', vr: [0, 100], cmap: VIRIDIS },
   });
@@ -174,12 +180,33 @@ export function drawLayout(canvas: HTMLCanvasElement, d: LayoutData) {
     ctx.fillStyle = css(VIRIDIS(d.total ? s.cov / d.total : 0));
     ctx.fillRect(sx(a, s.x) - cpx / 2, sy(a, s.y) - cpx / 2, cpx, cpx);
   }
+  // worktop centre marker (cyan +) — the figure's origin / frame reference.
+  ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 2;
+  const ox = sx(a, d.center[0]), oy = sy(a, d.center[1]);
+  ctx.beginPath(); ctx.moveTo(ox - 9, oy); ctx.lineTo(ox + 9, oy); ctx.moveTo(ox, oy - 9); ctx.lineTo(ox, oy + 9); ctx.stroke();
+  // current mount = hollow white-ringed dot, with an arrow toward the recommended best.
+  if (d.curCov >= 0) {
+    const cx = sx(a, d.center[0] + d.cur.x), cy = sy(a, d.center[1] + d.cur.y);
+    const bxp = sx(a, d.best.x), byp = sy(a, d.best.y);
+    if (Math.hypot(bxp - cx, byp - cy) > 6) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(bxp, byp); ctx.stroke();
+    }
+    ctx.fillStyle = '#f8fafc'; ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  }
   // mark the best mount with a magenta star
   const bx = sx(a, d.best.x), by = sy(a, d.best.y);
   ctx.strokeStyle = '#ec4899'; ctx.fillStyle = '#ec4899'; ctx.lineWidth = 2;
   ctx.beginPath();
   for (let k = 0; k < 10; k++) { const r = k % 2 ? 4 : 9, ang = -Math.PI / 2 + (k * Math.PI) / 5; const px = bx + r * Math.cos(ang), py = by + r * Math.sin(ang); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
   ctx.closePath(); ctx.fill();
+  // annotate the star with its offset from centre (cm) so the reader knows exactly where to mount.
+  const dxc = Math.round((d.best.x - d.center[0]) * 100), dyc = Math.round((d.best.y - d.center[1]) * 100);
+  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 12px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  const label = (Math.abs(dxc) < 1 && Math.abs(dyc) < 1) ? 'at centre' : `${dxc >= 0 ? '+' : ''}${dxc}, ${dyc >= 0 ? '+' : ''}${dyc} cm`;
+  const tx = Math.min(bx + 8, a.x1 - 70);
+  ctx.fillText(label, tx, by - 8);
 }
 
 // ── #1 Manipulability / dexterity map: per top-down-graspable cell, the BEST inverse condition number

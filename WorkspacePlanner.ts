@@ -416,24 +416,37 @@ export class WorkspacePlanner {
   /** #11 layout optimizer — score every candidate base position (cx,cy) by how many worktop cells the
    *  arm could reach if mounted there (using the base-relative reach grid), so the best cell = the
    *  optimal mount. No task points needed — it optimises raw worktop coverage. */
-  getLayoutScores(half: number, hx: number, hy: number, cell = CELL, armId?: string): { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number } | null {
+  getLayoutScores(half: number, hx: number, hy: number, cell = CELL, armId?: string, cur?: { x: number; y: number }): { scored: Array<{ x: number; y: number; cov: number }>; best: { x: number; y: number; cov: number }; maxCov: number; total: number; half: number; cell: number; curCov: number; cur: { x: number; y: number } } | null {
     // Use a specific arm's reach when scoped to a station; else the primary's reach grid.
     const reach = (armId && this.armCells.get(armId)) || this.reachCells;
     if (reach.size === 0) return null;
+    // The reach grid is stored in the arm's LOCAL frame (sweepArm un-rotates hits by the arm's yaw), so
+    // a WORLD offset (target − candidate base) must be rotated by −yaw before indexing it — otherwise
+    // the recommended placement is spun away from where the arm actually faces (the "looks weird" bug).
+    const armYaw = armId ? (this.armPose.get(armId)?.yaw ?? 0) : (this.arms.find((a) => a.primary)?.yaw ?? this.primaryYaw);
+    const cy0 = Math.cos(armYaw), sy0 = Math.sin(armYaw);
+    const reaches = (dx: number, dy: number): boolean => {
+      const lx = dx * cy0 + dy * sy0, ly = -dx * sy0 + dy * cy0; // world → arm-local
+      return (reach.get(Math.round(lx / CELL) + ',' + Math.round(ly / CELL)) ?? 0) > 0;
+    };
     const targets: Array<[number, number]> = [];
     for (let wx = -hx; wx <= hx + 1e-6; wx += cell) for (let wy = -hy; wy <= hy + 1e-6; wy += cell) targets.push([wx, wy]);
+    const score = (cx: number, cy: number): number => { let cov = 0; for (const [wx, wy] of targets) if (reaches(wx - cx, wy - cy)) cov++; return cov; };
     const scored: Array<{ x: number; y: number; cov: number }> = [];
     let best = { x: 0, y: 0, cov: -1 }, maxCov = 0;
     for (let cx = -half; cx <= half + 1e-6; cx += cell) {
       for (let cy = -half; cy <= half + 1e-6; cy += cell) {
-        let cov = 0;
-        for (const [wx, wy] of targets) if ((reach.get(Math.round((wx - cx) / CELL) + ',' + Math.round((wy - cy) / CELL)) ?? 0) > 0) cov++;
+        const cov = score(cx, cy);
         scored.push({ x: cx, y: cy, cov });
         if (cov > best.cov) best = { x: cx, y: cy, cov };
         if (cov > maxCov) maxCov = cov;
       }
     }
-    return { scored, best, maxCov, total: targets.length, half, cell };
+    // Coverage at the CURRENT mount so the figure can show "you are here → move there (+Δ%)" instead of
+    // an abstract optimum. `cur` is the arm base offset from the worktop centre (world frame), supplied
+    // by the caller which knows where the worktop sits.
+    const c = cur ?? { x: 0, y: 0 };
+    return { scored, best, maxCov, total: targets.length, half, cell, curCov: score(c.x, c.y), cur: c };
   }
 
   /** Arm subtree body ids (everything whose parent chain reaches the Base body) — the links whose

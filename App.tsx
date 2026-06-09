@@ -290,11 +290,17 @@ export function App() {
     const p = planner(); if (!p) return null;
     if (analysisStation === 'all') {
       const wc = workcellConfigRef.current;
-      const s = p.getLayoutScores(0.45, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2);
+      const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
+      const primary = armInstancesRef.current.find((a) => a.primary);
+      const cur = primary ? { x: primary.x - cx, y: primary.y - cy } : { x: 0, y: 0 }; // current mount, worktop-relative
+      const s = p.getLayoutScores(0.45, (wc.length ?? 0.6) / 2, (wc.width ?? 0.4) / 2, undefined, undefined, cur);
       return s ? { ...s, center: [0, 0] } : null;
     }
     const st = analysisStationList().find((s) => s.id === analysisStation); if (!st) return null;
-    const s = p.getLayoutScores(0.45, st.len / 2, st.wid / 2, undefined, armIdsAt(st.id)[0]);
+    const armId = armIdsAt(st.id)[0];
+    const arm = armInstancesRef.current.find((a) => a.id === armId);
+    const cur = arm ? { x: arm.x - st.x, y: arm.y - st.y } : { x: 0, y: 0 };
+    const s = p.getLayoutScores(0.45, st.len / 2, st.wid / 2, undefined, armId, cur);
     return s ? { ...s, center: [0, 0] } : null; // station-relative (origin = this worktop's centre)
   };
   // #1 manipulability/dexterity — best inverse condition number per top-down-graspable WORLD cell.
