@@ -424,7 +424,7 @@ export class WorkspacePlanner {
    *  (inverse condition number) achievable by any joint config that reaches it (same "best grasp"
    *  semantics as the reach map). Combines every arm in scope. Coarse by design (off the render path,
    *  debounced in the panel); shares the FK sweep structure but is independent of the live reach grid. */
-  getManipulability(armIds?: string[], cell = CELL, baseSteps = 56, resolution = 6): { cells: Map<string, number>; cell: number; wMax: number; meanDex: number; arms: number } | null {
+  getManipulability(armIds?: string[], cell = CELL, baseSteps = 40, resolution = 5): { cells: Map<string, number>; cell: number; wMax: number; meanDex: number; arms: number } | null {
     const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
     if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
     const only = armIds ? new Set(armIds) : null;
@@ -483,7 +483,7 @@ export class WorkspacePlanner {
    *  mj_forward) and τ_max is the STS3215 stall torque. 1 = idle/safe, 0 = a joint at saturation. Coarse
    *  by design; the gravity torque is independent of base yaw, so the base joint is swept only to fill
    *  cells. Combines every arm in scope. */
-  getEffort(armIds?: string[], cell = CELL, baseSteps = 48, resolution = 5, tauMax = SERVO_TAU_MAX): { cells: Map<string, number>; cell: number; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number } | null {
+  getEffort(armIds?: string[], cell = CELL, baseSteps = 36, resolution = 5, tauMax = SERVO_TAU_MAX): { cells: Map<string, number>; cell: number; minHeadroom: number; meanHeadroom: number; tauMax: number; arms: number } | null {
     const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
     if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
     const only = armIds ? new Set(armIds) : null;
@@ -541,7 +541,7 @@ export class WorkspacePlanner {
    *  home → pick(cell) → grip/release → retreat home, with each leg a slowest-joint-synced trapezoidal
    *  joint move (STS3215 vel/accel limits). The "home" reference is the all-zero swept-joint pose. Coarse
    *  sweep; keeps the min time per cell (the quickest config that grasps it). Combines arms in scope. */
-  getCycleTime(armIds?: string[], cell = CELL, baseSteps = 56, resolution = 6): { cells: Map<string, number>; cell: number; minT: number; maxT: number; meanT: number; arms: number } | null {
+  getCycleTime(armIds?: string[], cell = CELL, baseSteps = 44, resolution = 5): { cells: Map<string, number>; cell: number; minT: number; maxT: number; meanT: number; arms: number } | null {
     const { mujoco, model, sweptJoints, zeroQposAdr, tcpSiteId } = this.cfg;
     if (sweptJoints.length < 4 || this.armPose.size === 0) return null;
     const only = armIds ? new Set(armIds) : null;

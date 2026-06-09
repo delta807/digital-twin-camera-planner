@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { useEffect, useState, useRef } from 'react';
-import { X, Download, Sparkles, Radio, PanelLeft } from 'lucide-react';
+import { Download, Sparkles, Radio, PanelLeft, Maximize2, X } from 'lucide-react';
 import { drawReachability, drawDepth, drawCoverage, drawConflict, drawLayout, drawManipulability, drawEffort, drawGsd, drawHandoff, drawCycleTime, drawThroughput, type ReachData, type DepthData, type CoverageData, type LayoutData, type ManipData, type EffortData, type GsdData, type HandoffData, type CycleData, type ThroughputData } from '../analysis/figures';
 import { AnalysisCatalog, type FigureKey } from './AnalysisCatalog';
 
@@ -58,7 +58,9 @@ interface Props {
  *  `flash` briefly rings the figure when a catalog card jumps to it (so it's clear WHICH graph). */
 function Figure({ title, width, height, draw, rev, flash }: { title: string; width: number; height: number; draw: (c: HTMLCanvasElement) => void; rev: number; flash?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const bigRef = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef(draw); drawRef.current = draw;
+  const [zoom, setZoom] = useState(false);
   useEffect(() => {
     const c = ref.current; if (!c) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -66,17 +68,51 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
     c.style.width = `${width}px`; c.style.height = `${height}px`;
     drawRef.current(c);
   }, [rev, width, height]);
-  const download = () => {
-    const c = ref.current; if (!c) return;
+  // Expanded view: render the SAME figure at ~2× on-screen size so the (fixed-px) axis labels and
+  // colorbar ticks become readable. Internal resolution is kept at the small view's device size so the
+  // 1:1 CSS scale doubles the apparent text — a "view bigger", crisp enough for reading.
+  useEffect(() => {
+    if (!zoom) return;
+    const c = bigRef.current; if (!c) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = width * dpr; c.height = height * dpr;
+    c.style.width = `${width * 2}px`; c.style.height = `${height * 2}px`;
+    drawRef.current(c);
+  }, [zoom, rev, width, height]);
+  const download = (c: HTMLCanvasElement | null) => {
+    if (!c) return;
     c.toBlob((b) => { if (!b) return; const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `${title.replace(/\s+/g, '_').toLowerCase()}.png`; a.click(); URL.revokeObjectURL(u); });
   };
   return (
     <div className={`relative inline-block rounded-lg overflow-hidden border bg-white shadow-sm transition-all ${flash ? 'border-indigo-500 ring-2 ring-indigo-500/60' : 'border-black/10'}`}>
       <canvas ref={ref} />
-      <button onClick={download} title="Download PNG"
-        className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-semibold hover:bg-black/80">
-        <Download className="w-3 h-3" /> PNG
-      </button>
+      <div className="absolute top-2 right-2 flex items-center gap-1">
+        <button onClick={() => setZoom(true)} title="Expand to read labels"
+          className="flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-semibold hover:bg-black/80">
+          <Maximize2 className="w-3 h-3" />
+        </button>
+        <button onClick={() => download(ref.current)} title="Download PNG"
+          className="flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-semibold hover:bg-black/80">
+          <Download className="w-3 h-3" /> PNG
+        </button>
+      </div>
+      {zoom && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onClick={() => setZoom(false)}>
+          <div className="relative max-w-[95vw] max-h-[92vh] overflow-auto rounded-xl bg-white shadow-2xl p-2" onClick={(e) => e.stopPropagation()}>
+            <canvas ref={bigRef} />
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              <button onClick={() => download(bigRef.current)} title="Download PNG"
+                className="flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[11px] font-semibold hover:bg-black/80">
+                <Download className="w-3.5 h-3.5" /> PNG
+              </button>
+              <button onClick={() => setZoom(false)} title="Close"
+                className="p-1.5 rounded-md bg-black/60 text-white hover:bg-black/80">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -87,7 +123,7 @@ function Figure({ title, width, height, draw, rev, flash }: { title: string; wid
  * depth/coverage track the cameras and the reach follows the arm. The reach uses the fast live grid;
  * "High detail" re-sweeps it finely for a crisp snapshot/PNG.
  */
-export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, getManip, getEffort, getGsd, getHandoff, getCycleTime, getThroughput, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
+export function AnalysisPanel({ open, isDarkMode, getReach, getReachStations, getDepth, getCoverage, getConflict, getLayout, getManip, getEffort, getGsd, getHandoff, getCycleTime, getThroughput, onHighDetail, highDetail, sig, onOpenDock, scope, onScope, stations, armsInScope }: Props) {
   const scopeLabel = scope === 'all' ? 'all workstations' : (stations.find((s) => s.id === scope)?.label ?? 'workstation');
   // Recompute the (heavy) figure data DEBOUNCED, only after the scene signature settles — so dragging
   // an arm or orbiting the view doesn't fire depth-readback + coverage-raycasts every frame (the
@@ -97,8 +133,26 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
   const [flash, setFlash] = useState<string | null>(null); // #2 — briefly ring the figure a card jumps to
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => setSnap((s) => ({ reach: getReach(), stations: getReachStations(), depth: getDepth(), coverage: getCoverage(), conflict: getConflict(), layout: getLayout(), manip: getManip(), effort: getEffort(), gsd: getGsd(), handoff: getHandoff(), cycle: getCycleTime(), throughput: getThroughput(), rev: s.rev + 1 })), 160);
-    return () => clearTimeout(t);
+    // The figure data is heavy (effort runs mj_forward over thousands of poses; manip runs a
+    // finite-difference Jacobian; throughput re-sweeps per arm). Computing all of it in ONE task froze
+    // the main thread on a scope switch (the lag). Instead, after the debounce, compute it in GROUPS
+    // across animation frames — each group yields to the browser so the UI stays responsive and the
+    // figures pop in progressively. Each group bumps `rev` so its figures redraw as they land.
+    let cancelled = false;
+    const groups: Array<() => void> = [
+      () => setSnap((s) => ({ ...s, reach: getReach(), stations: getReachStations(), rev: s.rev + 1 })),
+      () => setSnap((s) => ({ ...s, manip: getManip(), rev: s.rev + 1 })),
+      () => setSnap((s) => ({ ...s, effort: getEffort(), rev: s.rev + 1 })),
+      () => setSnap((s) => ({ ...s, cycle: getCycleTime(), rev: s.rev + 1 })),
+      () => setSnap((s) => ({ ...s, conflict: getConflict(), handoff: getHandoff(), layout: getLayout(), throughput: getThroughput(), rev: s.rev + 1 })),
+      () => setSnap((s) => ({ ...s, coverage: getCoverage(), depth: getDepth(), gsd: getGsd(), rev: s.rev + 1 })),
+    ];
+    const t = setTimeout(() => {
+      let i = 0;
+      const run = () => { if (cancelled) return; groups[i](); if (++i < groups.length) requestAnimationFrame(run); };
+      requestAnimationFrame(run);
+    }, 160);
+    return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sig, highDetail]);
   // Jump a catalog card to its figure AND flash it, so it's obvious which of the graphs is meant.
@@ -110,12 +164,11 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
   if (!open) return null;
 
   const { reach, stations: stationFigs, depth, coverage, conflict, layout, manip, effort, gsd, handoff, cycle, throughput, rev } = snap;
-  const panel = isDarkMode ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-black/10';
+  const panel = isDarkMode ? 'bg-slate-900/80 border-white/10' : 'bg-white/80 border-black/10';
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   return (
     <div className={`absolute left-[3.75rem] top-4 bottom-4 z-30 w-[680px] max-w-[calc(100vw-5rem)] flex flex-col rounded-2xl glass-panel shadow-2xl border overflow-hidden ${panel}`}>
       <div className="flex items-center gap-2 px-3 py-2 border-b border-black/10 shrink-0">
-        <button onClick={onOpenDock} title="Switch to workspace dock" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><PanelLeft className="w-4 h-4" /></button>
         <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse-soft" />
         <h2 className={`text-[11px] font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>Workspace analysis · live</h2>
         <span className={`text-[9px] ${subtle} hidden min-[560px]:inline`}>updates as you move arms &amp; cameras</span>
@@ -124,7 +177,8 @@ export function AnalysisPanel({ open, onClose, isDarkMode, getReach, getReachSta
           className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold ${highDetail ? 'bg-indigo-600 text-white' : (isDarkMode ? 'bg-white/10 text-slate-200 hover:bg-white/15' : 'bg-black/5 text-slate-600 hover:bg-black/10')}`}>
           <Sparkles className="w-3 h-3" /> High detail
         </button>
-        <button onClick={onClose} title="Close" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><X className="w-4 h-4" /></button>
+        {/* Dock⇄analysis swap, moved into the close slot (it dismisses analysis by switching to the dock). */}
+        <button onClick={onOpenDock} title="Switch to workspace dock" className={`p-1 rounded-md ${isDarkMode ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}><PanelLeft className="w-4 h-4" /></button>
       </div>
       {/* Scope toggle — show All workstations or just one (its reach + its camera footage/coverage). */}
       {stations.length > 1 && (
