@@ -98,6 +98,12 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
         → worktopHidden; primary post (postIndex undefined) → postHidden.
       • Restore: hidden items STAY in the BODIES list (driven by state, not meshes) shown dimmed with an
         eye/▷ to un-hide; undo also restores (it's a layout change → pushHistory).
+- [x] #8 workstation Area param — cm² slider scales L×W keeping aspect ratio (Batch C).
+- [x] #9 rail linking — chain button + type-a-name ("R1") + "=R{n}" badge + Unlink; linked group
+      shares length; verified propagation (Batch C).
+- [x] #6 Metrics card — area / ROM coverage % / inter-arm overlap %, from per-arm cell sets +
+      workspaceMetrics(); verified 1-arm 0% overlap, 2-arm 100% (Batch C).
+  → Only #2 (hide primaries) remains from the 9-item batch.
 - [ ] #8 workstation AREA as an adjustable param.
 - [ ] #9 rail linking R1=R2 / R3=R4 — BOTH: type-a-name in field + chain button + visual link badge + unlink.
 - [ ] #6 NEW third "Metrics" card: workstation area, % ROM coverage of worktop, inter-arm ROM overlap %.
