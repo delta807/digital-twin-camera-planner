@@ -202,7 +202,9 @@ export class BaseBuilder {
     const [pwx, pwy] = toWorld(post.x, post.y);
     m.position.set(pwx, pwy, h / 2);
     m.castShadow = true;
-    m.userData.selectable = 'station'; m.userData.stationId = stationId; // station post selects the station
+    // #4 — the satellite post is its OWN selectable (a 'post' carrying its stationId), so it can be
+    // selected/deleted independently. The station itself stays selectable via its slab + rails.
+    m.userData.selectable = 'post'; m.userData.stationId = stationId; m.userData.postIndex = undefined;
     this.group.add(m);
     this.postMeshes.push(m);
     this.rods.push({ a: new THREE.Vector3(pwx, pwy, 0), b: new THREE.Vector3(pwx, pwy, h), label: `${labelPrefix}Post`, center });

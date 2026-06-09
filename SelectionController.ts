@@ -76,6 +76,10 @@ export class SelectionController {
   onExtraPostMove?: (index: number, x: number, y: number) => void;
   getExtraPostPose?: (index: number) => { x: number; y: number; height: number } | null;
   private selectedPostIndex: number | undefined = undefined;
+  // #4 — a satellite station's own post: selectable/movable independently of its station.
+  onStationPostMove?: (stationId: string, x: number, y: number) => void;
+  getStationPost?: (stationId: string) => { x: number; y: number; height: number; width: number } | null;
+  private selectedStationPostId: string | undefined = undefined;
   onArmMove?: (armId: string | undefined, x: number, y: number, yaw?: number) => void;
   /** Arm "aim" gizmo (rotate mode) → write the base yaw (radians). */
   onArmRotate?: (armId: string | undefined, yaw: number) => void;
@@ -189,7 +193,8 @@ export class SelectionController {
         return;
       }
       if (this.selected?.kind !== 'post') return;
-      if (this.selected.postIndex !== undefined) this.onExtraPostMove?.(this.selected.postIndex, this.proxy.position.x, this.proxy.position.y);
+      if (this.selected.stationId) this.onStationPostMove?.(this.selected.stationId, this.proxy.position.x, this.proxy.position.y);
+      else if (this.selected.postIndex !== undefined) this.onExtraPostMove?.(this.selected.postIndex, this.proxy.position.x, this.proxy.position.y);
       else this.onPostMove?.(this.proxy.position.x, this.proxy.position.y);
     });
     this.helper = this.control.getHelper();
@@ -209,7 +214,10 @@ export class SelectionController {
   /** Programmatic selection (from the object tree), without a viewport raycast. */
   selectByKind(kind: 'arm' | 'post' | 'camera' | 'station' | 'wristcam' | 'prop', id?: string) {
     if (kind === 'arm') return this.selectArm(id);
-    if (kind === 'post') return this.selectPost(id !== undefined && id !== '' ? Number(id) : undefined);
+    if (kind === 'post') {
+      if (id && Number.isNaN(Number(id))) return this.selectStationPost(id); // a stationId, not a numeric index (#4)
+      return this.selectPost(id !== undefined && id !== '' ? Number(id) : undefined);
+    }
     if (kind === 'station') { if (id) this.selectStation(id); return; }
     if (kind === 'wristcam') { if (id) this.selectWristCam(id); return; }
     if (kind === 'prop') { if (id) this.selectProp(id); return; }
@@ -345,8 +353,9 @@ export class SelectionController {
     const k = this.selected.kind;
     if (k === 'post') {
       const main = this.getPostAxis();
-      const ep = this.selectedPostIndex !== undefined ? this.getExtraPostPose?.(this.selectedPostIndex) : null;
-      const p = ep ? { x: ep.x, y: ep.y, height: ep.height, width: main.width } : main;
+      const sp = this.selectedStationPostId ? this.getStationPost?.(this.selectedStationPostId) : null; // #4
+      const ep = (!sp && this.selectedPostIndex !== undefined) ? this.getExtraPostPose?.(this.selectedPostIndex) : null;
+      const p = sp ? { x: sp.x, y: sp.y, height: sp.height, width: sp.width } : ep ? { x: ep.x, y: ep.y, height: ep.height, width: main.width } : main;
       if (!(this.control as unknown as { dragging: boolean }).dragging) this.proxy.position.set(p.x, p.y, p.height / 2);
       this.outline.position.set(p.x, p.y, p.height / 2);
       this.outline.scale.set(p.width * 1.6, p.width * 1.6, p.height);
@@ -448,7 +457,11 @@ export class SelectionController {
     // Walk up to the nearest tagged ancestor and dispatch by kind.
     for (let node: THREE.Object3D | null = obj; node; node = node.parent) {
       const s = node.userData?.selectable as string | undefined;
-      if (s === 'post') { this.selectPost(node.userData?.postIndex as number | undefined); return; }
+      if (s === 'post') {
+        const spid = node.userData?.stationId as string | undefined;
+        if (spid) this.selectStationPost(spid); else this.selectPost(node.userData?.postIndex as number | undefined);
+        return;
+      }
       if (s === 'object') { this.selectObject(node); return; }
       if (s === 'arm') { this.selectArm(node.userData?.armId as string | undefined); return; }
       if (s === 'station') { this.selectStation(node.userData?.stationId as string); return; }
@@ -475,7 +488,24 @@ export class SelectionController {
     this.control.enabled = true;
     this.helper.visible = true;
     this.outline.visible = true;
+    this.selectedStationPostId = undefined;
     this.selected = { kind: 'post', label: index !== undefined ? `Mount post ${index + 2}` : 'Camera post', x: p.x, y: p.y, z: ('height' in p ? p.height : 0), movable: true, postIndex: index };
+    this.update();
+    this.onChange?.(this.selected);
+  }
+
+  /** #4 — select a satellite station's mount post (its own selectable, not the station). */
+  private selectStationPost(stationId: string) {
+    this.selectedStationPostId = stationId;
+    this.selectedPostIndex = undefined;
+    this.selectedBody = null;
+    const p = this.getStationPost?.(stationId) ?? null;
+    this.control.setMode('translate'); this.control.showX = true; this.control.showY = true; this.control.showZ = false;
+    this.proxy.rotation.set(0, 0, 0);
+    this.control.enabled = !!p;
+    this.helper.visible = !!p;
+    this.outline.visible = true;
+    this.selected = { kind: 'post', label: 'Mount post', x: p?.x ?? 0, y: p?.y ?? 0, z: p?.height ?? 0, movable: true, stationId };
     this.update();
     this.onChange?.(this.selected);
   }

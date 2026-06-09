@@ -1110,7 +1110,8 @@ export function App() {
     else if (k === 'camera' && sel.cameraId) handleRemoveExtraCamera(sel.cameraId);
     else if (k === 'prop' && sel.propId) handleRemoveProp(sel.propId);
     else if (k === 'post') {
-      if (sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
+      if (sel.stationId) { toggleVisible({ key: `post:${sel.stationId}`, kind: 'post', stationId: sel.stationId }); selDeselect(); } // satellite post → hide just the post, not its station (#4)
+      else if (sel.postIndex !== undefined) handleRemoveExtraPost(sel.postIndex);
       else { toggleVisible({ key: 'post', kind: 'post' }); selDeselect(); }
     }
     else if (k === 'object' && sel.bodyId !== undefined) {
@@ -1173,6 +1174,20 @@ export function App() {
     // Extra mount posts (selectable by index): move via gizmo; pose read back from config.
     sel.getExtraPostPose = (i) => { const ep = workcellConfigRef.current.extraPosts?.[i]; return ep ? { x: ep.x, y: ep.y, height: ep.height } : null; };
     sel.onExtraPostMove = (i, x, y) => { const wc = workcellConfigRef.current; const next = [...(wc.extraPosts ?? [])]; if (next[i]) { next[i] = { ...next[i], x, y }; handleWorkcellChange({ ...wc, extraPosts: next }); } };
+    // #4 — a satellite station's own post: world pose for the gizmo/outline; moves write back its
+    // station-LOCAL postX/postY (the gizmo reports world coords, so un-rotate by the station yaw).
+    sel.getStationPost = (id) => {
+      const s = workcellConfigRef.current.stations?.find((x) => x.id === id);
+      if (!s) return null;
+      const c = Math.cos(s.yaw ?? 0), sn = Math.sin(s.yaw ?? 0);
+      return { x: s.x + s.postX * c - s.postY * sn, y: s.y + s.postX * sn + s.postY * c, height: s.postHeight, width: workcellConfigRef.current.barWidth };
+    };
+    sel.onStationPostMove = (id, x, y) => {
+      const s = workcellConfigRef.current.stations?.find((p) => p.id === id);
+      if (!s) return;
+      const c = Math.cos(s.yaw ?? 0), sn = Math.sin(s.yaw ?? 0), dx = x - s.x, dy = y - s.y;
+      handleStationChange(id, { postX: dx * c + dy * sn, postY: -dx * sn + dy * c });
+    };
     // Arm drag gizmo (like the camera's): the viewport gizmo sits on the arm base + writes it.
     sel.getArmPose = (armId) => { const a = armInstancesRef.current.find((x) => x.id === (armId ?? armInstancesRef.current.find((p) => p.primary)?.id)); return a ? { x: a.x, y: a.y, yaw: a.yaw } : null; };
     sel.onArmMove = (armId, x, y, yaw) => { const a = armInstancesRef.current.find((p) => p.id === (armId ?? armInstancesRef.current.find((q) => q.primary)?.id)); if (a) handleArmChange(a.id, yaw != null ? { x, y, yaw } : { x, y }); };
@@ -1222,6 +1237,7 @@ export function App() {
     (workcellConfig.extraCameras ?? []).forEach((c, i) => list.push({ key: `camera:${c.id}`, kind: 'camera', label: `Overhead D435i ${i + 2}`, cameraId: c.id }));
     list.push({ key: 'post', kind: 'post', label: 'Camera post' });
     (workcellConfig.extraPosts ?? []).forEach((_, i) => list.push({ key: `post:${i}`, kind: 'post', label: `Mount post ${i + 2}`, postIndex: i }));
+    (workcellConfig.stations ?? []).forEach((s, i) => list.push({ key: `post:${s.id}`, kind: 'post', label: `Workstation ${i + 2} post`, stationId: s.id })); // #4 — satellite posts selectable from the tree
     (workcellConfig.props ?? []).forEach((p, i) => list.push({ key: `prop:${p.id}`, kind: 'prop', label: `Prop ${i + 1}`, propId: p.id }));
     taskBodies.forEach((b) => list.push({ key: `obj:${b.bodyId}`, kind: 'object', label: b.name, bodyId: b.bodyId }));
     return list;
@@ -1233,6 +1249,7 @@ export function App() {
     : selection.kind === 'station' ? `station:${selection.stationId}`
     : selection.kind === 'wristcam' ? `wristcam:${selection.wristArmId}`
     : selection.kind === 'prop' ? `prop:${selection.propId}`
+    : selection.kind === 'post' && selection.stationId ? `post:${selection.stationId}`
     : selection.kind === 'post' && selection.postIndex !== undefined ? `post:${selection.postIndex}`
     : selection.kind === 'camera' && selection.cameraId ? `camera:${selection.cameraId}`
     : selection.kind; // 'camera' (primary) | 'post' (main)
@@ -1244,7 +1261,7 @@ export function App() {
     else if (e.kind === 'station') sel.selectByKind('station', e.stationId);
     else if (e.kind === 'wristcam') sel.selectByKind('wristcam', e.armId);
     else if (e.kind === 'prop') sel.selectByKind('prop', e.propId);
-    else if (e.kind === 'post') sel.selectByKind('post', e.postIndex !== undefined ? String(e.postIndex) : undefined);
+    else if (e.kind === 'post') sel.selectByKind('post', e.stationId ?? (e.postIndex !== undefined ? String(e.postIndex) : undefined));
     else if (e.kind === 'camera') sel.selectByKind('camera', e.cameraId);
     else if (e.kind === 'object' && e.bodyId !== undefined) sel.selectObjectByBodyId(e.bodyId);
     else if (e.kind !== 'object') sel.selectByKind(e.kind);
@@ -1254,7 +1271,7 @@ export function App() {
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
   type VisEntity = { key: string; kind: 'arm' | 'camera' | 'post' | 'object' | 'station' | 'wristcam' | 'prop'; bodyId?: number; armId?: string; stationId?: string; cameraId?: string; propId?: string; postIndex?: number };
   const hiddenEntitiesRef = useRef<Map<string, VisEntity>>(new Map()); // key → entity, for re-applying after a rebuild
-  const visId = (e: VisEntity) => e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.kind === 'post' ? e.postIndex : e.armId;
+  const visId = (e: VisEntity) => e.kind === 'object' ? e.bodyId : e.kind === 'station' ? e.stationId : e.kind === 'camera' ? e.cameraId : e.kind === 'prop' ? e.propId : e.kind === 'post' ? (e.stationId ?? e.postIndex) : e.armId;
   const toggleVisible = (e: VisEntity) => {
     setHiddenKeys((prev) => {
       const next = new Set(prev);
@@ -1668,7 +1685,7 @@ export function App() {
 
   // Edit a station like the arm — X/Y/Yaw + shape/size — live rebuild + station-cam re-sync. The
   // paired arm moves with the worktop as a unit (rotated about the centre).
-  const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postHeight: number; sideExtents: [number, number, number, number]; cornerRadii: number[]; railLengths: number[]; railLinks: number[] }>) => {
+  const handleStationChange = (id: string, patch: Partial<{ x: number; y: number; yaw: number; shapeSides: number; length: number; width: number; postX: number; postY: number; postHeight: number; sideExtents: [number, number, number, number]; cornerRadii: number[]; railLengths: number[]; railLinks: number[] }>) => {
     const wc = workcellConfigRef.current;
     // Editing the uniform Length/Width/Sides clears the per-rail overrides + links so the shape stays coherent.
     if (patch.length !== undefined || patch.width !== undefined || patch.shapeSides !== undefined) {
@@ -2286,10 +2303,12 @@ export function App() {
                 cameraPos={cameraPos}
                 cameraRot={cameraRot}
                 onCameraAim={handleCameraAim}
-                post={{ x: workcellConfig.postX, y: workcellConfig.postY }}
+                post={selection?.kind === 'post' && selection.stationId
+                  ? (() => { const s = workcellConfig.stations?.find((x) => x.id === selection.stationId); return s ? { x: s.postX, y: s.postY } : { x: 0, y: 0 }; })()
+                  : { x: workcellConfig.postX, y: workcellConfig.postY }}
                 onArm={(patch) => { const a = armInstancesRef.current.find((x) => x.id === selectedArmId) ?? armInstancesRef.current.find((x) => x.primary); if (a) handleArmChange(a.id, patch); }}
                 onCamera={handleCameraMove}
-                onPost={(x, y) => handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y })}
+                onPost={(x, y) => { const sid = selection?.kind === 'post' ? selection.stationId : undefined; if (sid) handleStationChange(sid, { postX: x, postY: y }); else handleWorkcellChange({ ...workcellConfigRef.current, postX: x, postY: y }); }}
                 onObject={(bodyId, x, y, z) => simRef.current?.setTaskBodyPosition(bodyId, x, y, z)}
                 onAimDown={handleCameraAimDown}
                 onSnapToPost={handleSnapCameraToPost}
