@@ -607,14 +607,18 @@ export function App() {
   // ── /autoresearch slice 1: score the CURRENT scene (lean, headless). Gathers the raw planner/camera
   // metrics directly (NOT the analysis-panel snapshot), builds a MetricsBag over the object zone, and
   // runs the pure scorer. Exposed on window for the Playwright CLI. See tasks/autoresearch_scoreconfig.md.
-  const scoreCurrentScene = (override?: Partial<ScoreParams>, opts?: { fast?: boolean }): Result | null => {
+  const scoreCurrentScene = (override?: Partial<ScoreParams>, opts?: { fast?: boolean; zone?: { center: [number, number]; radius: number } }): Result | null => {
     const p = planner(); const sim = simRef.current; if (!p || !sim) return null;
     const params: ScoreParams = { ...DEFAULT_PARAMS, ...override };
     const fast = opts?.fast ?? false;
     const wc = workcellConfigRef.current;
-    const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
-    const inscribed = 0.5 * Math.min(wc.length ?? 0.6, wc.width ?? 0.4);  // ≈ apothem (work-zone radius basis)
-    const R = params.ZONE_FRAC * inscribed;
+    // Object zone: an explicit region BLOB {center, radius} when given (the outer-sweep regions — centre
+    // or a corner), else the legacy central ZONE_FRAC disc. The blob is the actual task objects, so its
+    // points also gate the reach/visible constraints (every object must be graspable + camera-visible).
+    const zoneByRegion = !!opts?.zone;
+    const cx = opts?.zone ? opts.zone.center[0] : (wc.originX ?? 0);
+    const cy = opts?.zone ? opts.zone.center[1] : (wc.originY ?? 0);
+    const R = opts?.zone ? opts.zone.radius : params.ZONE_FRAC * 0.5 * Math.min(wc.length ?? 0.6, wc.width ?? 0.4);
     const arms = armInstancesRef.current.length;
 
     const reach = p.getReachWorld();                       // cells: # arms reaching (graspable)
@@ -624,6 +628,7 @@ export function App() {
     const handoff = arms >= 2 ? p.getHandoff() : null;     // cells: dexterity-weighted handoff quality
     const cov = sim.coverageGrids();                       // overhead boolean[] over n×n grid (centred 0,0)
     const gsd = sim.gsdGrid();                             // RGB GSD mm/px over n×n grid
+    const gsdD = sim.gsdGrid(0.4, 0.025, undefined, [0, 0], true); // DEPTH GSD (87°→58° FOV, 848×480) — coarser
     if (!reach || !cov || !gsd) return null;
 
     const CELL = reach.cell;
@@ -635,23 +640,27 @@ export function App() {
     };
 
     const zonePoints: SamplePoint[] = [];
-    const STEP = 0.04;
+    const taskPoints: Array<{ graspable: boolean; visible: boolean }> = [];
+    const STEP = zoneByRegion ? Math.max(0.02, R / 3) : 0.04;   // a few samples across a small blob
     for (let x = cx - R; x <= cx + R + 1e-6; x += STEP) for (let y = cy - R; y <= cy + R + 1e-6; y += STEP) {
       if (Math.hypot(x - cx, y - cy) > R) continue;        // disc, not square
       const k = keyOf(x, y);
       const nArms = reach.cells.get(k) ?? 0;
       const graspable = nArms >= 1, bothReach = nArms >= 2;
       const ci = gridIdx(x, y, cov.half, cov.n), gi = gridIdx(x, y, gsd.half, gsd.n);
+      const visible = ci >= 0 ? !!cov.overhead[ci] : false;
       zonePoints.push({
         graspable,
         dex: graspable ? (manip?.cells.get(k) ?? 0) : 0,
         headroom: graspable ? (effort?.cells.get(k) ?? 1) : 1,
         bothReach,
         collabQuality: bothReach ? (handoff?.cells.get(k) ?? 0) : 0,
-        visible: ci >= 0 ? !!cov.overhead[ci] : false,
+        visible,
         gsdRGB: (gi >= 0 && Number.isFinite(gsd.gsd[gi])) ? gsd.gsd[gi] : Infinity,
-        gsdDepth: NaN,                                      // depth channel: slice-2 (needs depth intrinsics in gsdGrid)
+        gsdDepth: (gsdD && gi >= 0 && Number.isFinite(gsdD.gsd[gi])) ? gsdD.gsd[gi] : Infinity,
       });
+      // For an explicit region blob, EVERY object point must be graspable + visible (hard constraint).
+      if (zoneByRegion) taskPoints.push({ graspable, visible });
     }
 
     // config-level collision proxy: arm bases must not be jammed together (full geom check = a later slice).
@@ -661,7 +670,7 @@ export function App() {
       if (Math.hypot(bases[a].x - bases[b].x, bases[a].y - bases[b].y) < 0.18) collisionFree = false;
 
     const camZ = sim.renderSys.cameraRig?.sensorCamera?.getWorldPosition(new THREE.Vector3()).z ?? (cameraPos?.z ?? 0.85);
-    const bag: MetricsBag = { arms, cameraZ: camZ, collisionFree, zonePoints };
+    const bag: MetricsBag = { arms, cameraZ: camZ, collisionFree, zonePoints, taskPoints: zoneByRegion ? taskPoints : undefined };
     return scoreConfig(bag, params);
   };
   // ── /autoresearch slice 2: apply an arbitrary cfg headlessly, then await the rebuild + reachability
@@ -700,7 +709,7 @@ export function App() {
   const applyRef = useRef(applyConfig); applyRef.current = applyConfig;
   useEffect(() => {
     (window as unknown as { __autoresearch?: unknown }).__autoresearch = {
-      scoreCurrentScene: (o?: Partial<ScoreParams>, opts?: { fast?: boolean }) => scoreRef.current(o, opts),
+      scoreCurrentScene: (o?: Partial<ScoreParams>, opts?: { fast?: boolean; zone?: { center: [number, number]; radius: number } }) => scoreRef.current(o, opts),
       applyConfig: (c: AutoCfg, opts?: { reachResolution?: number; reachBaseSteps?: number; fast?: boolean }) => applyRef.current(c, opts),
       DEFAULT_PARAMS,
     };

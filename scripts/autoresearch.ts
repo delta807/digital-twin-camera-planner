@@ -2,86 +2,115 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * /autoresearch CLI runner. Drives the live twin headlessly (Playwright) to score candidate layouts,
- * then writes a Pareto front + top-10 report. Run via vite-node (handles TS/ESM):
+ * /autoresearch CLI runner. Drives the live twin headlessly (Playwright) to sweep candidate layouts
+ * under each OBJECT REGION (centre + corners), then writes a per-region Pareto front + a cross-region
+ * summary. Run via vite-node:
  *
- *   npm run autoresearch -- --n-sides 3,4,5,6 --arms 1,2 --size 0.4 --trials 200 --out tasks/autoresearch_runs/run-001
+ *   # 1. generate the swept variables (or hand-author campaign.json):
+ *   npm run gen-campaign -- --n-sides 3,4,5,6 --sizes 0.3,0.4,0.5 --arms 1,2 --out tasks/autoresearch_runs/campaign.json
+ *   # 2. run it (parallel across worker tabs):
+ *   npm run autoresearch -- --manifest tasks/autoresearch_runs/campaign.json --workers 2 --out tasks/autoresearch_runs/run-001
  *
- * NOTE (slice 1→2): this scores via window.__autoresearch.scoreCurrentScene(). Varying the config per
- * trial needs window.__autoresearch.applyConfig(cfg) (slice 2). Until that exists the runner scores the
- * CURRENT scene once as an end-to-end plumbing smoke test and warns — it does NOT fake a sweep.
+ * Per candidate: applyConfig ONCE (the expensive step), then score under EVERY region (cheap ~0.4 s).
+ * Triage at fast fidelity; the per-region Pareto finalists are re-scored at FULL fidelity before ranking.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright';
-import { buildCampaign } from '../autoresearch/candidates';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { chromium, type Page } from 'playwright';
+import { generateCampaign, regionsFor } from '../autoresearch/campaign';
 import { paretoFront, knee, type Trial } from '../autoresearch/pareto';
-import { resultsJson, paretoCsv, topMarkdown } from '../autoresearch/report';
-import type { Cfg, Result } from '../autoresearch/types';
+import { paretoCsv } from '../autoresearch/report';
+import type { Cfg, Result, Zone } from '../autoresearch/types';
 
-function arg(name: string, def?: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : def;
-}
+const arg = (n: string, d?: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : d; };
 const nums = (s?: string) => (s ? s.split(',').map(Number) : []);
+
+// NB: anything passed to page.evaluate runs in the BROWSER — it can only use its args + browser globals,
+// never Node-scope helpers. So window.__autoresearch is accessed inline (cast) inside each closure.
+interface RegionTrial { ci: number; cfg: Cfg; region: Zone; result: Result; }
+
+async function newReadyPage(browser: Awaited<ReturnType<typeof chromium.launch>>, baseUrl: string): Promise<Page> {
+  const page = await browser.newPage();
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await page.waitForFunction(() => { const ar = (window as any).__autoresearch; return !!ar && ar.scoreCurrentScene() != null; }, { timeout: 120_000 });
+  return page;
+}
+
+/** Apply a candidate at the given fidelity, then score it under each region. */
+async function sweepCandidate(page: Page, ci: number, cfg: Cfg, regions: Zone[], fast: boolean): Promise<RegionTrial[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await page.evaluate(async ({ c, fast }) => { await (window as any).__autoresearch.applyConfig(c, { fast }); }, { c: cfg, fast });
+  const out: RegionTrial[] = [];
+  for (const region of regions) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await page.evaluate(({ region, fast }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast, zone: region }), { region, fast }) as Result | null;
+    if (result) out.push({ ci, cfg, region, result });
+  }
+  return out;
+}
 
 async function main() {
   const baseUrl = arg('base-url', 'http://localhost:3000')!;
   const out = arg('out', 'tasks/autoresearch_runs/run')!;
-  const trials = Number(arg('trials', '200'));
-  const spec = {
-    nSides: nums(arg('n-sides', '3,4,5,6,8')),
-    arms: nums(arg('arms', '1,2')) as Array<1 | 2>,
-    size: Number(arg('size', '0.4')),
-  };
-  const candidates = buildCampaign(spec).slice(0, trials);
-  console.log(`[autoresearch] ${candidates.length} candidate configs · ${baseUrl} · out=${out}`);
+  const workers = Math.max(1, Number(arg('workers', '2')));
+  const blobRadius = Number(arg('blob-radius', '0.07'));
+
+  // candidates: from a generated manifest, or generated inline from args.
+  const manifest = arg('manifest');
+  let candidates: Cfg[];
+  if (manifest) { candidates = JSON.parse(readFileSync(manifest, 'utf8')).candidates as Cfg[]; }
+  else candidates = generateCampaign({ nSides: nums(arg('n-sides', '3,4,5,6')), sizes: nums(arg('sizes', '0.4')), arms: nums(arg('arms', '1,2')) as Array<1 | 2> });
+  const trials = Number(arg('trials', String(candidates.length)));
+  candidates = candidates.slice(0, trials);
+  console.log(`[autoresearch] ${candidates.length} candidates · ${workers} worker(s) · ${baseUrl} · out=${out}`);
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
-  // wait for the hook + a non-null first score (app load + MuJoCo + first reachability compute)
-  await page.waitForFunction(() => {
-    const ar = (window as unknown as { __autoresearch?: { scoreCurrentScene: () => unknown } }).__autoresearch;
-    return !!ar && ar.scoreCurrentScene() != null;
-  }, { timeout: 120_000 });
+  const pages = await Promise.all(Array.from({ length: workers }, () => newReadyPage(browser, baseUrl)));
 
-  const hasApply = await page.evaluate(() =>
-    typeof (window as unknown as { __autoresearch?: { applyConfig?: unknown } }).__autoresearch?.applyConfig === 'function');
-  if (!hasApply) {
-    console.warn('[autoresearch] window.__autoresearch.applyConfig MISSING (slice 2). Scoring the CURRENT scene once as a smoke test — NOT a real sweep.');
+  // split candidates round-robin across workers; each worker sweeps its chunk (apply + score all regions).
+  const all: RegionTrial[] = [];
+  let done = 0;
+  await Promise.all(pages.map(async (page, w) => {
+    for (let i = w; i < candidates.length; i += workers) {
+      const cfg = candidates[i];
+      const trials = await sweepCandidate(page, i, cfg, regionsFor(cfg, blobRadius), true);
+      all.push(...trials);
+      if (++done % 10 === 0) console.log(`[autoresearch] triage ${done}/${candidates.length} candidates`);
+    }
+  }));
+
+  // group by region label → per-region candidate trials; full-fidelity re-score of each region's finalists.
+  const byRegion = new Map<string, Trial[]>();
+  for (const t of all) { const a = byRegion.get(t.region.label) ?? []; a.push({ cfg: t.cfg, result: t.result }); byRegion.set(t.region.label, a); }
+
+  console.log('[autoresearch] re-scoring per-region Pareto finalists at full fidelity…');
+  const page0 = pages[0];
+  for (const [label, trialsForRegion] of byRegion) {
+    const front = paretoFront(trialsForRegion);
+    for (const t of front) {
+      const region = regionsFor(t.cfg, blobRadius).find((z) => z.label === label)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await page0.evaluate(async (c) => { await (window as any).__autoresearch.applyConfig(c, { fast: false }); }, t.cfg);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = await page0.evaluate(({ region }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast: false, zone: region }), { region }) as Result | null;
+      if (r) t.result = r;
+    }
   }
-
-  type AR = { applyConfig?: (c: Cfg, o?: { fast?: boolean }) => Promise<boolean>; scoreCurrentScene: (o?: unknown, opts?: { fast?: boolean }) => Result | null };
-  const scoreAt = (c: Cfg, fast: boolean) => page.evaluate(async ({ c, fast }: { c: Cfg; fast: boolean }) => {
-    const ar = (window as unknown as { __autoresearch: AR }).__autoresearch;
-    if (ar.applyConfig) await ar.applyConfig(c, { fast });
-    return ar.scoreCurrentScene(undefined, { fast });
-  }, { c, fast });
-
-  // ── Triage pass: every candidate at COARSE fidelity (fast). ──
-  const out_trials: Trial[] = [];
-  const loop = hasApply ? candidates : candidates.slice(0, 1);
-  for (let i = 0; i < loop.length; i++) {
-    const result = await scoreAt(loop[i], true);
-    if (result) out_trials.push({ cfg: loop[i], result });
-    if ((i + 1) % 10 === 0) console.log(`[autoresearch] triage ${i + 1}/${loop.length}`);
-  }
-
-  // ── Verdict pass: re-score the Pareto front at FULL fidelity, then re-rank. ──
-  let front = paretoFront(out_trials);
-  if (hasApply && front.length) {
-    console.log(`[autoresearch] re-scoring ${front.length} Pareto finalists at full fidelity…`);
-    for (const t of front) { const r = await scoreAt(t.cfg, false); if (r) t.result = r; }
-    front = paretoFront(out_trials); // re-derive after the finalists' fidelity changed
-  }
-  const best = knee(front);
   await browser.close();
+
+  // report: per-region pareto csv + a cross-region summary (does the winner change by region?).
   mkdirSync(out, { recursive: true });
-  writeFileSync(`${out}/results.json`, resultsJson(out_trials));
-  writeFileSync(`${out}/pareto.csv`, paretoCsv(front));
-  writeFileSync(`${out}/top10.md`, topMarkdown(out_trials, best, 10));
-  console.log(`[autoresearch] ${out_trials.length} scored · ${front.length} on Pareto front · wrote results.json, pareto.csv, top10.md to ${out}`);
-  if (best) console.log(`[autoresearch] recommended (knee): ${best.cfg.shapeSides}-gon, ${best.cfg.arms} arm(s)`);
+  writeFileSync(`${out}/results.json`, JSON.stringify(all.map((t) => ({ ci: t.ci, region: t.region.label, cfg: t.cfg, result: t.result })), null, 2));
+  const summary: string[] = ['# /autoresearch — per-region winners', ''];
+  const cfgLabel = (c: Cfg) => `${c.shapeSides}-gon r${c.size.toFixed(2)} · ${c.arms}arm · cam z${c.camera.z.toFixed(2)} tilt${c.camera.tilt}°`;
+  for (const [label, trialsForRegion] of byRegion) {
+    const front = paretoFront(trialsForRegion);
+    const best = knee(front);
+    writeFileSync(`${out}/region-${label}.csv`, paretoCsv(front));
+    summary.push(`## objects @ ${label}`, best ? `- **best:** ${cfgLabel(best.cfg)} — taskGrasp ${best.result.objectives.taskGrasp.toFixed(3)}, perception ${best.result.objectives.perception.toFixed(3)}${best.result.objectives.collaboration != null ? `, collab ${best.result.objectives.collaboration.toFixed(3)}` : ''}` : '- _no feasible config_', `- ${front.length} on Pareto front of ${trialsForRegion.length} feasible-or-not`, '');
+  }
+  writeFileSync(`${out}/summary.md`, summary.join('\n'));
+  console.log(`[autoresearch] ${all.length} region-trials · ${byRegion.size} regions · wrote results.json, region-*.csv, summary.md to ${out}`);
 }
 
 main().catch((e) => { console.error('[autoresearch] failed:', e); process.exit(1); });

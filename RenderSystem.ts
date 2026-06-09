@@ -572,7 +572,7 @@ export class RenderSystem {
      *  view onto the (horizontal) table inflates that footprint by 1/cos(incidence). Returns NaN for cells
      *  the camera can't see (outside the FOV or occluded) so the figure leaves them blank. `hPx` = the
      *  sensor's VERTICAL pixel count (D435i RGB = 720), i.e. the REAL stream, not the PIP render size. */
-    computeGsd(camera: THREE.PerspectiveCamera, points: THREE.Vector3[], hPx = 720): number[] {
+    computeGsd(camera: THREE.PerspectiveCamera, points: THREE.Vector3[], hPx = 720, vfovDeg?: number): number[] {
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
         const camPos = camera.getWorldPosition(new THREE.Vector3());
@@ -581,7 +581,9 @@ export class RenderSystem {
         // Exact pinhole per-pixel angular size: the sensor half-height in px is f·tan(VFOV/2), so one
         // central pixel subtends 2·tan(VFOV/2)/h_px rad (matches the catalog's 2·z·tan/h_px). Using the
         // small-angle VFOV/h_px instead under-reports GSD by ~5% at this FOV's edge.
-        const ifov = 2 * Math.tan((camera.fov * Math.PI / 180) / 2) / hPx; // radians per pixel (vertical)
+        // vfovDeg overrides the camera's RGB FOV — used to compute the DEPTH stream's GSD (depth FOV 58° V,
+        // 480 vertical px), which is coarser than RGB; the camera POSE (range/incidence) is shared.
+        const ifov = 2 * Math.tan(((vfovDeg ?? camera.fov) * Math.PI / 180) / 2) / hPx; // radians per pixel (vertical)
         const dir = new THREE.Vector3();
         this.covRay.near = 0.08;
         return points.map((P) => {

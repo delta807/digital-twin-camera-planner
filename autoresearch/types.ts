@@ -16,6 +16,10 @@ export interface Cfg {
   forbiddenZones?: Array<{ x: number; y: number; r: number }>;
 }
 
+/** An object-zone "blob" — a disc of task objects at a region (centre or a corner). The OUTER sweep
+ *  iterates these: "is the best rig the same whether objects sit centre vs in a corner?" */
+export interface Zone { center: [number, number]; radius: number; label: string; }
+
 /** Objective-parameters (FIXED per inner run; varied only by the outer sensitivity sweep). */
 export interface ScoreParams {
   ZONE_FRAC: number;        // 0.6..0.8 — central fraction counted as the work area (grid taskDistribution only)

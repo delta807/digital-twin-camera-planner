@@ -51,11 +51,14 @@ export function scoreConfig(bag: MetricsBag, params: ScoreParams): Result {
   const failed: string[] = [];
   if (!bag.collisionFree) failed.push('C1 noCollision: arms overlap each other / table / post');
   if (bag.cameraZ < DEPTH_MIN_Z || bag.cameraZ > DEPTH_MAX_Z) failed.push(`C2 depthInRange: camera z=${bag.cameraZ.toFixed(2)}m outside [${DEPTH_MIN_Z}, ${DEPTH_MAX_Z}]`);
-  // C3/C4 over the DESIGNATED objects when given; else over the zone (≥1 graspable / visible somewhere).
-  const reachOK = bag.taskPoints ? bag.taskPoints.every((t) => t.graspable) : z.some((p) => p.graspable);
-  const visOK = bag.taskPoints ? bag.taskPoints.every((t) => t.visible) : z.some((p) => p.visible);
-  if (!reachOK) failed.push('C3 reachable: a designated task object is not graspable');
-  if (!visOK) failed.push('C4 visible: a designated task object is not camera-visible');
+  // C3/C4 over the DESIGNATED object blob when given: require MOST of the cluster serviceable (a blob is a
+  // group of objects, and coarse-triage sampling undercounts — demanding 100% guarantees false infeasibles).
+  // Without a blob, fall back to "≥1 cell graspable/visible somewhere".
+  const TASK_MIN = 0.5;
+  const reachFrac = bag.taskPoints && bag.taskPoints.length ? bag.taskPoints.filter((t) => t.graspable).length / bag.taskPoints.length : (z.some((p) => p.graspable) ? 1 : 0);
+  const visFrac = bag.taskPoints && bag.taskPoints.length ? bag.taskPoints.filter((t) => t.visible).length / bag.taskPoints.length : (z.some((p) => p.visible) ? 1 : 0);
+  if (reachFrac < TASK_MIN) failed.push(`C3 reachable: only ${Math.round(reachFrac * 100)}% of the object blob is graspable (<${TASK_MIN * 100}%)`);
+  if (visFrac < TASK_MIN) failed.push(`C4 visible: only ${Math.round(visFrac * 100)}% of the object blob is camera-visible (<${TASK_MIN * 100}%)`);
 
   return {
     feasible: failed.length === 0,
