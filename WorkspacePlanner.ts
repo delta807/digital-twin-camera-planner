@@ -324,11 +324,34 @@ export class WorkspacePlanner {
     bq[b * 4] = Math.cos(h); bq[b * 4 + 1] = 0; bq[b * 4 + 2] = 0; bq[b * 4 + 3] = Math.sin(h);
   }
 
-  /** Obstacles an arm must route around = the static posts + every OTHER arm's footprint. */
+  /** Obstacles an arm must route around = the static posts + every OTHER arm's footprint.
+   *  Suggestion #1: model each other arm by its REAL SO-101 footprint — a chunky motor base in the
+   *  low band + a slim mast/links column above — instead of one fat full-height r=0.09 cylinder. The
+   *  old single blob (a) engulfed neighbours when stacked (the 100%-blocked bug, now also guarded by
+   *  the base-skip in armCollides) and (b) over-blocked, since a 0.09 m × 0.35 m wall let no link reach
+   *  OVER the neighbour. The two height-banded discs make neighbour-blocking track the geometry: a link
+   *  swinging above the base (z > 0.12) only has to clear the slim mast. */
   private obstaclesFor(armId: string): Array<{ x: number; y: number; r: number; zTop: number }> {
     const obs = [...this.obstacles];
-    for (const a of this.arms) if (a.id !== armId) obs.push({ x: a.x, y: a.y, r: 0.09, zTop: 0.35 });
+    for (const a of this.arms) if (a.id !== armId) {
+      obs.push({ x: a.x, y: a.y, r: 0.075, zTop: 0.12 }); // motor base (low, wide)
+      obs.push({ x: a.x, y: a.y, r: 0.045, zTop: 0.34 }); // mast + folded links (tall, slim)
+    }
     return obs;
+  }
+
+  /** Suggestion #3: dev-only sanity checks on each sweep result. These catch the collision
+   *  regressions we kept shipping (#6 "whole fan red", #8 "100% overlap") the instant they reappear,
+   *  instead of after a user reports them. No-op in production builds. */
+  private checkReachInvariants(armId: string, cells: Map<string, number>, blocked: Map<string, number>, nObstacles: number) {
+    if (!(import.meta as { env?: { DEV?: boolean } }).env?.DEV) return;
+    const warn = (m: string) => console.warn(`[reach:${armId}] ${m}`);
+    // 1. blocked ⊆ graspable — a blocked cell must be one the arm can actually grasp.
+    for (const k of blocked.keys()) if (!cells.has(k)) { warn(`blocked cell ${k} is not graspable (blocked ⊄ cells)`); break; }
+    // 2. no obstacles ⇒ nothing blocked.
+    if (nObstacles === 0 && blocked.size > 0) warn(`${blocked.size} cells blocked with NO obstacles present`);
+    // 3. not EVERYTHING blocked — the signature of an obstacle engulfing the base (#6/#8).
+    if (cells.size > 0 && blocked.size === cells.size) warn(`ALL ${cells.size} graspable cells blocked — obstacle likely engulfing the base`);
   }
 
   /** One forward-kinematics sweep with the base WHERE IT CURRENTLY IS in the model + the given
@@ -397,7 +420,9 @@ export class WorkspacePlanner {
       const arms = this.arms.length ? this.arms : [{ id: '__single', x: savedP[0], y: savedP[1], yaw: this.primaryYaw, primary: true } as ArmInstance];
       for (const arm of arms) {
         this.setSweepBase(arm.x, arm.y, arm.yaw);
-        const r = this.sweepArm(scratch, resolution, arm.yaw, this.obstaclesFor(arm.id));
+        const obs = this.obstaclesFor(arm.id);
+        const r = this.sweepArm(scratch, resolution, arm.yaw, obs);
+        this.checkReachInvariants(arm.id, r.cells, r.blocked, obs.length);
         this.armRadials.set(arm.id, { radMax: r.radMax, radPrec: r.radPrec });
         this.armBlocked.set(arm.id, r.blocked);
         this.armCells.set(arm.id, r.cells);
