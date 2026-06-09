@@ -176,15 +176,17 @@ export function SelectionInspector(p: InspectorProps) {
     ? `rounded-xl border px-3 py-2.5 ${p.isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
     // Standalone floating panel ("its own sidebar"). Position/size come from floatClass (set by App
     // so it sits beside the main sidebar); default to top-right when none is given.
-    : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-3rem)]'} overflow-y-auto custom-scrollbar rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+    // Fixed header + separately-scrolling body: the panel itself doesn't scroll (flex column,
+    // clipped corners); only the body below the header does. This keeps the header truly flush to
+    // the top and stops it from overlapping content (replaces the old sticky + negative-margin hack).
+    : `${p.floatClass ?? 'absolute top-[9rem] right-3 z-30 w-[300px] max-h-[calc(100vh-3rem)]'} flex flex-col overflow-hidden rounded-2xl glass-panel shadow-xl border ${panel}`;
 
   return (
     <div className={rootClass} style={p.inline ? undefined : p.floatStyle}>
       <div className={p.inline
         ? 'flex items-center gap-1 mb-2'
-        // Sticky header: stays pinned at the top of the (scrollable) float panel. -mt/-mx pull it
-        // flush to the panel edges; pt/px restore the inner padding; rounded-t matches the panel.
-        : `sticky top-0 z-20 -mt-3 -mx-4 px-4 pt-3 pb-2 mb-2 rounded-t-2xl flex items-center gap-1 border-b ${p.isDarkMode ? 'bg-slate-900 border-white/10' : 'bg-white border-black/[0.06]'}`}>
+        // Fixed header — first flex child of the panel, flush to the rounded top, never scrolls.
+        : `shrink-0 flex items-center gap-1 px-4 pt-3 pb-2 border-b ${p.isDarkMode ? 'border-white/10' : 'border-black/[0.06]'}`}>
         {sel.kind === 'arm'
           ? <So101Icon className="w-4 h-4 shrink-0 text-yellow-400" />
           : <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />}
@@ -195,6 +197,7 @@ export function SelectionInspector(p: InspectorProps) {
         <button onClick={p.onDeselect} title="Deselect" className={`p-1 rounded-md ${p.isDarkMode ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}><X className="w-3.5 h-3.5" /></button>
       </div>
 
+      <div className={p.inline ? undefined : 'overflow-y-auto custom-scrollbar px-4 pt-2 pb-3 flex-1 min-h-0'}>
       {sel.kind === 'station' && p.station && (
         <div className="space-y-1.5">
           <Row3 unit={p.unit} subtle={subtle}
@@ -423,6 +426,7 @@ export function SelectionInspector(p: InspectorProps) {
       {(sel.kind === 'camera' || sel.kind === 'post' || sel.kind === 'object') && (
         <div className="mt-2 pt-2 border-t border-black/5"><RodSnap p={p} subtle={subtle} /></div>
       )}
+      </div>
 
     </div>
   );

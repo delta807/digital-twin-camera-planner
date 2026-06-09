@@ -110,6 +110,8 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
   // Inline "save current layout" (the previous flow — a separate floating panel — was unclear).
   const [tplName, setTplName] = useState('');
   const [tplSaved, setTplSaved] = useState('');
+  // Outliner groups: Props & Objects are collapsed by default (usually many, rarely selected).
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(['prop', 'object']));
   const saveTpl = () => { const n = tplName.trim(); if (!n || !templates) return; templates.onSave(n); setTplSaved(n); setTplName(''); setTimeout(() => setTplSaved(''), 2200); };
 
   return (
@@ -182,13 +184,18 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
               {OUTLINER_GROUPS.map(({ kind, label }) => {
                 const rows = objects.entities.filter((e) => e.kind === kind);
                 if (rows.length === 0) return null;
+                const collapsed = collapsedGroups.has(kind);
                 return (
                   <div key={kind} className="space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>{label}</span>
+                    <button onClick={() => setCollapsedGroups((s) => { const n = new Set(s); if (n.has(kind)) n.delete(kind); else n.add(kind); return n; })}
+                      className="w-full flex items-center justify-between py-0.5">
+                      <span className="flex items-center gap-1">
+                        <ChevronDown className={`w-2.5 h-2.5 ${subtle} transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                        <span className={`text-[8px] font-bold uppercase tracking-widest ${subtle}`}>{label}</span>
+                      </span>
                       <span className={`text-[8px] font-bold tabular-nums ${subtle}`}>{rows.length}</span>
-                    </div>
-                    {rows.map((e) => {
+                    </button>
+                    {!collapsed && rows.map((e) => {
                       const active = e.key === objects.selectedKey;
                       const isHidden = objects.hidden.has(e.key);
                       const on = isDarkMode ? 'bg-indigo-500/25 text-indigo-200' : 'bg-indigo-600/10 text-indigo-700';
