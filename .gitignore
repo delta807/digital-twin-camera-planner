@@ -37,3 +37,4 @@ playwright-report/
 
 # Stray tool lockfile (project is npm-based)
 deno.lock
+tasks/autoresearch_runs/

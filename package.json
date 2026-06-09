@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:smoke": "playwright test"
+    "test:smoke": "playwright test",
+    "autoresearch": "vite-node scripts/autoresearch.ts"
   },
   "dependencies": {
     "@google/genai": "^1.28.0",
