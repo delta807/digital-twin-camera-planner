@@ -24,6 +24,7 @@ const spec: CampaignSpec = {
   cameraHeights: nums(arg('heights', '0.55,0.7,0.85')),
   cameraTilts: nums(arg('tilts', '0,20')),
   blobRadius: Number(arg('blob-radius', '0.07')),
+  edgeFracs: nums(arg('edge-fracs', '0.2,0.5,0.8')),  // mount positions along each edge (corner reach)
 };
 const out = arg('out', 'tasks/autoresearch_runs/campaign.json')!;
 const candidates = generateCampaign(spec);
