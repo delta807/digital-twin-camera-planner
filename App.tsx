@@ -212,10 +212,12 @@ export function App() {
   const getDepth = () => simRef.current?.overheadDepth(384, 216) ?? null;
   const getCoverage = () => simRef.current?.coverageGrids() ?? null;
   // #6 Metrics card: area of the selected station's worktop + ROM coverage % + inter-arm overlap %.
-  const getMetrics = (): { area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null => {
+  const getMetrics = (): { label: string; area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null => {
     const p = planner(); if (!p) return null;
     const wc = workcellConfigRef.current;
     const sid = selection?.stationId ?? armInstancesRef.current.find((a) => a.id === selectedArmId)?.stationId ?? 'primary';
+    // Title: the primary worktop is "Workstation 1"; satellites follow their order (2, 3, …).
+    const label = !sid || sid === 'primary' ? 'Workstation 1' : `Workstation ${(wc.stations?.findIndex((x) => x.id === sid) ?? 0) + 2}`;
     let cx: number, cy: number, len: number, wid: number, sides: number, sideExtents: [number, number, number, number] | undefined, cornerRadii: number[] | undefined, hideKey: string;
     if (!sid || sid === 'primary') { cx = wc.originX ?? 0; cy = wc.originY ?? 0; len = wc.length; wid = wc.width; sides = wc.shapeSides; sideExtents = wc.sideExtents; cornerRadii = wc.cornerRadii; hideKey = 'station:primary'; }
     else { const s = wc.stations?.find((x) => x.id === sid); if (!s) return null; cx = s.x; cy = s.y; len = s.length; wid = s.width; sides = s.shapeSides; sideExtents = s.sideExtents; cornerRadii = s.cornerRadii; hideKey = `station:${s.id}`; }
@@ -226,9 +228,9 @@ export function App() {
     let A = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; A += x1 * y2 - x2 * y1; }
     const area = Math.abs(A) / 2;
     // A hidden ("deleted") worktop has no area / reach to report.
-    if (hiddenKeys.has(hideKey)) return { area: 0, length: 0, width: 0, coveragePct: 0, overlapPct: 0, romArea: 0, hidden: true };
+    if (hiddenKeys.has(hideKey)) return { label, area: 0, length: 0, width: 0, coveragePct: 0, overlapPct: 0, romArea: 0, hidden: true };
     const m = p.workspaceMetrics(cx, cy, hx, hy);
-    return { area, length: len, width: wid, coveragePct: m.coveragePct, overlapPct: m.overlapPct, romArea: m.romArea, hidden: false };
+    return { label, area, length: len, width: wid, coveragePct: m.coveragePct, overlapPct: m.overlapPct, romArea: m.romArea, hidden: false };
   };
   const togglePoseMode = () => {
     const next = !poseMode;
@@ -2414,7 +2416,7 @@ export function App() {
                     panel is open the cube sits to the LEFT of the column, so the column starts at the top. */}
                 <div className={`absolute z-40 bottom-4 left-4 right-4 min-[660px]:left-auto min-[660px]:right-6 min-[660px]:bottom-6 min-[660px]:w-[21rem] flex flex-col gap-3 pointer-events-none [&>*]:pointer-events-auto ${!showSidebar && selection ? 'top-[8.5rem] min-[660px]:top-[8.5rem]' : 'top-4 min-[660px]:top-6'}`}>
                 {/* #3 — Metrics is its own card ABOVE the selection card (station/arm contexts). */}
-                {selection && (selection.kind === 'station' || selection.kind === 'arm') && <MetricsCard metrics={getMetrics()} isDarkMode={isDarkMode} />}
+                {selection && (selection.kind === 'station' || selection.kind === 'arm') && <MetricsCard metrics={getMetrics()} unit={lengthUnit} isDarkMode={isDarkMode} />}
                 {selection && inspectorEl(false)}
                 {/* Resize drawer: drag to rebalance the Selection card vs the panels below it. */}
                 {selection && showSidebar && (

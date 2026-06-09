@@ -445,7 +445,7 @@ export function SelectionInspector(p: InspectorProps) {
 }
 
 /** #3/#6 — standalone Metrics card (its own pane, rendered ABOVE the selection card in App). */
-export function MetricsCard({ metrics, isDarkMode, inline }: { metrics: { area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null; isDarkMode: boolean; inline?: boolean }) {
+export function MetricsCard({ metrics, unit, isDarkMode, inline }: { metrics: { label: string; area: number; length: number; width: number; coveragePct: number; overlapPct: number; romArea: number; hidden: boolean } | null; unit: LengthUnit; isDarkMode: boolean; inline?: boolean }) {
   const [showEq, setShowEq] = useState(false);
   if (!metrics) return null;
   const subtle = isDarkMode ? 'text-slate-400' : 'text-slate-500';
@@ -453,17 +453,22 @@ export function MetricsCard({ metrics, isDarkMode, inline }: { metrics: { area: 
   const root = inline
     ? `rounded-xl border px-3 py-2.5 ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-black/[0.03] border-black/10'}`
     : `rounded-2xl glass-panel shadow-xl border px-4 py-3 ${panel}`;
+  // #2 — follow the global m/mm toggle: lengths in mm or m, areas in cm² or m² (mm² would be unwieldy).
+  const mm = unit === 'mm';
+  const len = (v: number) => (mm ? (v * 1000).toFixed(0) : v.toFixed(3));
+  const lenU = mm ? 'mm' : 'm';
+  const area = (v: number) => (mm ? `${(v * 1e4).toFixed(0)} cm²` : `${v.toFixed(2)} m²`);
   return (
     <div className={root}>
-      <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>Metrics</span>
+      <span className={`text-[9px] font-bold uppercase tracking-widest ${subtle}`}>{metrics.label} measurements</span>
       {metrics.hidden
         ? <p className={`mt-1.5 text-[10px] ${subtle}`}>Worktop hidden — no area / reach.</p>
         : (
           <div className="mt-1.5 space-y-1">
-            <Metric label="Length × Width" value={`${(metrics.length * 1000).toFixed(0)} × ${(metrics.width * 1000).toFixed(0)} mm`} subtle={subtle} />
-            <Metric label="Workstation area" value={`${metrics.area.toFixed(2)} m²`} subtle={subtle} />
+            <Metric label="Length × Width" value={`${len(metrics.length)} × ${len(metrics.width)} ${lenU}`} subtle={subtle} />
+            <Metric label="Worktop area" value={area(metrics.area)} subtle={subtle} />
             <Metric label="ROM coverage" value={`${Math.round(metrics.coveragePct * 100)}%`} hint="of the worktop the arm(s) can grasp" subtle={subtle} accent />
-            <Metric label="ROM area" value={`${metrics.romArea.toFixed(2)} m²`} hint="graspable reachable area" subtle={subtle} accent />
+            <Metric label="ROM area" value={area(metrics.romArea)} hint="graspable reachable area" subtle={subtle} accent />
             <Metric label="Arm ROM overlap" value={`${Math.round(metrics.overlapPct * 100)}%`} hint="of reached area shared by ≥2 arms" subtle={subtle} accent />
           </div>
         )}
