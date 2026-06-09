@@ -118,6 +118,26 @@ arm pushes cubes), so physics exists; the post just isn't a collision geom.
 - [ ] #9 rail linking R1=R2 / R3=R4 — BOTH: type-a-name in field + chain button + visual link badge + unlink.
 - [ ] #6 NEW third "Metrics" card: workstation area, % ROM coverage of worktop, inter-arm ROM overlap %.
 
+## 12-item bug batch (in progress)
+- [x] #1 N-gon area (shoelace, not L×W) · #11 hidden worktop → no area · #12 added L×W + ROM-area rows
+      (LaTeX eqns still TODO) · #2 satellite coverage (auto-recompute on arm add) · #8 overlap (arm offset,
+      no stacking) · #6/#10 collision over-report (skip obstacle engulfing the base + no stacking). All committed + verified.
+- [ ] #3 Metrics → its OWN card ABOVE the selection card (currently a section inside it). Extract to a
+      sibling rendered above SelectionInspector (uses the same floatClass/Style stack).
+- [ ] #4 primary mount-post delete: routes to setEntityVisible('post', undefined) which hides ALL posts
+      (BaseBuilder.ts:291 else-branch). Fix: hide only the primary post mesh.
+- [ ] #5 satellite post deletes the whole station: the satellite post is tagged selectable='station'
+      (BaseBuilder.ts:205) so it selects+deletes the station. Fix: tag it 'post' with a stationId so it
+      can be hidden independently (or per-station post hide).
+- [ ] #7 type-a-name links for MORE params/permutations (R6→R3, R1→R5) — the rail field already parses
+      "R{n}"; verify it works for N>4 rails + consider linking length/width too.
+- [ ] #12 (cont.) render the metric EQUATIONS in LaTeX (needs KaTeX) — area=shoelace, coverage=|reach∩table|/|table|,
+      overlap=|≥2 arms|/|≥1 arm|, romArea=cells·CELL².
+- #9 AUDIT finding: the metrics math was correct; the bugs were (a) wrong area formula for N-gons,
+  (b) staleness (metric used last sweep, missed new arms), (c) ignored hidden state, (d) stacked-arm
+  degeneracy. Process fix: verify each metric against a HAND-COMPUTED case + a multi-arm + an N-gon case,
+  not just one happy path (I wrongly "verified" 100% overlap as correct).
+
 ## Backlog (parked)
 - [ ] **Multi-select (pairs + contextual actions).** Cmd/ctrl-click a SECOND object, both
       outlined, contextual action bar for recognized pairs (arm+rail → snap-to-rail,
