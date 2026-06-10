@@ -116,3 +116,22 @@ that doesn't change the symptom means the hypothesis is wrong — re-test the sy
 assume. (3) An error count that factors cleanly into run parameters (workers×regions) is a structural
 clue (per-page init race), not random noise. (4) A readiness gate that checks signal A doesn't
 guarantee async init B has settled; gate on the thing you actually depend on, or consume the race.
+
+## Reach sweep re-runs on every scene reload — coalesce for multi-arm layouts (2026-06-10)
+Loading a 9–10-arm / multi-station layout (the "bestagon" profiles) made the
+"Computing reach…" spinner churn repeatedly. Two compounding causes: (1) the
+expensive multi-arm FK reach sweep ran on EVERY `onSceneReload` (App
+`applyPlannerState`) AND again inside `MujocoSim.setupPlanner` — and a multi-
+station load fires several reloads back-to-back, so N reloads → ~2N sweeps. Fix:
+defer the sweep through one debounced scheduler that also waits out
+`MujocoSim.reloading`, so a burst of reloads collapses to ONE sweep on the
+settled scene; apply only the cheap toggles/obstacles synchronously.
+Lessons: (1) Per-arm/per-reload O(arms × FK) work is fine at 1 arm and explodes
+at 9 — always ask "what happens at 10×?" before shipping a layout that scales the
+unit of work. (2) When a heavy job is triggered by a reactive event that can fire
+in bursts (scene reloads, slider drags), debounce + gate on a settled signal
+rather than running per event. (3) Verifying in a BACKGROUNDED preview tab is a
+trap: `runHeavy` clears its busy overlay inside `requestAnimationFrame`, which the
+browser THROTTLES when the tab isn't visible — the spinner sticks even though no
+work runs. Count jobs with a `setTimeout`-based counter (fires regardless of
+visibility), not the overlay, to judge whether a loop is real.
