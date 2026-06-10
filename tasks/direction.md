@@ -14,8 +14,8 @@ PROTOCOL — two Claude sessions share this file:
   Never rewrite the other's sections, only your own.
 
 ## STATUS (implementer-owned)
-- 2026-06-10 ~08:46 · IDLE → starting #A5b (depth-GSD semantic). :3000 is mine (idle now). #A5a
-  verified before/after: tilt-20 moves (32/40, max|Δ|0.398), tilt-0 stays (0/40, Δ0.000).
+- 2026-06-10 ~08:50 · IDLE · #A5 COMPLETE (a+b). :3000 free for QA. Next per DIRECTION 10: v3 #A9
+  ground-truth physics validation — pausing for user checkpoint before that (major new direction).
 
 ## DONE-WHEN (QA-owned — the loop's exit criteria; the campaign ends when ALL hold)
 The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gates:
@@ -29,10 +29,11 @@ The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gat
    just scores) and it stays feasible across the 4 GSD/λ settings.
 5. **Geometry conformance** — every trusted run carries geometry.json proving campaign polygon ≡
    as-built rim (1 mm), mounts ON rails, regions inside rim. No conformance, no trust (DIRECTION 0).
-Status: 1 ☐ (#A5a in progress per STATUS) · 2 ◐ (deterministic proven — declare practical threshold
-+ pin SHA) · 3 ◐ (knee ✓, fidelity persistence ✓, triage bias ✓ b4d8855 QA-verified, srFull
-persistence ✓ b4d8855 QA-verified; pending: boundary flags) · 4 ◐ (7/7 on spot manifest; rerun on
-final campaign) · 5 ☐ (geometry conformance — DIRECTION 0, not started; n=4 + n≥9 rows tainted).
+Status: 1 ◐ (#A5a ✓ aa5171f QA-verified — tilt-0 invariant, tilt-20 moves; #A5b in flight) ·
+2 ◐ (deterministic proven — declare practical threshold + pin SHA) · 3 ◐ (knee ✓, fidelity
+persistence ✓, triage bias ✓, srFull persistence ✓ — pending: boundary flags) · 4 ◐ (7/7 on spot
+manifest; rerun on final campaign) · 5 ☐ (geometry conformance — DIRECTION 0, not started; n=4 +
+n≥9 rows tainted; the provisional tilt-20 headline waits on this).
 
 PORT ETIQUETTE (resolving the STATUS conflict): :3000 is the IMPLEMENTER's. The instance currently
 serving :3000 was QA-started — treat it as yours (or restart your own; it may die with the QA
@@ -99,6 +100,22 @@ re-score (ex-2c) — all confirmed correct in 4c1ecc3, tests 24/24.
 Ritual unchanged: implement → tsc → vitest → verify in twin → commit → note in CYCLE LOG.
 
 ## FINDINGS (QA-owned, newest first)
+
+### 2026-06-10 · pass 10 (#A5a audit — gate 1 first half PASSES)
+- **aa5171f verified.** Fix reviewed (score-time re-aim toward the zone azimuth via lastCameraRef;
+  tilt-0 ⇒ nadir, region-invariant): correct, satisfies invariant I6's intent. tsc clean, 24/24.
+- **The clean oracle is the implementer's own before/after** (same code ± #A5a, matched fidelity):
+  tilt-0 0/40 moved (Δ 0.0000) · tilt-20 32/40 moved (max Δ 0.398). QA's qa_baseline cross-version
+  diff corroborates: zero tilt-0 movement on taskGrasp/perception; the single moved pair is
+  collaboration null→0.0616 — the documented arm-instantiation improvement (I13 in action: cross-
+  version diffs are code diffs; only same-code before/afters are oracles). Gate 1 = #A5b remaining.
+- **HEADLINE (provisional):** with aim fixed, tilt-20° WINS the single-rig knee on the 16-cand
+  manifest (was tilt-0). "Nadir is best" was an artifact of the aim bug. Re-confirm on geometry-
+  conformant candidates after #A13 before promoting to ANSWER.
+- **Re-baseline:** qa_baseline_after_a5a/ (SHA aa5171f) replaces qa_baseline/ as the QA reference.
+- Port map correction: :3000 implementer · :3001 occupied by a SECOND twin instance (foreign —
+  implementer, if it's yours, say so in STATUS) · :3002 is QA's. First oracle attempt failed on
+  :3001 contention; reran cleanly on :3002.
 
 ### 2026-06-10 · pass 9 (captain setup: design-doc evaluation → invariants charter; stall postmortem)
 - User consolidated the full design+rationale doc; QA evaluation found 9 gaps — all "missing bridge
@@ -267,3 +284,4 @@ Ritual unchanged: implement → tsc → vitest → verify in twin → commit →
   running none. Next: DIRECTION 1 (per-region top-K full re-score).
 - 2026-06-10 08:20 · shipped DIRECTION 1 (per-region re-score front ∪ top-10/objective — triage bias) + DIRECTION 2 (persist single-rig full scores to results.json + single-rig.json sidecar). tsc✓ vitest 24/24✓; spot_out: results.json recompute 6 all-region-feasible (was 0), single-rig 4-gon 2-arm feasible 5/5. commit b4d8855 · running none. Next: #A5a tilt-aim.
 - 2026-06-10 08:46 · shipped #A5a tilt-aim — scoreCurrentScene re-aims camera tilt at the scored region blob (was fixed world +X). Verified before/after on 16-cand tilt 0/20 manifest: tilt-20 perception moved 32/40 (max|Δ|0.398), tilt-0 unchanged 0/40 (Δ0.000) = DIRECTION 3 metric. tsc✓ vitest 24/24✓. commit aa5171f · running none. Next: #A5b depth-GSD off-grid semantic.
+- 2026-06-10 08:50 · shipped #A5b depth-GSD semantic — explicit NaN=skip / Infinity=penalize / finite=measure across App.tsx+scoreConfig+types; 3-way unit test (vitest 25/25). Twin spot: perception unchanged (centre 0.450, corners ~0.398) — depth FOV ⊃ RGB so penalty only bites real gaps. commit 0ad2531 · running none. #A5 COMPLETE. Next: v3 #A9 (ground-truth) per DIRECTION 10.

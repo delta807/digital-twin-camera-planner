@@ -51,7 +51,12 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
 ### AUTORESEARCH v2 (Jun 2026) — robustness + unfrozen axes. PROTOCOL: a QA-director session reviews
 ### every cycle. READ `tasks/direction.md` (DIRECTION section) at the START of each cycle; APPEND one
 ### line to its CYCLE LOG when a cycle completes (timestamp · what shipped · what's running).
-- [ ] **#A5 Fidelity fixes (P0 — do FIRST, they bias every later number)**
+- [x] **#A5 Fidelity fixes (P0 — do FIRST, they bias every later number)** DONE (a: aa5171f, b: 0ad2531).
+      (a) tilt-aim: scoreCurrentScene re-aims camera tilt at the scored region blob (was fixed world +X);
+      before/after verified — tilt-20 perception moved 32/40, tilt-0 unchanged 0/40. (b) depth-GSD: explicit
+      NaN=skip / Infinity=penalize / finite=measure across App.tsx+scoreConfig+types, unit-tested (25/25);
+      twin perception unchanged (depth FOV ⊃ RGB). Triage bias (DIRECTION 1) + single-rig persistence
+      (DIRECTION 2) + knee tie-break also shipped this run (b4d8855, 4c1ecc3).
       (a) Camera tilt aims world +X only: `applyConfig` aim point is `(cx + z·tan(tilt), cy)` (App.tsx
       ~line 720), so tilt-20° candidates look toward +X regardless of which region they're scored
       under — "tilt 0 wins" was only ever tested against one arbitrary direction. Make tilt aim at an
@@ -95,6 +100,52 @@ on-table collision, save winner-as-profile. A 30-config dry-run ran: 2-arm wins 
       all regions → Pareto+knee on full vectors (DIRECTION 2c, not fast — avoids triage bias); writes
       winner-single-rig.json + reports Pareto-front size + tie status. Spot-verified: 4-gon 2-arm,
       feasible 5/5, front=2 (knee tie-break exercised). Remaining: odd-n convention doc + n≥8 blob dedup.
+
+### AUTORESEARCH v3 (Jun 2026) — ground the metric in the TASK (premise fix, user-directed).
+### Why: v1/v2 optimize PROXIES (reach/dex/GSD) over ABSTRACT blobs. The proxy chain is
+### first-principles-plausible but never validated against task outcomes, and "optimal" was never
+### relative to a declared workload — hence flat, tie-heavy results. v3 makes the CLI answer the
+### question users actually have: "which concrete setup is better FOR THIS TASK?" User decision:
+### all four workloads matter (different stages) — run each in its OWN SILO; per-stage winners
+### diverging is a legitimate answer.
+- [ ] **#A9 Ground-truth validation rung (P0 after #A5 — the credibility test for EVERYTHING above)**
+      Pick ~6 configs spanning the taskGrasp range (incl. a per-region winner, the single-rig winner,
+      and a known-bad). For each: run N scripted PHYSICS pick-place attempts with the primary arm
+      (existing IK + pickup routine; objects at the scored task points), measure success rate +
+      cycle time. Report rank correlation (Spearman) proxy-score vs task-outcome in `validation.md`.
+      If ρ high: proxies licensed, cheap sweeps stand. If low: recalibrate objective weights against
+      measured outcomes, THEN re-run the standing campaigns. LIMIT (honest): only the primary arm
+      has physics → collaboration/handoff proxy stays UNVALIDATED until "staged multi-arm physics"
+      lands; say so in every report.
+- [ ] **#A10 A/B adjudicator (decision artifact)** — `npm run autoresearch -- --compare a.json
+      b.json [--workload w]`: apply+score BOTH under the SAME declared workload, print per-objective
+      deltas vs the practical-significance threshold → verdict (A / B / tie). Requires Cfg to
+      represent N≥3 arms + satellite workstations (today caps at 2 arms / 1 table — cannot express
+      real Compare-mode scenes). Profiles/winner-JSONs loadable directly.
+- [ ] **#A11 Workload suites as the outer sweep (silo per stage)** — generalize regions→workloads:
+      W1 pick-place sort (objects + target zone; ground truth = #A9 rollouts), W2 teleop dexterity
+      coverage (current proxy maps, validated via W1 correlation), W3 dual-arm handoff (collab
+      objective; ground truth BLOCKED on multi-arm physics — report as proxy-only), W4 data-collection
+      episodes (scripted trajectory playback; metric = % frames object+gripper visible at GSD
+      target — SequenceAnimator exists). Per candidate score each workload in its own silo;
+      summary = per-workload winners + a cross-workload table showing whether one rig dominates or
+      stages diverge (either is THE answer). taskDistribution {kind:'objects', points} already
+      exists in the schema — use it instead of blobs for W1/W4.
+- [ ] **#A12 Overlap atlas (the user's core 2-arm question, asked directly)** — the pipeline knows
+      every both-reach cell + per-arm dexterity there, but collapses it to one scalar. Surface it:
+      per 2-arm config report overlap AREA (m²), centroid, and min-dex over the shared region in
+      summary.md (+ optional per-config overlap map artifact). Add an "optimize-for-overlap"
+      campaign preset: 2-arm, INDEPENDENT edge×frac for both arms (needs #A7 axis), Pareto of
+      (overlap area × min-dex) vs taskGrasp → "which polygon + placement allows the most meaningful
+      two-arm overlap, and how big is it." NB: proxy-grade until multi-arm physics lands (#A9 LIMIT).
+- [ ] **#A13 Geometry single-source-of-truth + equal-area sweeps (P0 — user-spotted; see
+      direction.md DIRECTION 0/0b + FINDINGS pass 7).** Builder n=4 special-case (axis-aligned
+      rectangle) ≠ campaign diamond → all square results invalid (mounts 0.1 m off-rail, table 2×
+      assumed area); builder clamps sides≤8 → n=9/10 rows invalid. Fix: getRailGeometry() hook
+      (as-built rim + rails), mounts as (railIndex, t) on real segments, applyConfig rejects
+      off-rail/out-of-rim candidates, per-run geometry.json conformance artifact. Then sweep AREA
+      (not circumradius) with r derived per n — fair shape comparisons at constant workspace.
+      Re-run standing answers afterward; erratum in ANSWER.md for square claims.
 
 ## ACTIVE — new issues (reported Jun 2026, this batch)
 - [x] **#1 Joint jog doesn't respond to real clicks** — FIXED (29520b5): rewired the vendored
