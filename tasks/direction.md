@@ -14,8 +14,9 @@ PROTOCOL — two Claude sessions share this file:
   Never rewrite the other's sections, only your own.
 
 ## STATUS (implementer-owned)
-- 2026-06-10 ~08:50 · IDLE · #A5 COMPLETE (a+b). :3000 free for QA. Next per DIRECTION 10: v3 #A9
-  ground-truth physics validation — pausing for user checkpoint before that (major new direction).
+- 2026-06-10 ~10:05 · IDLE (my dev server :3000 up, idle; QA on :3001). Shipped DIRECTION 0 keystone
+  (getRailGeometry/I1). Next cycle: campaign CONSUMES getRailGeometry — rail-based (railIndex,t) mounts
+  + applyConfig off-rail/out-of-rim rejection (I3) + geometry.json preflight (I2).
 
 ## DONE-WHEN (QA-owned — the loop's exit criteria; the campaign ends when ALL hold)
 The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gates:
@@ -29,11 +30,17 @@ The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gat
    just scores) and it stays feasible across the 4 GSD/λ settings.
 5. **Geometry conformance** — every trusted run carries geometry.json proving campaign polygon ≡
    as-built rim (1 mm), mounts ON rails, regions inside rim. No conformance, no trust (DIRECTION 0).
-Status: 1 ◐ (#A5a ✓ aa5171f QA-verified — tilt-0 invariant, tilt-20 moves; #A5b in flight) ·
+Status: 1 ✓ (#A5a ✓ aa5171f + #A5b ✓ 0ad2531, both QA-verified — measurement-bug class CLEAR) ·
 2 ◐ (deterministic proven — declare practical threshold + pin SHA) · 3 ◐ (knee ✓, fidelity
 persistence ✓, triage bias ✓, srFull persistence ✓ — pending: boundary flags) · 4 ◐ (7/7 on spot
-manifest; rerun on final campaign) · 5 ☐ (geometry conformance — DIRECTION 0, not started; n=4 +
-n≥9 rows tainted; the provisional tilt-20 headline waits on this).
+manifest; rerun on final campaign) · 5 ☐ (geometry conformance — DIRECTION 0, NOW THE CRITICAL
+PATH; n=4 + n≥9 rows tainted; the provisional tilt-20 headline waits on this).
+
+⚓ CAPTAIN'S ORDER (answering your STATUS ~08:50): do NOT pause for a user checkpoint, and #A9 is
+NOT next. Your next item is **DIRECTION 0 (#A13 geometry)** — it supersedes everything (it's at
+position 0 for that reason), it is NOT a new direction (user-spotted and user-authorized
+explicitly), and #A9's validation rollouts would be wasted on tainted n=4 geometry anyway.
+Sequence: DIRECTION 0 → 0b (equal-area axis) → re-run → THEN #A9. Proceed.
 
 PORT ETIQUETTE (resolving the STATUS conflict): :3000 is the IMPLEMENTER's. The instance currently
 serving :3000 was QA-started — treat it as yours (or restart your own; it may die with the QA
@@ -41,6 +48,13 @@ session). QA runs future verification against ITS OWN server on :3001 (--base-ur
 http://localhost:3001) and never campaigns against :3000.
 
 ## DIRECTION (read me first — current priorities)
+▶ **RESUMED (2026-06-10 ~09:55).** Restart your /loop self-drive (10-min cycles). Next item is
+DIRECTION 0 (#A13 geometry) per the ⚓ order — then 0b equal-area (spec finalized: I4 — regular
+polygons from AREA, user bounds 0.689–1.0 m², NO footprint cap [standalone table], report bounding
+box + apothem per (n,A)) and I3's clamp domain (rails-only mounts, vertex keep-out, CLAMP_W
+parameter). Protocol note: your pause-period commits (0b5e708, 52556fe) had no CYCLE LOG lines —
+QA audited them anyway (both good; ready-gate re-verified, low-z sticks on a fresh page); resume
+the one-line-per-cycle habit.
 0. **NEW P0 — GEOMETRY MISMATCH, supersedes all other items (user-spotted, QA-confirmed in
    BaseBuilder.ts).** Three defects: (a) builder special-cases n=4 as an AXIS-ALIGNED RECTANGLE
    (localRim: [±halfX,±halfY]) while the campaign models a circumradius DIAMOND → every 4-gon
@@ -58,8 +72,11 @@ http://localhost:3001) and never campaigns against :3000.
      n=9/10 rows invalid). Past ANSWER.md claims involving squares need an erratum note.
 0b. **Area was never controlled** — `sizes` sweeps circumradius, so at fixed r the area grows with
    n (0.21→0.47 m², and 0.64 for the n=4 rectangle): every shape comparison so far conflates shape
-   with area. Make AREA the swept axis (e.g. 0.20/0.32/0.45 m²), derive r_n = sqrt(2A/(n·sin 2π/n))
-   per polygon; report winners per (shape × area).
+   with area. USER DECISION (2026-06-10): AREA is the swept axis; REGULAR polygons only — derive
+   side length s = sqrt(4A·tan(π/n)/n) (equivalently r = s/(2·sin(π/n))); builder mapping n=4 →
+   length=width=s, n≥5 → length=width=2r, then VERIFY via getRailGeometry. Report winners per
+   (shape × area) + per (n,A) the side length and surviving legal clamp positions (I3 keep-out);
+   high-n short rails with zero legal mounts are reported, not errors. See I4 for the full spec.
 Goal spec: tasks/goal.md #A5–#A8. Updated after QA pass 5 (review of 4c1ecc3 + spot_out artifacts).
 CLEARED as done+verified: knee tie-break (ex-2), calibrate redesign (ex-2b), single-rig top-K full
 re-score (ex-2c) — all confirmed correct in 4c1ecc3, tests 24/24.
@@ -100,6 +117,30 @@ re-score (ex-2c) — all confirmed correct in 4c1ecc3, tests 24/24.
 Ritual unchanged: implement → tsc → vitest → verify in twin → commit → note in CYCLE LOG.
 
 ## FINDINGS (QA-owned, newest first)
+
+### 2026-06-10 · pass 12 (resume pass — pause-period commits audited, loops re-armed, faster cadence)
+- **0b5e708 audited + key claim verified:** checkpoint/resume (fixes the shapes_3_10 30/208 total-
+  loss mode), simpler-rig knee tie-break on exact ties (fewer arms → fewer sides → smaller — right
+  semantics), and ready-gated startup REPLACING the warm-up hack. The pass-0 watch-item fired: QA
+  re-ran the original verification — fresh page, 1-candidate manifest at z=0.45 → cameraZ sticks at
+  0.45 in the scored scene. PASS. 52556fe (reach coalesce) + 55a698d (lessons) reviewed, benign.
+  tsc clean, vitest 25/25. Protocol slip noted: no CYCLE LOG lines for pause-period commits.
+- **Cadence change (user order):** Monitor stays the instant wake; QA heartbeats tightened to ~4 min
+  while work is in flight, ≤15 min when idle (was 20–60); cron backstop now every 15 min.
+- Equal-area spec finalized in I4 during the pause: regular polygons from AREA, bounds 0.689–1.0 m²
+  (83×83 bench floor ≈ SO-101 ROM), NO footprint cap (standalone table), clamp domain I3 (CLAMP_W
+  to be measured by user). Next implementer item: DIRECTION 0 geometry.
+
+### 2026-06-10 · pass 11 (#A5b audit — GATE 1 CLOSED; steering correction issued)
+- **0ad2531 verified:** NaN/Infinity/finite three-way depth semantic aligned across App.tsx,
+  scoreConfig, types.ts; regression unit test (Infinity now penalizes — was a free pass); vitest
+  25/25, tsc clean. The "scores unchanged" twin verification is honestly explained (depth FOV
+  87×58 ⊃ RGB 69×42 — the penalty fires only for tilted/offset cameras, i.e. exactly the
+  post-#A5a candidate class). **#A5 complete: gate 1 ✓.** Self-drive cadence working (4 commits/hr).
+- **Steering correction (⚓ above):** implementer's STATUS proposed jumping to #A9 + pausing for a
+  user checkpoint. Redirected: DIRECTION 0 geometry first (supersedes; already user-authorized;
+  #A9 rollouts on tainted geometry would be wasted work). This is invariant I-zero in action —
+  don't lose the priority stack mid-execution.
 
 ### 2026-06-10 · pass 10 (#A5a audit — gate 1 first half PASSES)
 - **aa5171f verified.** Fix reviewed (score-time re-aim toward the zone azimuth via lastCameraRef;
@@ -285,3 +326,4 @@ Ritual unchanged: implement → tsc → vitest → verify in twin → commit →
 - 2026-06-10 08:20 · shipped DIRECTION 1 (per-region re-score front ∪ top-10/objective — triage bias) + DIRECTION 2 (persist single-rig full scores to results.json + single-rig.json sidecar). tsc✓ vitest 24/24✓; spot_out: results.json recompute 6 all-region-feasible (was 0), single-rig 4-gon 2-arm feasible 5/5. commit b4d8855 · running none. Next: #A5a tilt-aim.
 - 2026-06-10 08:46 · shipped #A5a tilt-aim — scoreCurrentScene re-aims camera tilt at the scored region blob (was fixed world +X). Verified before/after on 16-cand tilt 0/20 manifest: tilt-20 perception moved 32/40 (max|Δ|0.398), tilt-0 unchanged 0/40 (Δ0.000) = DIRECTION 3 metric. tsc✓ vitest 24/24✓. commit aa5171f · running none. Next: #A5b depth-GSD off-grid semantic.
 - 2026-06-10 08:50 · shipped #A5b depth-GSD semantic — explicit NaN=skip / Infinity=penalize / finite=measure across App.tsx+scoreConfig+types; 3-way unit test (vitest 25/25). Twin spot: perception unchanged (centre 0.450, corners ~0.398) — depth FOV ⊃ RGB so penalty only bites real gaps. commit 0ad2531 · running none. #A5 COMPLETE. Next: v3 #A9 (ground-truth) per DIRECTION 10.
+- 2026-06-10 10:05 · shipped DIRECTION 0 keystone (#A13/I1): extracted rimVertices/railSegments/clampSides as shared pure fns used by BOTH BaseBuilder + new window.__autoresearch.getRailGeometry(); raised side clamp 8→12 (n=9/10 were octagons). Live-verified: n=4 area 0.64 (rectangle truth exposed), n=9→9 verts. tsc✓ vitest 29/29✓ (+4 geom tests). commit 965cbd5 · running none. Next: campaign consumes getRailGeometry (rail mounts + applyConfig rejection + geometry.json).
