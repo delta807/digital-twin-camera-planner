@@ -1684,16 +1684,40 @@ export function App() {
     return obs;
   };
 
-  // Re-apply React's planner state to a freshly (re)created planner (called on scene reload).
+  // Coalesced reach recompute. A multi-station layout load (and base moves) fires several scene
+  // reloads back-to-back; each used to run the full multi-arm FK sweep via applyPlannerState — that's
+  // the "keeps computing reach" churn on the 9–10-arm bestagon layouts. Debounce so the burst collapses
+  // to ONE sweep, and wait out any in-flight model reload first so it runs on the final settled planner.
+  // (MujocoSim.setupPlanner already does a baseline sweep per reload; this is the obstacle-aware refine
+  // — now once, not N×.) The headless scorer doesn't depend on this — applyConfig sweeps synchronously.
+  const reachJobRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReachRecompute = (msg = 'Computing reach…') => {
+    if (reachJobRef.current) clearTimeout(reachJobRef.current);
+    const tick = () => {
+      if (simRef.current?.reloading) { reachJobRef.current = setTimeout(tick, 120); return; } // reload mid-flight — wait
+      reachJobRef.current = null;
+      const p = planner();
+      if (!p) return;
+      runHeavy(msg, () => {
+        p.setObstacles(collectObstacles());
+        p.computeReachability(reachResolutionRef.current);
+        reachSigRef.current = reachSig(armInstancesRef.current);
+        if (plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
+        refreshBaseResult();
+      });
+    };
+    reachJobRef.current = setTimeout(tick, 200);
+  };
+
+  // Re-apply React's planner state to a freshly (re)created planner (called on scene reload). The cheap
+  // visual state (toggles + obstacles) applies immediately; the expensive reach sweep is coalesced so a
+  // burst of reloads doesn't re-sweep every arm on each one.
   const applyPlannerState = () => {
     const p = planner();
     if (!p) return;
     p.setToggles(plannerTogglesRef.current);
     p.setObstacles(collectObstacles());
-    p.computeReachability(reachResolutionRef.current);
-    reachSigRef.current = reachSig(armInstancesRef.current);
-    if (plannerTogglesRef.current.basePlacement) p.computeBasePlacement();
-    refreshBaseResult();
+    scheduleReachRecompute();
   };
 
   // ── Undo / redo: a timeline of layout snapshots (workcell + arms). Rapid edits (a slider drag)
@@ -1808,15 +1832,9 @@ export function App() {
   // post drag doesn't fire the synchronous FK sweep every tick (only ~350ms after the last edit).
   useEffect(() => {
     if (isLoading) return;
-    const p = planner(); if (!p) return;
-    const t = setTimeout(() => {
-      runHeavy('Updating reach for obstacles…', () => {
-        p.setObstacles(collectObstacles());
-        p.computeReachability(reachResolutionRef.current);
-        refreshBaseResult();
-      });
-      simRef.current?.syncPostColliders(collectObstacles()); // keep Mode-B colliders on the live posts
-    }, 350);
+    if (!planner()) return;
+    scheduleReachRecompute('Updating reach for obstacles…'); // coalesced (shares the load-time debounce)
+    const t = setTimeout(() => simRef.current?.syncPostColliders(collectObstacles()), 350); // keep Mode-B colliders on the live posts
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workcellConfig.extraPosts, workcellConfig.postX, workcellConfig.postY, workcellConfig.postHeight, isLoading]);

@@ -59,6 +59,9 @@ export class MujocoSim {
     /** Fired after a (re)load creates a new planner, so React can re-apply its state. */
     onSceneReload: (() => void) | null = null;
     private loading = false; // re-entrancy guard for init() (base/arm/workcell reloads)
+    /** True while a model (re)load is mid-flight. Lets the UI coalesce work (e.g. the reach sweep)
+     *  so it runs once on the settled scene instead of on each of a multi-station load's reloads. */
+    get reloading(): boolean { return this.loading; }
     private robotId = '';
     private sceneFile = 'scene.xml';
     private basePose: BasePose | null = null;
