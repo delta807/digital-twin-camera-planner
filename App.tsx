@@ -622,6 +622,9 @@ export function App() {
   const reachResolutionRef = useRef(reachResolution);
   reachResolutionRef.current = reachResolution;
   const planner = () => simRef.current?.planner ?? null;
+  // Last applied /autoresearch camera (x,y,z,tilt) — so scoreCurrentScene can re-aim the tilt AT the
+  // scored region blob per region (applyConfig can't; it runs once, before the region is known). (#A5a)
+  const lastCameraRef = useRef<{ x: number; y: number; z: number; tilt: number } | null>(null);
 
   // ── /autoresearch slice 1: score the CURRENT scene (lean, headless). Gathers the raw planner/camera
   // metrics directly (NOT the analysis-panel snapshot), builds a MetricsBag over the object zone, and
@@ -649,6 +652,17 @@ export function App() {
     const ids = armInstancesRef.current.map((a) => a.id);
     const manipA = arms >= 2 ? (fast ? p.getManipulability([ids[0]], undefined, 24, 4) : p.getManipulability([ids[0]])) : null;
     const manipB = arms >= 2 ? (fast ? p.getManipulability([ids[1]], undefined, 24, 4) : p.getManipulability([ids[1]])) : null;
+    // #A5a: aim the camera's TILT toward the scored region blob (applyConfig fixed the look-at at world
+    // +X, so a tilted camera never actually pointed at off-centre objects — "tilt 0 wins" was only ever
+    // tested against one arbitrary direction). tilt 0 → off=0 → straight-down nadir, identical per region.
+    const lc = lastCameraRef.current;
+    if (opts?.zone && lc) {
+      const dx = cx - lc.x, dy = cy - lc.y, d = Math.hypot(dx, dy);
+      const off = lc.z * Math.tan(lc.tilt * Math.PI / 180);
+      const ax = d > 1e-6 ? lc.x + (dx / d) * off : lc.x;
+      const ay = d > 1e-6 ? lc.y + (dy / d) * off : lc.y;
+      sim.renderSys.cameraRig?.setPose(new THREE.Vector3(lc.x, lc.y, lc.z), new THREE.Vector3(ax, ay, 0), 0);
+    }
     const cov = sim.coverageGrids();                       // overhead boolean[] over n×n grid (centred 0,0)
     const gsd = sim.gsdGrid();                             // RGB GSD mm/px over n×n grid
     const gsdD = sim.gsdGrid(0.4, 0.025, undefined, [0, 0], true); // DEPTH GSD (87°→58° FOV, 848×480) — coarser
@@ -719,6 +733,9 @@ export function App() {
     const cx = wc.originX ?? 0, cy = wc.originY ?? 0;
     const aim = cfg.camera.z * Math.tan((cfg.camera.tilt ?? 0) * Math.PI / 180);
     sim.renderSys.cameraRig?.setPose(new THREE.Vector3(cfg.camera.x, cfg.camera.y, cfg.camera.z), new THREE.Vector3(cx + aim, cy, 0), 0);
+    // Remember the camera knobs so scoreCurrentScene can re-aim the tilt at the active region (#A5a). The
+    // initial pose above (aimed +X) is only a placeholder — region scoring overrides it per-zone.
+    lastCameraRef.current = { x: cfg.camera.x, y: cfg.camera.y, z: cfg.camera.z, tilt: cfg.camera.tilt ?? 0 };
     // 4. recompute reach (synchronous FK sweep) at the cfg's base + obstacles. fast mode → coarse base
     //    sweep (48 vs 160 steps) + res 4: ~6× fewer poses, for the optimizer's triage pass.
     p.setObstacles(collectObstacles());
