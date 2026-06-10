@@ -28,6 +28,7 @@ import { PlannerToggles } from './WorkspacePlanner';
 import { LayoutProfile, listProfiles, saveProfile, deleteProfile, resolveDefaultProfile, getDefaultProfileName, setDefaultProfileName, SHIPPED_DEFAULT_PROFILE } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
 import { LayoutProfiles } from './components/LayoutProfiles';
+import { clampSides, rimVertices, railSegments } from './BaseBuilder';
 import { OverlayLegend } from './components/OverlayLegend';
 import { TweaksPanel } from './components/TweaksPanel';
 import { ModeRail, WorkMode } from './components/ModeRail';
@@ -779,6 +780,31 @@ export function App() {
       // The harness must wait for this before its FIRST applyConfig, else the async IRL-layout
       // auto-load (which settles this flag) races in and overwrites the candidate's camera pose.
       ready: () => autoloadSettledRef.current,
+      // #A13/I1: the AS-BUILT rim + rail segments for a (shapeSides,length,width), from the SAME pure
+      // functions BaseBuilder renders — so the campaign mounts on real rails and never re-derives a
+      // geometry that diverges from the scene (the n=4 rectangle-vs-diamond + n>8 clamp bugs). Returns
+      // station-local coords (primary worktop sits at the world origin). apothem = min rail-to-centre
+      // distance; area via shoelace; bbox = rim extent — the (n,A) trade I4 wants reported.
+      getRailGeometry: (shapeSides: number, length: number, width: number) => {
+        const sides = clampSides(shapeSides);
+        const halfX = Math.max(0.175, length / 2), halfY = Math.max(0.175, width / 2);
+        const rim = rimVertices(sides, halfX, halfY);
+        const rails = railSegments(rim);
+        let area2 = 0;
+        for (let i = 0; i < rim.length; i++) { const [x1, y1] = rim[i], [x2, y2] = rim[(i + 1) % rim.length]; area2 += x1 * y2 - x2 * y1; }
+        const segDist = (s: { a: [number, number]; b: [number, number] }) => {
+          const [ax, ay] = s.a, [bx, by] = s.b, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+          const t = L2 > 1e-12 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+          return Math.hypot(ax + t * dx, ay + t * dy);
+        };
+        const xs = rim.map((p) => p[0]), ys = rim.map((p) => p[1]);
+        return {
+          shapeSides: sides, rim, rails,
+          area: Math.abs(area2) / 2,
+          apothem: Math.min(...rails.map(segDist)),
+          bbox: { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) },
+        };
+      },
       DEFAULT_PARAMS,
     };
   }, []);

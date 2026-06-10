@@ -6,6 +6,42 @@
 import * as THREE from 'three';
 import { WorkcellConfig } from './types';
 
+/** Clamp the polygon side count to the builder's supported range. Raised 8→12 so n=9/10 build as real
+ *  9/10-gons instead of being silently clamped to an octagon (the shapes_3_10 n=9/10 corruption). (#A13) */
+export function clampSides(s: number): number { return Math.max(3, Math.min(12, Math.round(s))); }
+
+/** As-built rim vertices (station-local, pre-placement-transform). The SINGLE source of truth for table
+ *  geometry: the builder renders these AND getRailGeometry() reports them, so the campaign can never
+ *  re-derive a geometry that diverges from the built scene (invariant I1). 4-sided = an axis-aligned
+ *  rectangle from per-side extents (or ±halfX/±halfY); N>4 = a regular N-gon at circumradius halfX/halfY
+ *  (VERTEX_PHASE −π/2, first vertex pointing down), or per-corner radii. */
+export function rimVertices(sides: number, halfX: number, halfY: number, sideExtents?: [number, number, number, number], cornerRadii?: number[]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  if (sides === 4) {
+    const e = sideExtents;
+    const xMax = e ? Math.max(0.05, e[0]) : halfX, xMin = e ? -Math.max(0.05, e[1]) : -halfX;
+    const yMax = e ? Math.max(0.05, e[2]) : halfY, yMin = e ? -Math.max(0.05, e[3]) : -halfY;
+    out.push([xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]);
+  } else {
+    const useR = !!cornerRadii && cornerRadii.length === sides;
+    for (let i = 0; i < sides; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
+      const rx = useR ? Math.max(0.05, cornerRadii![i]) : halfX;
+      const ry = useR ? Math.max(0.05, cornerRadii![i]) : halfY;
+      out.push([Math.cos(a) * rx, Math.sin(a) * ry]);
+    }
+  }
+  return out;
+}
+
+/** Perimeter rail segments (rim edges) with index + length, for rail-based arm mounting (I1/I3). */
+export function railSegments(rim: Array<[number, number]>): Array<{ index: number; a: [number, number]; b: [number, number]; length: number }> {
+  return rim.map((a, i) => {
+    const b = rim[(i + 1) % rim.length];
+    return { index: i, a, b, length: Math.hypot(b[0] - a[0], b[1] - a[1]) };
+  });
+}
+
 /**
  * BaseBuilder
  *
@@ -43,29 +79,14 @@ export class BaseBuilder {
    *  (falls back to ±halfX/±halfY). N>4: a polygon with one circum-radius per corner (falls back to
    *  the halfX/halfY ellipse). Lets each rail/corner be sized independently. */
   private localRim(sides: number, halfX: number, halfY: number, sideExtents?: [number, number, number, number], cornerRadii?: number[]): Array<[number, number]> {
-    const out: Array<[number, number]> = [];
-    if (sides === 4) {
-      const e = sideExtents;
-      const xMax = e ? Math.max(0.05, e[0]) : halfX, xMin = e ? -Math.max(0.05, e[1]) : -halfX;
-      const yMax = e ? Math.max(0.05, e[2]) : halfY, yMin = e ? -Math.max(0.05, e[3]) : -halfY;
-      out.push([xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]);
-    } else {
-      const useR = !!cornerRadii && cornerRadii.length === sides;
-      for (let i = 0; i < sides; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI * 2) / sides;
-        const rx = useR ? Math.max(0.05, cornerRadii![i]) : halfX;
-        const ry = useR ? Math.max(0.05, cornerRadii![i]) : halfY;
-        out.push([Math.cos(a) * rx, Math.sin(a) * ry]);
-      }
-    }
-    return out;
+    return rimVertices(sides, halfX, halfY, sideExtents, cornerRadii); // shared with getRailGeometry (I1)
   }
 
   rebuild(config: WorkcellConfig) {
     this.clear();
     this.postMeshes = [];
 
-    const sides = Math.max(3, Math.min(8, Math.round(config.shapeSides)));
+    const sides = clampSides(config.shapeSides);
     const halfX = Math.max(0.175, config.length / 2);
     const halfY = Math.max(0.175, config.width / 2);
     const barW = Math.max(0.012, config.barWidth);
@@ -150,7 +171,7 @@ export class BaseBuilder {
 
     // --- Additional workstations: each its own rectangular worktop (slab + rails + post) ---
     (config.stations ?? []).forEach((st, si) => {
-      this.buildWorktop(st.x, st.y, st.yaw ?? 0, Math.max(3, Math.min(8, Math.round(st.shapeSides ?? 4))),
+      this.buildWorktop(st.x, st.y, st.yaw ?? 0, clampSides(st.shapeSides ?? 4),
         Math.max(0.175, st.length / 2), Math.max(0.175, st.width / 2),
         barW, barH, { x: st.postX, y: st.postY, height: st.postHeight }, `S${si + 2} `, st.id, st.sideExtents, st.cornerRadii, st.railLengths);
     });
