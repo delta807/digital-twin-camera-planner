@@ -31,6 +31,15 @@ describe('scoreConfig', () => {
     expect(strict).toBeLessThan(loose);
   });
 
+  it('depth-GSD semantic (#A5b): NaN skips, Infinity penalizes, finite measures', () => {
+    // gsdRGB 0.3 vs target 0.5 → rgb factor clamps to 1, so perception == the depth factor alone.
+    const perc = (gsdDepth: number) => scoreConfig(bag({ zonePoints: [pt({ gsdRGB: 0.3, gsdDepth })] }), DEFAULT_PARAMS).objectives.perception;
+    expect(perc(NaN)).toBeCloseTo(1, 5);                 // channel absent → no penalty
+    expect(perc(DEFAULT_PARAMS.DEPTH_GSD_TARGET)).toBeCloseTo(1, 5); // at target → full credit
+    expect(perc(Infinity)).toBeCloseTo(0, 5);            // RGB-visible but no depth → penalized (was a free pass)
+    expect(perc(Infinity)).toBeLessThan(perc(NaN));      // the fix: Infinity ≠ NaN anymore
+  });
+
   it('torque penalty (λ>0) discounts taskGrasp vs λ=0', () => {
     const b = bag({ zonePoints: [pt({ dex: 0.9, headroom: 0.5 })] }); // strained
     const off = scoreConfig(b, { ...DEFAULT_PARAMS, lambda: 0 }).objectives.taskGrasp;

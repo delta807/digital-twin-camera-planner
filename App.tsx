@@ -694,7 +694,8 @@ export function App() {
         collabQuality: bothReach ? Math.min(manipA?.cells.get(k) ?? 0, manipB?.cells.get(k) ?? 0) : 0,
         visible,
         gsdRGB: (gi >= 0 && Number.isFinite(gsd.gsd[gi])) ? gsd.gsd[gi] : Infinity,
-        gsdDepth: (gsdD && gi >= 0 && Number.isFinite(gsdD.gsd[gi])) ? gsdD.gsd[gi] : Infinity,
+        // #A5b: NaN = depth channel absent (skipped in scorer); Infinity = RGB-visible but no depth here (penalized).
+        gsdDepth: !gsdD ? NaN : (gi >= 0 && Number.isFinite(gsdD.gsd[gi]) ? gsdD.gsd[gi] : Infinity),
       });
       // For an explicit region blob, EVERY object point must be graspable + visible (hard constraint).
       if (zoneByRegion) taskPoints.push({ graspable, visible });

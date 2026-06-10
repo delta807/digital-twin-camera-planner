@@ -39,7 +39,8 @@ export interface SamplePoint {
   collabQuality: number;// dexterity-weighted handoff quality 0..1; 0 if not bothReach
   visible: boolean;     // overhead camera sees it (in-frustum AND not occluded)
   gsdRGB: number;       // mm/px RGB at this point (Infinity if not visible)
-  gsdDepth: number;     // mm/px depth at this point (NaN if depth channel not available yet)
+  gsdDepth: number;     // mm/px depth GSD. NaN = depth channel not computed (scorer skips, no penalty);
+                        // Infinity = RGB-visible but no depth coverage here (scorer penalizes → factor 0). (#A5b)
 }
 
 /** Everything the PURE scorer needs — gathered from the live twin by the window hook. */

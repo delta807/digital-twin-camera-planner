@@ -28,11 +28,15 @@ export function scoreConfig(bag: MetricsBag, params: ScoreParams): Result {
   // O1 taskGrasp — dexterity-weighted graspable coverage (dex is already 0 where not graspable).
   const taskGraspRaw = mean(z.map((p) => (p.graspable ? p.dex : 0)));
 
-  // O2 perception — visible AND sharp enough in BOTH channels (RGB × depth). depth skipped if NaN (slice 1).
+  // O2 perception — visible AND sharp enough in BOTH channels (RGB × depth). depth semantic (#A5b):
+  //   NaN      → depth channel not computed for this scene → factor 1 (skip; don't penalize).
+  //   Infinity → point is RGB-visible but has NO depth coverage → factor 0 (penalize the real gap; the
+  //              old code returned 1 here, silently giving undepthable points a free pass).
+  //   finite   → measured: how sharp depth is vs the target.
   const perception = mean(z.map((p) => {
     if (!p.visible) return 0;
     const rgb = clamp01(params.RGB_GSD_TARGET / p.gsdRGB);
-    const depth = Number.isFinite(p.gsdDepth) ? clamp01(params.DEPTH_GSD_TARGET / p.gsdDepth) : 1; // 1 = channel unavailable, don't penalize
+    const depth = Number.isNaN(p.gsdDepth) ? 1 : (Number.isFinite(p.gsdDepth) ? clamp01(params.DEPTH_GSD_TARGET / p.gsdDepth) : 0);
     return rgb * depth;
   }));
 
