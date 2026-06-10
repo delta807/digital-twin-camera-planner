@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, Package, PanelLeftClose, Plus, Save } from 'lucide-react';
+import { Bookmark, Box, Boxes, Camera, ChevronDown, Eye, EyeOff, Grid3x3, Loader2, Package, PanelLeftClose, Plus, Save, Star } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 import { PlannerToggles } from '../WorkspacePlanner';
 import { So101Icon } from './ui/toolbar';
@@ -60,6 +60,9 @@ export interface DockTemplatesProps {
   profiles: LayoutProfile[];
   onLoad: (p: LayoutProfile) => void;
   onSave: (name: string) => void;
+  /** Name of the profile that auto-loads on startup — marked with a star in the list (read-only here;
+   *  change it from Manage → the star toggle). */
+  defaultName?: string;
 }
 
 interface WorkspaceDockProps {
@@ -168,6 +171,7 @@ export function WorkspaceDock({ isDarkMode, objects, scene, workcell, arms, temp
                 className={`w-full flex items-center gap-2 rounded-md px-2 py-1 text-left ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>
                 <Bookmark className="w-3 h-3 text-indigo-400 shrink-0" />
                 <span className="text-[11px] font-medium truncate flex-1">{p.name}</span>
+                {p.name === templates.defaultName && <Star className="w-3 h-3 text-amber-400 shrink-0" fill="currentColor" aria-label="Startup default" />}
                 {p.builtin && <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${isDarkMode ? 'bg-white/10 text-slate-300' : 'bg-black/10 text-slate-500'}`}>built-in</span>}
                 <span className={`text-[9px] ${subtle}`}>{p.arms.length}a</span>
               </button>

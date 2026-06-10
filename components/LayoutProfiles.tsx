@@ -4,7 +4,7 @@
  */
 
 import { useRef, useState, type ChangeEvent } from 'react';
-import { Bookmark, ClipboardCopy, CloudUpload, FileUp, Save, Trash2, X } from 'lucide-react';
+import { Bookmark, ClipboardCopy, CloudUpload, FileUp, Save, Star, Trash2, X } from 'lucide-react';
 import type { LayoutProfile } from '../profiles';
 
 interface Props {
@@ -16,6 +16,10 @@ interface Props {
   onImportWinner?: (cfg: unknown) => Promise<boolean>;
   /** Publish this device's layouts to the team's shared store (Netlify Blobs). Returns success. */
   onPublish?: () => Promise<boolean>;
+  /** Name of the profile that currently auto-loads on startup (starred). */
+  defaultName?: string;
+  /** Pin a profile as this device's startup default (click the current one to revert to the shipped default). */
+  onSetDefault?: (name: string) => void;
   /** Dismiss the floating panel entirely. */
   onClose?: () => void;
   isDarkMode: boolean;
@@ -25,7 +29,7 @@ interface Props {
  * LayoutProfiles — save/restore the workspace's positional config (worktop + arm bases + overhead
  * camera) as named profiles, so a layout mapped to the real rig can be stored and switched between.
  */
-export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onImportWinner, onPublish, onClose, isDarkMode }: Props) {
+export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onImportWinner, onPublish, defaultName, onSetDefault, onClose, isDarkMode }: Props) {
   const [name, setName] = useState('');
   const [open, setOpen] = useState(true); // open expanded when summoned (the old collapsed default hid the save UI)
   const panel = isDarkMode ? 'bg-slate-900/85 border-white/10 text-slate-100' : 'bg-white/90 border-white/80 text-slate-800';
@@ -139,8 +143,16 @@ export function LayoutProfiles({ profiles, onSave, onLoad, onDelete, onImportWin
                       {p.builtin && <span className={`text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded ${isDarkMode ? 'bg-white/10 text-slate-300' : 'bg-black/10 text-slate-500'}`}>built-in</span>}
                       {p.shared && !p.builtin && <span className={`text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded ${isDarkMode ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-600'}`}>team</span>}
                     </div>
-                    <div className={`text-[9px] ${subtle}`}>{p.arms.length} arm{p.arms.length === 1 ? '' : 's'}</div>
+                    <div className={`text-[9px] ${subtle}`}>{p.arms.length} arm{p.arms.length === 1 ? '' : 's'}{p.name === defaultName ? ' · loads on startup' : ''}</div>
                   </button>
+                  {onSetDefault && (
+                    <button onClick={() => onSetDefault(p.name)}
+                      title={p.name === defaultName ? 'This loads on startup — click to revert to the shipped default' : 'Set as this device’s startup default'}
+                      aria-label={p.name === defaultName ? 'Startup default (click to clear)' : 'Set as startup default'}
+                      className={`p-1 rounded ${p.name === defaultName ? 'text-amber-400' : (isDarkMode ? 'text-slate-600 hover:text-amber-300' : 'text-slate-300 hover:text-amber-500')}`}>
+                      <Star className="w-3 h-3" fill={p.name === defaultName ? 'currentColor' : 'none'} />
+                    </button>
+                  )}
                   {!p.builtin && !p.shared && (
                     <button onClick={() => onDelete(p.name)} title="Delete" className={`p-1 rounded ${isDarkMode ? 'text-slate-500 hover:text-red-400' : 'text-slate-400 hover:text-red-500'}`}>
                       <Trash2 className="w-3 h-3" />

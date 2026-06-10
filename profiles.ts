@@ -67,3 +67,26 @@ export function deleteProfile(name: string): LayoutProfile[] {
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
   return listProfiles();
 }
+
+/** The layout that ships as the startup default when the user hasn't chosen their own (must exist in
+ *  BUILTIN_PROFILES so a fresh browser actually has it). Change this one constant to re-home the default. */
+export const SHIPPED_DEFAULT_PROFILE = 'bestagon';
+const DEFAULT_KEY = 'so101-default-profile';
+
+/** The user's per-device default profile name ('' = fall back to the shipped default). */
+export function getDefaultProfileName(): string {
+  try { return localStorage.getItem(DEFAULT_KEY) || ''; } catch { return ''; }
+}
+
+/** Pin (or clear, with null/'') the per-device default profile that auto-loads on startup. */
+export function setDefaultProfileName(name: string | null): void {
+  try { if (name) localStorage.setItem(DEFAULT_KEY, name); else localStorage.removeItem(DEFAULT_KEY); } catch { /* ignore */ }
+}
+
+/** Which profile auto-loads on a fresh session: the user's per-device pick if it still exists, else the
+ *  shipped default (bestagon), else the legacy IRL-layout, else the newest. Null only if none exist. */
+export function resolveDefaultProfile(profiles: LayoutProfile[]): LayoutProfile | null {
+  if (!profiles.length) return null;
+  const byName = (n: string) => (n ? profiles.find((p) => p.name === n) : undefined);
+  return byName(getDefaultProfileName()) || byName(SHIPPED_DEFAULT_PROFILE) || byName('IRL-layout') || profiles[0];
+}

@@ -25,7 +25,7 @@ import type { ReachData, LayoutData, ManipData, EffortData, HandoffData, CycleDa
 import { scoreConfig } from './autoresearch/scoreConfig';
 import { DEFAULT_PARAMS, type ScoreParams, type MetricsBag, type SamplePoint, type Result, type Cfg as AutoCfg } from './autoresearch/types';
 import { PlannerToggles } from './WorkspacePlanner';
-import { LayoutProfile, listProfiles, saveProfile, deleteProfile } from './profiles';
+import { LayoutProfile, listProfiles, saveProfile, deleteProfile, resolveDefaultProfile, getDefaultProfileName, setDefaultProfileName, SHIPPED_DEFAULT_PROFILE } from './profiles';
 import { fetchSharedProfiles, publishSharedProfiles } from './cloudProfiles';
 import { LayoutProfiles } from './components/LayoutProfiles';
 import { OverlayLegend } from './components/OverlayLegend';
@@ -533,6 +533,15 @@ export function App() {
     }));
   };
   const handleDeleteProfile = (name: string) => setProfiles(deleteProfile(name));
+  // Per-device startup default (#layout-default). '' = use the shipped default; effective value is what
+  // the UI marks with a star. Toggling the current pick off reverts to the shipped default (bestagon).
+  const [defaultProfile, setDefaultProfileState] = useState<string>(() => getDefaultProfileName());
+  const effectiveDefaultProfile = defaultProfile || SHIPPED_DEFAULT_PROFILE;
+  const handleSetDefaultProfile = (name: string) => {
+    const next = effectiveDefaultProfile === name ? '' : name;
+    setDefaultProfileName(next || null);
+    setDefaultProfileState(next);
+  };
   // Team sync (Netlify Blobs): on load, pull any shared layouts + merge (local/built-in win by name).
   // No-op under plain `vite dev` (the function isn't there) — sync activates once deployed.
   const mergeShared = (shared: LayoutProfile[]) => setProfiles((prev) => { const names = new Set(prev.map((p) => p.name)); return [...prev, ...shared.filter((p) => !names.has(p.name))]; });
@@ -579,10 +588,19 @@ export function App() {
   // for a fresh session. A persisted working layout (restored from localStorage) takes precedence so
   // a refresh keeps the user's actual progress instead of snapping back to the team default.
   const didAutoLoadRef = useRef(!!persisted0);
+  // True once the startup layout decision is FINAL: the IRL-layout default has been auto-loaded, or
+  // it was skipped because a persisted working layout takes precedence. The headless /autoresearch
+  // harness gates on this (via __autoresearch.ready()) so its first applyConfig can't race the async
+  // auto-load — which previously fired AFTER the readiness check and clobbered the first candidate's
+  // camera with the IRL-layout preset (z≈0.98). handleLoadProfile applies the camera synchronously,
+  // so once this flips true the default pose is already in place and the next applyConfig wins.
+  const autoloadSettledRef = useRef(false);
   useEffect(() => {
-    if (isLoading || didAutoLoadRef.current) return;
-    const p = profiles.find((x) => x.name === 'IRL-layout');
-    if (p) { didAutoLoadRef.current = true; handleLoadProfile(p); }
+    if (isLoading) return; // wait for the scene before deciding the startup layout
+    if (didAutoLoadRef.current) { autoloadSettledRef.current = true; return; } // persisted layout wins
+    const p = resolveDefaultProfile(profiles); // per-device pick → shipped default (bestagon) → IRL-layout
+    if (p) { didAutoLoadRef.current = true; handleLoadProfile(p); autoloadSettledRef.current = true; }
+    // else: profiles not populated yet — leave unsettled and re-run when they arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, profiles]);
   const cameraTogglesRef = useRef(cameraToggles); // latest toggles for imperative callbacks
@@ -758,6 +776,9 @@ export function App() {
     (window as unknown as { __autoresearch?: unknown }).__autoresearch = {
       scoreCurrentScene: (o?: Partial<ScoreParams>, opts?: { fast?: boolean; zone?: { center: [number, number]; radius: number } }) => scoreRef.current(o, opts),
       applyConfig: (c: AutoCfg, opts?: { reachResolution?: number; reachBaseSteps?: number; fast?: boolean }) => applyRef.current(c, opts),
+      // The harness must wait for this before its FIRST applyConfig, else the async IRL-layout
+      // auto-load (which settles this flag) races in and overwrites the candidate's camera pose.
+      ready: () => autoloadSettledRef.current,
       DEFAULT_PARAMS,
     };
   }, []);
@@ -2483,6 +2504,8 @@ export function App() {
               onDelete={handleDeleteProfile}
               onImportWinner={handleImportWinner}
               onPublish={handlePublishProfiles}
+              defaultName={effectiveDefaultProfile}
+              onSetDefault={handleSetDefaultProfile}
               onClose={() => setLayoutsOpen(false)}
               isDarkMode={isDarkMode}
             />
@@ -2834,7 +2857,7 @@ export function App() {
               onSaveWorkspace={() => setLayoutsOpen(true)}
               onClose={() => setDockOpen(false)}
               onOpenAnalysis={() => { setAnalysisOpen(true); setDockOpen(false); }}
-              templates={{ profiles, onLoad: handleLoadProfile, onSave: handleSaveProfile }}
+              templates={{ profiles, onLoad: handleLoadProfile, onSave: handleSaveProfile, defaultName: effectiveDefaultProfile }}
               objects={{ entities: objectEntities, selectedKey, onSelect: handleTreeSelect, hidden: hiddenKeys, onToggleVisible: toggleVisible }}
               scene={{
                 unit: lengthUnit,
