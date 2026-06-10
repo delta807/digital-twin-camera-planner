@@ -206,16 +206,24 @@ async function main() {
   ];
   const sensitivity = new Map<string, Array<{ label: string; feasible: boolean; taskGrasp: number; perception: number }>>();
 
-  console.log('[autoresearch] re-scoring per-region Pareto finalists at full fidelity + GSD/λ sensitivity…');
+  // DIRECTION 1: fast fidelity is NOT rank-preserving across shapes, so a true full-fidelity winner can
+  // be dominated at fast, dropped from the fast Pareto front, and never re-scored (the shapes_3_10
+  // 4-gon centre bug: 0.137 fast vs 0.307 full). Re-score the fast front UNION the top-K per objective,
+  // so candidates that fast under-ranks still get a full score before the front/knee is recomputed.
+  const SCORE_TOPK = 10;
+  console.log(`[autoresearch] re-scoring per-region front ∪ top-${SCORE_TOPK}/objective at full fidelity + GSD/λ sensitivity…`);
   const page0 = pages[0];
   for (const [label, trialsForRegion] of byRegion) {
-    const front = paretoFront(trialsForRegion);
-    for (const t of front) {
+    const toRescore = new Set<RegionTrial>(paretoFront(trialsForRegion));
+    for (const k of OBJ_KEYS) {
+      [...trialsForRegion]
+        .sort((a, b) => ((b.result.objectives[k] ?? -1) - (a.result.objectives[k] ?? -1)))
+        .slice(0, SCORE_TOPK).forEach((t) => toRescore.add(t));
+    }
+    for (const t of toRescore) {
       const region = regionsFor(t.cfg, blobRadius).find((z) => z.label === label)!;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await page0.evaluate(async (c) => { await (window as any).__autoresearch.applyConfig(c, { fast: false }); }, t.cfg);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = await page0.evaluate(({ region }) => (window as any).__autoresearch.scoreCurrentScene(undefined, { fast: false, zone: region }), { region }) as Result | null;
+      await evalApply(page0, t.cfg);
+      const r = await evalScore(page0, region);
       if (r) { t.result = r; t.fidelity = 'full'; }
     }
     // sensitivity sweep on this region's winner (knee): score it under every GSD/λ setting.
@@ -238,24 +246,34 @@ async function main() {
   // triage bias. Take the top-K candidates by (feasible-region fraction, fast maximin), full-re-score
   // each across ALL its regions, then Pareto+knee on those FULL vectors.
   const SR_TOPK = 10;
-  interface SrFull { cfg: Cfg; regions: number; feasN: number; feasAll: boolean; tg: number; pc: number; collab: number | null; }
+  interface SrRegionScore { region: string; feasible: boolean; taskGrasp: number; perception: number; collaboration: number | null; }
+  interface SrFull { ci: number; cfg: Cfg; regions: number; feasN: number; feasAll: boolean; tg: number; pc: number; collab: number | null; perRegion: SrRegionScore[]; }
   const srRanked = [...rigByCi.values()].sort((a, b) =>
     (b.feasN / b.regions - a.feasN / a.regions) || ((b.tg + b.pc) - (a.tg + a.pc)));
   const srFulls: SrFull[] = [];
   for (const cand of srRanked.slice(0, SR_TOPK)) {
     const regions = regionsFor(cand.cfg, blobRadius);
     await evalApply(page0, cand.cfg);
-    const rs: Result[] = [];
-    for (const region of regions) { const r = await evalScore(page0, region); if (r) rs.push(r); }
+    const rs: Array<{ label: string; result: Result }> = [];
+    for (const region of regions) { const r = await evalScore(page0, region); if (r) rs.push({ label: region.label, result: r }); }
     if (!rs.length) continue;
-    const collabs = rs.map((r) => r.objectives.collaboration);
+    // DIRECTION 2: persist these full per-region scores back into `all` so the single-rig answer is
+    // REPRODUCIBLE from results.json — otherwise the maximin re-scores live only in script memory and an
+    // independent recompute over the fast entries finds 0 all-region-feasible candidates.
+    for (const { label, result } of rs) {
+      const entry = all.find((t) => t.ci === cand.ci && t.region.label === label);
+      if (entry) { entry.result = result; entry.fidelity = 'full'; }
+    }
+    const objs = rs.map((x) => x.result.objectives);
+    const collabs = objs.map((o) => o.collaboration);
     srFulls.push({
-      cfg: cand.cfg, regions: regions.length,
-      feasN: rs.filter((r) => r.feasible).length,
-      feasAll: rs.length === regions.length && rs.every((r) => r.feasible),
-      tg: Math.min(...rs.map((r) => r.objectives.taskGrasp)),
-      pc: Math.min(...rs.map((r) => r.objectives.perception)),
+      ci: cand.ci, cfg: cand.cfg, regions: regions.length,
+      feasN: rs.filter((x) => x.result.feasible).length,
+      feasAll: rs.length === regions.length && rs.every((x) => x.result.feasible),
+      tg: Math.min(...objs.map((o) => o.taskGrasp)),
+      pc: Math.min(...objs.map((o) => o.perception)),
       collab: collabs.every((c) => c != null) ? Math.min(...(collabs as number[])) : null,
+      perRegion: rs.map((x) => ({ region: x.label, feasible: x.result.feasible, taskGrasp: x.result.objectives.taskGrasp, perception: x.result.objectives.perception, collaboration: x.result.objectives.collaboration })),
     });
   }
   const srTrials: Trial[] = srFulls.filter((e) => e.feasAll).map((e) => ({
@@ -270,9 +288,16 @@ async function main() {
   // report: per-region pareto csv + a cross-region summary (does the winner change by region?).
   mkdirSync(out, { recursive: true });
   // results.json carries every region-trial at its scored fidelity: 'fast' for the triage majority,
-  // 'full' for the per-region Pareto finalists re-scored above (so the reported winners ARE reproducible
-  // from this file — recompute the front from the 'full' entries).
+  // 'full' for the per-region front ∪ top-K re-scored above AND the single-rig top-K (so both the
+  // per-region winners and the single-rig answer ARE reproducible from this file — recompute from 'full').
   writeFileSync(`${out}/results.json`, JSON.stringify(all.map((t) => ({ ci: t.ci, region: t.region.label, fidelity: t.fidelity, cfg: t.cfg, result: t.result })), null, 2));
+  // single-rig.json (DIRECTION 2): the explicit per-region full vectors of every top-K contender + the
+  // winner, so the single-rig answer is reproducible/auditable without re-deriving it from results.json.
+  writeFileSync(`${out}/single-rig.json`, JSON.stringify({
+    method: 'top-K by fast maximin → full re-score all regions → Pareto+knee on full vectors',
+    topK: SR_TOPK, paretoFront: srFront.length,
+    winner: srWinnerFull, contenders: srFulls,
+  }, null, 2));
   const summary: string[] = ['# /autoresearch — per-region winners', ''];
   const cfgLabel = (c: Cfg) => `${c.shapeSides}-gon r${c.size.toFixed(2)} · ${c.arms}arm · cam z${c.camera.z.toFixed(2)} tilt${c.camera.tilt}°`;
 
