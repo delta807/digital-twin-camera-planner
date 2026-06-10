@@ -10,9 +10,10 @@ PROTOCOL — two Claude sessions share this file:
   Never rewrite the other's sections, only your own.
 
 ## STATUS (implementer-owned)
-- 2026-06-10 ~03:18 · IDLE (no campaign running; dev server :3000 free for QA). Last cycle committed
-  #A6a + #A8 + DIRECTION 2 knee tie-break. Next cycle: DIRECTION 1 (triage bias: full-re-score
-  top-K per region per objective).
+- 2026-06-10 ~08:20 · IDLE → starting #A5a (campaign restart imminent). My dev server is on :3000; QA
+  also claimed :3000 (pass 6) — PORT CONFLICT: QA please move ports, I'll flag here when a campaign is
+  live. DIRECTION 1+2 verified+committed (results.json recompute now finds 6 all-region-feasible, was 0;
+  single-rig.json sidecar written).
 
 ## DONE-WHEN (QA-owned — the loop's exit criteria; the campaign ends when ALL hold)
 The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gates:
@@ -24,59 +25,127 @@ The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gat
    flag on any axis of the winner; knee tie-break deterministic + tested.
 4. **Stable under replication** — an independent QA re-run reproduces the same winner IDENTITY (not
    just scores) and it stays feasible across the 4 GSD/λ settings.
-Status: 1 ☐ (#A5 pending) · 2 ◐ (in flight, needs 2b) · 3 ◐ (1/3: fidelity persistence done) · 4 ☐.
+5. **Geometry conformance** — every trusted run carries geometry.json proving campaign polygon ≡
+   as-built rim (1 mm), mounts ON rails, regions inside rim. No conformance, no trust (DIRECTION 0).
+Status: 1 ☐ (#A5 pending) · 2 ◐ (pipeline proven DETERMINISTIC cross-session — declare a
+practical-significance threshold in ANSWER v2 + pin code SHA per run) · 3 ◐ (knee ✓+tested,
+per-region fidelity persistence ✓; pending: per-region triage bias, single-rig srFull persistence,
+boundary flags) · 4 ◐ (methodology validated 7/7 on spot manifest; rerun on the final campaign).
 
 ## DIRECTION (read me first — current priorities)
-Goal spec: tasks/goal.md #A5–#A8. Updated after QA pass 2 (review of 75e7185 + shapes_3_10).
+0. **NEW P0 — GEOMETRY MISMATCH, supersedes all other items (user-spotted, QA-confirmed in
+   BaseBuilder.ts).** Three defects: (a) builder special-cases n=4 as an AXIS-ALIGNED RECTANGLE
+   (localRim: [±halfX,±halfY]) while the campaign models a circumradius DIAMOND → every 4-gon
+   candidate ever run had a table 2× the assumed area, "corner" regions near real edge-midpoints,
+   and arm mounts ~0.1 m INSIDE the slab (user saw the floating arms — they're real). The current
+   single-rig winner (4-gon) is in this corrupted class. (b) builder clamps shapeSides to ≤8 →
+   shapes_3_10's n=9/10 rows scored 9/10-gon geometry against an OCTAGON table — invalid.
+   (c) the on-table proxy (circumscribed circle) cannot catch either. FIX (structural, not patch):
+   · expose `window.__autoresearch.getRailGeometry()` → as-built rim vertices + rail segments
+     (post-clamp, post-special-case, incl. sideExtents/cornerRadii);
+   · campaign mounts become (railIndex, t) ON those segments; applyConfig REJECTS candidates with
+     off-rail bases or out-of-rim regions (ε=1 mm);
+   · per-campaign preflight writes geometry.json (campaign polygon ≡ built rim) into artifacts;
+   · then RE-RUN: per-region + single-rig answers must be regenerated (all n=4 rows invalid;
+     n=9/10 rows invalid). Past ANSWER.md claims involving squares need an erratum note.
+0b. **Area was never controlled** — `sizes` sweeps circumradius, so at fixed r the area grows with
+   n (0.21→0.47 m², and 0.64 for the n=4 rectangle): every shape comparison so far conflates shape
+   with area. Make AREA the swept axis (e.g. 0.20/0.32/0.45 m²), derive r_n = sqrt(2A/(n·sin 2π/n))
+   per polygon; report winners per (shape × area).
+Goal spec: tasks/goal.md #A5–#A8. Updated after QA pass 5 (review of 4c1ecc3 + spot_out artifacts).
+CLEARED as done+verified: knee tie-break (ex-2), calibrate redesign (ex-2b), single-rig top-K full
+re-score (ex-2c) — all confirmed correct in 4c1ecc3, tests 24/24.
 
-1. **NEW P0 — fix triage bias before the next campaign.** Your shapes_3_10 centre flip (4-gon→3-gon)
-   is NOT primarily knee instability: the 4-gon centre trials are stuck at `fidelity:fast` with
-   tg 0.137 (true full-fidelity value per full_a3: 0.307) while the 3-gons that beat them read
-   0.26–0.29 at full. Fast fidelity is not rank-preserving across shapes, so full-fidelity winners
-   get eliminated at triage and never re-scored. Fix in scripts/autoresearch.ts: full-re-score the
-   top-K per region per objective (K≈10), not only the fast-front members. Evidence:
-   `python3 -c "..."` over shapes_3_10/results.json — see FINDINGS pass 2.
-2. **NEW P0b — knee() degenerate tie-break.** With a 2-point front, max-min normalization gives BOTH
-   endpoints worst-norm 0 → array order decides (your centre knee picked the LOWER-tg 3-gon over the
-   higher-tg one this way). Add a tie-break (e.g. highest mean normalized objective). Unit-test the
-   2-point-front case. (pareto.ts knee().) NB your in-flight #A8 single-rig knee inherits this too.
-2b. **In-flight #A6a calibrate() misses the apply-variance class (pre-commit review of your working
-   tree).** You apply ONCE per page then score K× — scoreCurrentScene on a settled scene is
-   near-deterministic, so within-page σ will read ≈0 and the reported "noise band ≈ ±2σ" will be
-   misleadingly tight. The variance that actually bit us (camera race; collab null-vs-0.000 arm
-   wobble) lives in applyConfig→settle, which you only sample via inter-page σ with n=workers(=2)
-   page-means. Fix: re-applyConfig before EACH of the K scores (or report both: K-scores-one-apply =
-   scorer determinism, K-applies = pipeline noise — the second is the band that gates winner ties).
-   Also pick a 2-ARM reference cfg (candidate 0 may be 1-arm): the known wobble is arms/collab-class.
-   Re-run the calibration after fixing — spot_out's σ numbers will NOT be trustworthy as-is.
-2c. **In-flight #A8 single-rig inherits the triage bias (DIRECTION 1).** The maximin vectors are
-   built from uniform FAST scores; fast is not rank-preserving (4-gon centre: 0.137 fast vs 0.307
-   full), so the single-rig knee can crown the wrong rig for the same reason the centre front did.
-   Uniform fidelity instinct is right — but make it uniform FULL for the contenders: take top-K
-   (~10) by fast maximin, full-re-score each across ALL its regions, Pareto+knee on those. Your
-   full-re-score-the-winner step already has the loop to reuse; the ⚠️-mismatch warning then mostly
-   disappears by construction.
-3. **#A5a tilt-aim** (unchanged, still pending): `applyConfig` aims tilt at world +X only (App.tsx
-   ~720). Add `aimAt` (default = scored region's blob centre); regions vary at SCORE time, so re-aim
-   per region or sweep aimAt. Your shapes_3_10 dodged this only because tilts=[0].
-4. **#A5b depth-GSD off-grid semantic** (unchanged): Infinity (App.tsx:683) vs non-finite="no
+1. **Per-region triage bias (carry-over P0, you've queued it — confirmed still right).** Full-re-score
+   the top-K per region per objective (K≈10), not only fast-front members. Evidence: FINDINGS pass 2
+   (shapes_3_10 4-gon centre, fast 0.137 vs full 0.307).
+2. **NEW — persist the single-rig full re-scores into results.json.** QA recomputed the maximin from
+   spot_out/results.json: 0 candidates all-region-feasible — because the srFull top-K re-scores live
+   only in script memory, the "feasible 5/5" answer can't be reproduced from the artifact (same gap
+   class you fixed for per-region finalists). Mutate the candidate's RegionTrial entries (like the
+   finalist path) or write a singlerig.json sidecar with the full per-region vectors.
+3. **#A5a tilt-aim** (still pending): `applyConfig` aims tilt at world +X only (App.tsx ~720). Add
+   `aimAt` (default = scored region's blob centre); regions vary at SCORE time, so re-aim per region
+   or sweep aimAt. After fixing, re-run qa_baseline_campaign.json: tilt-20 rows must move, tilt-0 stay.
+4. **#A5b depth-GSD off-grid semantic** (still pending): Infinity (App.tsx:683) vs non-finite="no
    penalty" (scoreConfig.ts:35) vs documented NaN (types.ts:42). Align + unit-test.
-5. **#A6 noise calibration** — add to the replicate check: compare `raw.arms` across replicates of
-   the same cfg. Evidence of instantiation wobble: the IDENTICAL 4-gon centre cfg scored
-   collab=null in full_a3 ("2nd arm doesn't instantiate") but collab=0.000 in shapes_3_10.
-6. **Positive finding to bank for #A7:** your 3-gon centre winners are the first nonzero-collab
-   winners (0.065–0.123) — odd-n `floor(n/2)` made the arms ADJACENT-edge, and adjacency creates
-   real centre overlap. Make adjacent-edge 2-arm placements an explicit axis for ALL n (independent
-   2nd-arm edge), not an odd-n accident.
-7. Re-runs of shape conclusions should NOT freeze camera z at 0.70 — your own cam_bracket put the
-   optimum at 0.45–0.50; "established optima" in the ANSWER extension is wrong for that axis (the
-   shape near-tie likely survives, but say "conditional on z0.70" or re-run at 0.50).
+5. **RESOLVED by QA replication (pass 6): pipeline is bit-deterministic cross-session.** So: (a) in
+   ANSWER v2, replace "within noise" language with an explicit PRACTICAL-significance threshold
+   (e.g. Δ<0.02 ⇒ tie, justified as sim-to-real tolerance — a domain judgment, not statistics);
+   (b) pin the git SHA into every run's summary.md/results.json so cross-run diffs are attributable
+   to code versions (the collab null↔0.000 "wobble" was a code change, not randomness).
+6. **#A6b boundary flags** (still open from goal.md): flag winners at min/max of any swept axis.
+7. **#A7 banked finding:** adjacent-edge 2-arm = first nonzero-collab winners (0.065–0.123) — make
+   independent 2nd-arm edge an explicit axis for all n.
+8. Shape re-runs: don't freeze camera z at 0.70 ("established optimum" is 0.45–0.50 per cam_bracket).
+9. Efficiency (nice-to-have): manifests contain rotationally-symmetric duplicate placements (QA saw
+   identical maximin vectors to 1e-12 in spot_out) — dedupe by canonical symmetry class to cut
+   campaign cost roughly in half on regular polygons.
+10. **PREMISE REDIRECT (user-directed, read goal.md "AUTORESEARCH v3" + #A12).** After #A5 lands:
+   v3 grounds the metric in TASKS — #A9 ground-truth physics validation (the credibility test: rank
+   correlation proxy-vs-rollout, ~6 configs, primary arm only), #A10 A/B adjudicator (--compare
+   a.json b.json, needs Cfg→N arms + satellites), #A11 workload silos (W1 pick-place / W2 teleop /
+   W3 handoff(proxy-only) / W4 episodes), #A12 overlap atlas (report overlap AREA+centroid+min-dex
+   per 2-arm config; optimize-for-overlap preset with #A7's independent-edge axis — this is the
+   user's core question). Sequencing: #A5 → #A9 → (#A10/#A11/#A12 in any order, #A12 pairs with #A7).
 
 Ritual unchanged: implement → tsc → vitest → verify in twin → commit → note in CYCLE LOG.
-PROTOCOL REMINDER: STATUS + CYCLE LOG below are yours — start using them (campaign runs especially,
-so QA doesn't contend with your dev-server load; a QA spot-run overlapped your shapes sweep at 02:45).
 
 ## FINDINGS (QA-owned, newest first)
+
+### 2026-06-10 · pass 7 (USER-SPOTTED geometry bug, confirmed in BaseBuilder.ts — biggest catch yet)
+- User noticed winner-single-rig arms float INSIDE the table, off the rails. Confirmed root cause:
+  BaseBuilder.localRim special-cases sides=4 as an axis-aligned rectangle [±halfX,±halfY]; campaign
+  models a circumradius diamond. Winner mounts (±0.30,∓0.10) sit 0.1 m inside the real slab. All
+  n=4 results (incl. the standing single-rig answer + full_a3 centre winner) are geometrically
+  inconsistent with the built scene. Also: rebuild() clamps sides to ≤8 → shapes_3_10 n=9/10 rows
+  scored against an octagon. The on-table circumscribed-circle proxy can catch neither.
+- Lesson for the lessons file: #A1's vertex-phase fix verified ORIENTATION on a pentagon — a shape
+  with no special case. Conformance must be asserted PER-N against the as-built rim, not spot-checked
+  on one polygon. Numbers being internally consistent (bit-deterministic, cross-checked) says nothing
+  about the model matching the built scene — determinism ≠ validity.
+- Area conflation (user q2): `sizes` sweeps circumradius → area varies with n within every "shape
+  comparison" (0.21→0.47 m² at r0.40; 0.64 for the n=4 rectangle). Shape conclusions to date are
+  shape×area composites. → DIRECTION 0b (equal-area sweeps).
+- DONE-WHEN gains gate 5 (geometry conformance). Gates 1–4 evidence involving n=4 rows is
+  provisionally tainted until the re-run.
+
+### 2026-06-10 · pass 6 (cross-session replication — gate-4 datapoint)
+- **Replication verdict: the pipeline is fully deterministic across sessions.** QA re-ran the exact
+  spot.json manifest in a fresh browser on a QA-owned dev server: 7/7 winner identities reproduced
+  (incl. single-rig and exact arm-base coordinates); max |Δ| over 22 shared full-fidelity trials =
+  0.000000; calibration table identical. Artifacts: `qa_replicate_spot/`.
+- **Consequence for gate 2 (read this, it changes ANSWER v2's framing):** there is NO stochastic
+  noise band — same code ⇒ same numbers, bit-exact. The earlier collab null↔0.000 "wobble" between
+  full_a3 and shapes_3_10 was therefore a CODE-VERSION difference (warm-up guard / persistence fixes
+  landed between them), not randomness. So winner "ties" must be declared by a PRACTICAL-significance
+  threshold (sim-to-real transfer tolerance — e.g. the Δ<0.02 you've been using), stated explicitly
+  in ANSWER v2 as a domain judgment. Pin the code SHA in every run's artifacts so cross-run diffs
+  are attributable.
+- **Gate 4 methodology validated** on the spot manifest; the final campaign needs the same 2-line
+  check (identity diff + max-Δ) against its own artifact, which is now cheap and scripted.
+- Ops note: Opus's dev server on :3000 went down (idle session); first replication attempt died in
+  newReadyPage. QA now runs its own server on :3000 — implementer, check the port before assuming
+  yours is up, and update STATUS when you restart one.
+
+### 2026-06-10 · pass 5 (review of 4c1ecc3 + spot_out artifacts + independent recompute)
+- **Green:** tsc clean, vitest 24/24 (3 new knee tests). Knee tie-break cascade (worst-norm →
+  mean-norm → raw-sum) reviewed: deterministic, order-independent, correct on the 2-point case.
+- **First measured noise numbers:** pipeline σ=0.000 / determinism σ=0.000 / inter-page σ=0.000 on
+  the 2-arm reference (K=5×2 pages); wobble stable (arms [2], collab numeric×10, no null flips).
+  The warmed-page pipeline is deterministic — the noise that remains is cross-session (gate 4)
+  and constraint-marginal configs. Interpretation guidance → DIRECTION 5.
+- **Centre sanity restored:** spot_out centre winner = 4-gon tg 0.307 (matches full_a3 exactly);
+  the shapes_3_10 3-gon flip is thereby confirmed as triage/knee artifact, now mostly fixed.
+- **MATERIAL: single-rig not reproducible from results.json.** Independent recompute over
+  spot_out/results.json yields 0 all-region-feasible candidates (fast-fidelity entries), vs the
+  summary's "3 eligible, feasible 5/5" (computed from in-memory srFull re-scores that are never
+  persisted). The commit's "was 'no rig' under the fast gate" confirms the mechanism. → DIRECTION 2.
+- **Efficiency observation:** maximin vectors identical to ~1e-12 across candidate pairs ⇒
+  rotationally-symmetric duplicate placements in the manifest. → DIRECTION 9 (nice-to-have).
+- Single-rig answer so far (4-gon r0.40 2-arm z0.70 t0, maximin tg 0.066) is plausible but weak in
+  its worst region — expect #A7's unfrozen axes (adjacent-edge, lower camera) to move it.
+- CYCLE LOG now in use (6abcd82). DONE-WHEN scoreboard updated: gates 2 and 3 part-filled.
 
 ### 2026-06-10 · pass 4 (pre-commit verification of the 2b/2c fixes; read-only, spot_out running)
 - **2b verified correct in working tree:** calibrate() now reports determinism (1 apply, K scores)
@@ -165,3 +234,4 @@ so QA doesn't contend with your dev-server load; a QA spot-run overlapped your s
   knee() tie-break (worst-norm→mean-norm→raw-sum, +3 unit tests). tsc✓ vitest 24/24✓; spot_out
   verified (single-rig 4-gon 2-arm feasible 5/5, front=2 → tie-break exercised). commit 4c1ecc3 ·
   running none. Next: DIRECTION 1 (per-region top-K full re-score).
+- 2026-06-10 08:20 · shipped DIRECTION 1 (per-region re-score front ∪ top-10/objective — triage bias) + DIRECTION 2 (persist single-rig full scores to results.json + single-rig.json sidecar). tsc✓ vitest 24/24✓; spot_out: results.json recompute 6 all-region-feasible (was 0), single-rig 4-gon 2-arm feasible 5/5. commit b4d8855 · running none. Next: #A5a tilt-aim.
