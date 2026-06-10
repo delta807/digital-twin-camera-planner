@@ -36,6 +36,17 @@ export function knee<T extends Trial>(front: T[]): T | null {
   // picks the more balanced of the tied points deterministically and order-independently.
   let best: T | null = null, bestWorst = -Infinity, bestMean = -Infinity, bestRaw = -Infinity;
   const EPS = 1e-12;
+  // FINAL tie-break: identical objectives → prefer the SIMPLER rig (fewer arms, then fewer polygon
+  // sides, then smaller table). A 2nd arm that can't reach a corner scores identically to 1 arm, so
+  // without this the corner winner flips 1↔2-arm between reruns purely on array order; "simpler wins"
+  // is both deterministic AND the right recommendation (don't add hardware that does nothing). (DIRECTION 2)
+  const cplx = (c: Cfg): [number, number, number] => [c.arms, c.shapeSides, c.size];
+  const simplerThanBest = (a: Cfg): boolean => {
+    if (!best) return false;
+    const ca = cplx(a), cb = cplx(best.cfg);
+    for (let i = 0; i < ca.length; i++) { if (ca[i] !== cb[i]) return ca[i] < cb[i]; }
+    return false;
+  };
   for (const t of front) {
     let worst = Infinity, normSum = 0, rawSum = 0;
     for (const k of active) {
@@ -46,12 +57,13 @@ export function knee<T extends Trial>(front: T[]): T | null {
       normSum += norm; rawSum += v;
     }
     const meanNorm = normSum / active.length;
-    // Lexicographic, deterministic: worst-norm, then mean-norm, then raw objective sum. A 2-objective
-    // 2-point front is symmetric in normalized space (both (1,0)/(0,1) → equal worst AND mean), so the
-    // raw-sum tier is what makes the pick order-independent there. (DIRECTION 2)
+    // Lexicographic, deterministic: worst-norm, then mean-norm, then raw objective sum, then config
+    // simplicity. A 2-objective 2-point front is symmetric in normalized space (both (1,0)/(0,1) →
+    // equal worst AND mean); raw-sum + simplicity make the pick order-independent there. (DIRECTION 2)
     const better = worst > bestWorst + EPS
       || (Math.abs(worst - bestWorst) <= EPS && (meanNorm > bestMean + EPS
-        || (Math.abs(meanNorm - bestMean) <= EPS && rawSum > bestRaw + EPS)));
+        || (Math.abs(meanNorm - bestMean) <= EPS && (rawSum > bestRaw + EPS
+          || (Math.abs(rawSum - bestRaw) <= EPS && simplerThanBest(t.cfg))))));
     if (better) { bestWorst = worst; bestMean = meanNorm; bestRaw = rawSum; best = t; }
   }
   return best;

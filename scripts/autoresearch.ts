@@ -14,7 +14,7 @@
  * Per candidate: applyConfig ONCE (the expensive step), then score under EVERY region (cheap ~0.4 s).
  * Triage at fast fidelity; the per-region Pareto finalists are re-scored at FULL fidelity before ranking.
  */
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs';
 import { chromium, type Page } from 'playwright';
 import { generateCampaign, regionsFor } from '../autoresearch/campaign';
 import { paretoFront, knee, type Trial } from '../autoresearch/pareto';
@@ -97,15 +97,13 @@ async function calibrate(pages: Page[], cfg: Cfg, region: Zone, K: number): Prom
 async function newReadyPage(browser: Awaited<ReturnType<typeof chromium.launch>>, baseUrl: string): Promise<Page> {
   const page = await browser.newPage();
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+  // Gate on ready() AND a non-null score. ready() flips true only once the twin's startup IRL-layout
+  // auto-load has SETTLED (loaded or skipped) — see App.tsx. Before this, the gate passed as soon as
+  // scoreCurrentScene() worked, but the async auto-load fired LATER and clobbered the first candidate's
+  // camera with the preset (z≈0.98). Now the default pose is in place before any apply, so every
+  // candidate's camera sticks — no warm-up apply needed. (typeof guard tolerates an older build w/o ready.)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await page.waitForFunction(() => { const ar = (window as any).__autoresearch; return !!ar && ar.scoreCurrentScene() != null; }, { timeout: 120_000 });
-  // Warm-up apply (result discarded). On a fresh page the FIRST applyConfig races an async startup
-  // profile-load that re-applies the built-in IRL-layout camera (z≈0.98), clobbering the requested
-  // camera pose; the 2nd+ applies stick (verified). Consuming one apply here guarantees every REAL
-  // candidate's camera takes effect. Root cause is the startup ordering in App.tsx; this is the
-  // minimal harness-side guard that avoids touching the interactive twin's load sequence.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await page.evaluate(async () => { await (window as any).__autoresearch.applyConfig({ shapeSides: 4, size: 0.4, arms: 1, armBases: [{ x: 0, y: 0.3, yaw: -Math.PI / 2 }], camera: { x: 0, y: 0, z: 0.7, tilt: 0 }, taskDistribution: { kind: 'grid' } }, { fast: true }); });
+  await page.waitForFunction(() => { const ar = (window as any).__autoresearch; return !!ar && (typeof ar.ready !== 'function' || ar.ready()) && ar.scoreCurrentScene() != null; }, { timeout: 120_000 });
   return page;
 }
 
@@ -136,6 +134,7 @@ async function main() {
   const trials = Number(arg('trials', String(candidates.length)));
   candidates = candidates.slice(0, trials);
   console.log(`[autoresearch] ${candidates.length} candidates · ${workers} worker(s) · ${baseUrl} · out=${out}`);
+  mkdirSync(out, { recursive: true }); // up front so triage can checkpoint as it goes
 
   const browser = await chromium.launch({ headless: true });
   const pages = await Promise.all(Array.from({ length: workers }, () => newReadyPage(browser, baseUrl)));
@@ -153,13 +152,29 @@ async function main() {
   }
 
   // split candidates round-robin across workers; each worker sweeps its chunk (apply + score all regions).
+  // Checkpoint/resume: an HMR navigation or crash mid-triage used to lose ALL progress (shapes_3_10 died
+  // at 30/208). Persist each candidate's triage trials to checkpoint.json as they complete; --resume
+  // restores them and skips finished candidates so a re-run continues instead of restarting from zero.
+  const ckptPath = `${out}/checkpoint.json`, ckptTmp = `${out}/checkpoint.json.tmp`;
   const all: RegionTrial[] = [];
-  let done = 0;
+  const doneCis = new Set<number>();
+  if (process.argv.includes('--resume') && existsSync(ckptPath)) {
+    const saved = JSON.parse(readFileSync(ckptPath, 'utf8')) as { trials: RegionTrial[] };
+    for (const t of saved.trials) { all.push(t); doneCis.add(t.ci); }
+    console.log(`[autoresearch] resume: ${doneCis.size} candidate(s) already triaged (${all.length} region-trials) — skipping them`);
+  }
+  // push + write are synchronous (no await between), so a concurrent worker can't observe a torn `all`;
+  // tmp+rename makes the on-disk checkpoint atomic for any --resume reader.
+  const writeCkpt = () => { writeFileSync(ckptTmp, JSON.stringify({ trials: all })); renameSync(ckptTmp, ckptPath); };
+  let done = doneCis.size;
   await Promise.all(pages.map(async (page, w) => {
     for (let i = w; i < candidates.length; i += workers) {
+      if (doneCis.has(i)) continue;
       const cfg = candidates[i];
       const trials = await sweepCandidate(page, i, cfg, regionsFor(cfg, blobRadius), true);
       all.push(...trials);
+      doneCis.add(i);
+      writeCkpt();
       if (++done % 10 === 0) console.log(`[autoresearch] triage ${done}/${candidates.length} candidates`);
     }
   }));
@@ -355,4 +370,8 @@ async function main() {
   console.log(`[autoresearch] ${all.length} region-trials · ${byRegion.size} regions${srWinner ? ' · single-rig ' + cfgLabel(srWinner.cfg) : ''} · wrote results.json, region-*.csv, summary.md to ${out}`);
 }
 
-main().catch((e) => { console.error('[autoresearch] failed:', e); process.exit(1); });
+main().catch((e) => {
+  console.error('[autoresearch] FAILED — triage progress is checkpointed; re-run the SAME command with --resume to continue from where it stopped (do not edit Vite-served sources mid-run — HMR navigation destroys the page context).');
+  console.error(e);
+  process.exit(1);
+});
