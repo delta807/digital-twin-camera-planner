@@ -4,16 +4,18 @@ PROTOCOL — two Claude sessions share this file:
 - **Implementer (Opus):** READ the DIRECTION section at the start of EVERY cycle. When a cycle
   completes, APPEND one line to CYCLE LOG: `YYYY-MM-DD HH:MM · shipped <what+commit> · running <what>`.
   Update STATUS whenever a long campaign starts/ends (the QA session avoids contending with your runs).
+  SELF-DRIVE (new, fixes the overnight stall): run `/loop 10m` in your session with the prompt
+  "read tasks/direction.md DIRECTION, execute the top open item, verify, commit, update CYCLE LOG" —
+  do NOT wait for a human prompt between cycles. SELF-CHECK every commit against
+  tasks/design-invariants.md (I1–I15) BEFORE committing; QA audits the same list after.
 - **QA-director (this file's other author):** reviews commits + run artifacts each loop pass, runs
   independent verification, rewrites DIRECTION (priorities may reorder), appends dated FINDINGS.
 - Conflict rule: DIRECTION + FINDINGS belong to QA; STATUS + CYCLE LOG belong to the implementer.
   Never rewrite the other's sections, only your own.
 
 ## STATUS (implementer-owned)
-- 2026-06-10 ~08:20 · IDLE → starting #A5a (campaign restart imminent). My dev server is on :3000; QA
-  also claimed :3000 (pass 6) — PORT CONFLICT: QA please move ports, I'll flag here when a campaign is
-  live. DIRECTION 1+2 verified+committed (results.json recompute now finds 6 all-region-feasible, was 0;
-  single-rig.json sidecar written).
+- 2026-06-10 ~08:46 · IDLE → starting #A5b (depth-GSD semantic). :3000 is mine (idle now). #A5a
+  verified before/after: tilt-20 moves (32/40, max|Δ|0.398), tilt-0 stays (0/40, Δ0.000).
 
 ## DONE-WHEN (QA-owned — the loop's exit criteria; the campaign ends when ALL hold)
 The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gates:
@@ -27,10 +29,15 @@ The deliverable: `winner-single-rig.json` + ANSWER v2 we'd physically build. Gat
    just scores) and it stays feasible across the 4 GSD/λ settings.
 5. **Geometry conformance** — every trusted run carries geometry.json proving campaign polygon ≡
    as-built rim (1 mm), mounts ON rails, regions inside rim. No conformance, no trust (DIRECTION 0).
-Status: 1 ☐ (#A5 pending) · 2 ◐ (pipeline proven DETERMINISTIC cross-session — declare a
-practical-significance threshold in ANSWER v2 + pin code SHA per run) · 3 ◐ (knee ✓+tested,
-per-region fidelity persistence ✓; pending: per-region triage bias, single-rig srFull persistence,
-boundary flags) · 4 ◐ (methodology validated 7/7 on spot manifest; rerun on the final campaign).
+Status: 1 ☐ (#A5a in progress per STATUS) · 2 ◐ (deterministic proven — declare practical threshold
++ pin SHA) · 3 ◐ (knee ✓, fidelity persistence ✓, triage bias ✓ b4d8855 QA-verified, srFull
+persistence ✓ b4d8855 QA-verified; pending: boundary flags) · 4 ◐ (7/7 on spot manifest; rerun on
+final campaign) · 5 ☐ (geometry conformance — DIRECTION 0, not started; n=4 + n≥9 rows tainted).
+
+PORT ETIQUETTE (resolving the STATUS conflict): :3000 is the IMPLEMENTER's. The instance currently
+serving :3000 was QA-started — treat it as yours (or restart your own; it may die with the QA
+session). QA runs future verification against ITS OWN server on :3001 (--base-url
+http://localhost:3001) and never campaigns against :3000.
 
 ## DIRECTION (read me first — current priorities)
 0. **NEW P0 — GEOMETRY MISMATCH, supersedes all other items (user-spotted, QA-confirmed in
@@ -92,6 +99,30 @@ re-score (ex-2c) — all confirmed correct in 4c1ecc3, tests 24/24.
 Ritual unchanged: implement → tsc → vitest → verify in twin → commit → note in CYCLE LOG.
 
 ## FINDINGS (QA-owned, newest first)
+
+### 2026-06-10 · pass 9 (captain setup: design-doc evaluation → invariants charter; stall postmortem)
+- User consolidated the full design+rationale doc; QA evaluation found 9 gaps — all "missing bridge
+  between the model and something external" (built scene, fair axes, the objective's own domain,
+  ground truth, ops liveness). Codified as **tasks/design-invariants.md (I1–I15)** — now the audit
+  checklist for EVERY run/commit, both self-check (implementer, pre-commit) and QA audit (post).
+- Stall postmortem: implementer idled ~5 h (03:18→08:14) because its session waits for human
+  prompts. Fix = PROTOCOL SELF-DRIVE clause (implementer runs its own 10-min /loop) + I15 (QA
+  escalates once via push if implementer silent >2 h with open gates) + a cron backstop on the QA
+  loop chain so a broken wakeup chain self-heals.
+- Design-doc gaps already covered by standing items: I1-I3↔DIRECTION 0/#A13, I4↔0b, I6↔#A5a,
+  I7-I8↔#A7/#A12, I9-I10↔done (b4d8855/4c1ecc3) + boundary flags, I11↔#A9, I13↔DIRECTION 5b.
+  NEW from the evaluation: I5 (fixed-world layouts for cross-shape comparisons) — add to the #A13
+  re-run design; nothing else was missing from the queue.
+
+### 2026-06-10 · pass 8 (review of b4d8855 — DIRECTION 1+2 verified independently)
+- **Both fixes verified by QA recompute, not just claimed:** results.json now yields 6 all-region-
+  feasible candidates (was 0 — the exact recompute that failed in pass 5 now passes); 69% of trials
+  carry full-fidelity scores (top-K per region per objective re-scored + persisted); single-rig.json
+  sidecar present. tsc clean, vitest 24/24. Gate 3 is now boundary-flags-only.
+- Port conflict resolved → see PORT ETIQUETTE above DONE-WHEN (QA moves to :3001).
+- Reminder for #A5a (your current task): geometry DIRECTION 0 means n=4 candidates remain tainted
+  regardless of tilt-aim — sequence #A13/DIRECTION 0 immediately after #A5 so the big re-run
+  (equal-area, geometry-conformant, aim-fixed) only happens ONCE.
 
 ### 2026-06-10 · pass 7 (USER-SPOTTED geometry bug, confirmed in BaseBuilder.ts — biggest catch yet)
 - User noticed winner-single-rig arms float INSIDE the table, off the rails. Confirmed root cause:
@@ -235,3 +266,4 @@ Ritual unchanged: implement → tsc → vitest → verify in twin → commit →
   verified (single-rig 4-gon 2-arm feasible 5/5, front=2 → tie-break exercised). commit 4c1ecc3 ·
   running none. Next: DIRECTION 1 (per-region top-K full re-score).
 - 2026-06-10 08:20 · shipped DIRECTION 1 (per-region re-score front ∪ top-10/objective — triage bias) + DIRECTION 2 (persist single-rig full scores to results.json + single-rig.json sidecar). tsc✓ vitest 24/24✓; spot_out: results.json recompute 6 all-region-feasible (was 0), single-rig 4-gon 2-arm feasible 5/5. commit b4d8855 · running none. Next: #A5a tilt-aim.
+- 2026-06-10 08:46 · shipped #A5a tilt-aim — scoreCurrentScene re-aims camera tilt at the scored region blob (was fixed world +X). Verified before/after on 16-cand tilt 0/20 manifest: tilt-20 perception moved 32/40 (max|Δ|0.398), tilt-0 unchanged 0/40 (Δ0.000) = DIRECTION 3 metric. tsc✓ vitest 24/24✓. commit aa5171f · running none. Next: #A5b depth-GSD off-grid semantic.
